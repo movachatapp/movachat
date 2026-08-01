@@ -2711,3 +2711,124 @@ body {
   height: 16px;
   color: #00f2fe;
 }
+
+/* --- PANTALLA DE AUTENTICACIÓN (LOGIN / REGISTRO) --- */
+.pantalla-auth {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: rgba(9, 13, 22, 0.95);
+  backdrop-filter: blur(15px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999; /* Se coloca por encima de toda la app */
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.tarjeta-auth {
+  width: 100%;
+  max-width: 400px;
+  padding: 30px 25px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.auth-logo {
+  width: 70px;
+  height: 70px;
+  margin-bottom: 10px;
+  border-radius: 16px;
+  object-fit: cover;
+}
+
+.auth-header h2 {
+  color: #fff;
+  font-size: 1.5rem;
+  margin-bottom: 5px;
+}
+
+.auth-header h2 span {
+  color: #00f2fe; /* Color neón principal */
+}
+
+.auth-header p {
+  color: #a0aec0;
+  font-size: 0.9rem;
+  margin-bottom: 25px;
+}
+
+/* Contenedor de cada Input + Icono */
+.input-grupo {
+  position: relative;
+  margin-bottom: 15px;
+  width: 100%;
+}
+
+/* Alineación exacta para Iconos SVG / Lucide */
+.input-grupo i,
+.input-grupo svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #a0aec0;
+  width: 18px;
+  height: 18px;
+  pointer-events: none; /* Hace que el clic traspase directamente al input */
+}
+
+.input-grupo input {
+  width: 100%;
+  padding: 12px 12px 12px 42px; /* Margen interno izquierdo para no tapar el icono */
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.95rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+.input-grupo input:focus {
+  border-color: #00f2fe;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.3);
+}
+
+.btn-principal {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  border: none;
+  border-radius: 12px;
+  color: #000;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-principal:active {
+  transform: scale(0.98);
+}
+
+.auth-footer {
+  margin-top: 20px;
+  font-size: 0.85rem;
+  color: #a0aec0;
+}
+
+.auth-footer a {
+  color: #00f2fe;
+  text-decoration: none;
+  font-weight: bold;
+}

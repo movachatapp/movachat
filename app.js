@@ -1,3 +1,122 @@
+// --- CONFIGURACIÓN DE FIREBASE ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  onAuthStateChanged,
+  updateProfile 
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
+  authDomain: "movachat-3e8ea.firebaseapp.com",
+  databaseURL: "https://movachat-3e8ea-default-rtdb.firebaseio.com",
+  projectId: "movachat-3e8ea",
+  storageBucket: "movachat-3e8ea.firebasestorage.app",
+  messagingSenderId: "127806471801",
+  appId: "1:127806471801:web:1924b7881925bff5d41ea8"
+};
+
+// Inicializar Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+// --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
+const pantallaAuth = document.getElementById("pantalla-auth");
+const formAuth = document.getElementById("form-auth");
+const grupoNombre = document.getElementById("grupo-nombre");
+const inputNombre = document.getElementById("auth-nombre");
+const inputCorreo = document.getElementById("auth-correo");
+const inputPassword = document.getElementById("auth-password");
+const btnAuthSubmit = document.getElementById("btn-auth-submit");
+const linkToggleAuth = document.getElementById("link-toggle-auth");
+const authSubtitulo = document.getElementById("auth-subtitulo");
+const textoToggleAuth = document.getElementById("texto-toggle-auth");
+
+let modoRegistro = false;
+
+// Alternar entre Iniciar Sesión y Registro
+linkToggleAuth.addEventListener("click", (e) => {
+  e.preventDefault();
+  modoRegistro = !modoRegistro;
+
+  if (modoRegistro) {
+    grupoNombre.style.display = "flex";
+    inputNombre.setAttribute("required", "true");
+    btnAuthSubmit.textContent = "Crear Cuenta";
+    authSubtitulo.textContent = "Regístrate para comenzar a chatear";
+    textoToggleAuth.innerHTML = '¿Ya tienes cuenta? <a href="#" id="link-toggle-auth">Inicia sesión aquí</a>';
+  } else {
+    grupoNombre.style.display = "none";
+    inputNombre.removeAttribute("required");
+    btnAuthSubmit.textContent = "Iniciar Sesión";
+    authSubtitulo.textContent = "Inicia sesión para conectarte";
+    textoToggleAuth.innerHTML = '¿No tienes una cuenta? <a href="#" id="link-toggle-auth">Regístrate aquí</a>';
+  }
+  
+  // Reasignar el evento al nuevo link generado
+  document.getElementById("link-toggle-auth").addEventListener("click", arguments.callee);
+});
+
+// Enviar Formulario (Login / Registro)
+formAuth.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  
+  const correo = inputCorreo.value.trim();
+  const password = inputPassword.value.trim();
+  const nombre = inputNombre.value.trim();
+
+  btnAuthSubmit.disabled = true;
+  btnAuthSubmit.textContent = "Procesando...";
+
+  try {
+    if (modoRegistro) {
+      // 1. Crear usuario en Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, correo, password);
+      const user = userCredential.user;
+
+      // 2. Guardar nombre de usuario en el perfil de Auth
+      await updateProfile(user, { displayName: nombre });
+
+      // 3. Guardar datos en la base de datos (Realtime Database)
+      await set(ref(db, 'usuarios/' + user.uid), {
+        uid: user.uid,
+        nombre: nombre,
+        correo: correo,
+        estado: "🚀 Conectado con MovaChat",
+        fotoUrl: ""
+      });
+
+      console.log("✅ Usuario registrado exitosamente");
+    } else {
+      // Iniciar sesión
+      await signInWithEmailAndPassword(auth, correo, password);
+      console.log("✅ Sesión iniciada con éxito");
+    }
+  } catch (error) {
+    console.error("❌ Error de autenticación:", error);
+    alert("Error: " + error.message);
+  } finally {
+    btnAuthSubmit.disabled = false;
+    btnAuthSubmit.textContent = modoRegistro ? "Crear Cuenta" : "Iniciar Sesión";
+  }
+});
+
+// Listener de Estado de Autenticación
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    // Usuario logueado: Ocultar la pantalla de Auth
+    pantallaAuth.style.display = "none";
+    console.log("Usuario activo:", user.displayName || user.email);
+  } else {
+    // Usuario no logueado: Mostrar pantalla de Auth
+    pantallaAuth.style.display = "flex";
+  }
+});
+
 // ========================================================
 // 1. SELECTORES GLOBALES Y VARIABLES DE ESTADO
 // ========================================================

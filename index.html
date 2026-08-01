@@ -6,14 +6,56 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>MovaChat</title>
   <!-- Configuración de PWA y App Instalable -->
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#090d16">
-<link rel="apple-touch-icon" href="assets/logo/icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#090d16">
+  <link rel="apple-touch-icon" href="assets/logo/icon-192.png">
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
 <body>
+
+  <!-- Pantalla de Bienvenida / Autenticación -->
+  <div id="pantalla-auth" class="pantalla-auth">
+    <div class="tarjeta-auth glass-effect">
+      <div class="auth-header">
+        <img src="assets/logo/icon-192.png" alt="MovaChat Logo" class="auth-logo">
+        <h2>Bienvenido a <span>MovaChat</span></h2>
+        <p id="auth-subtitulo">Inicia sesión para conectarte</p>
+      </div>
+
+      <!-- Formulario Dinámico -->
+      <form id="form-auth" autocomplete="off">
+        <!-- Campo Nombre (Solo para Registro) -->
+        <div class="input-grupo" id="grupo-nombre" style="display: none;">
+          <i data-lucide="user"></i>
+          <input type="text" id="auth-nombre" placeholder="Nombre de usuario" />
+        </div>
+
+        <!-- Campo Correo -->
+        <div class="input-grupo">
+          <i data-lucide="mail"></i>
+          <input type="email" id="auth-correo" placeholder="Correo electrónico" required />
+        </div>
+
+        <!-- Campo Contraseña -->
+        <div class="input-grupo">
+          <i data-lucide="lock"></i>
+          <input type="password" id="auth-password" placeholder="Contraseña (mínimo 6 caracteres)" required />
+        </div>
+
+        <!-- Botón Principal -->
+        <button type="submit" id="btn-auth-submit" class="btn-principal">
+          Iniciar Sesión
+        </button>
+      </form>
+
+      <!-- Alternar entre Login y Registro -->
+      <div class="auth-footer">
+        <p id="texto-toggle-auth">¿No tienes una cuenta? <a href="#" id="link-toggle-auth">Regístrate aquí</a></p>
+      </div>
+    </div>
+  </div>
 
   <!-- Capa delantera: Caja de cristal responsiva -->
   <div class="contenedor-chat">
@@ -574,8 +616,9 @@
     <span id="toast-texto">Lista de chats limpiada</span>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
   <script>lucide.createIcons();</script>
+  
 </body>
 
 </html>
