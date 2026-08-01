@@ -25,95 +25,95 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
-const pantallaAuth = document.getElementById("pantalla-auth");
-const formAuth = document.getElementById("form-auth");
-const grupoNombre = document.getElementById("grupo-nombre");
-const inputNombre = document.getElementById("auth-nombre");
-const inputCorreo = document.getElementById("auth-correo");
-const inputPassword = document.getElementById("auth-password");
-const btnAuthSubmit = document.getElementById("btn-auth-submit");
-const linkToggleAuth = document.getElementById("link-toggle-auth");
-const authSubtitulo = document.getElementById("auth-subtitulo");
-const textoToggleAuth = document.getElementById("texto-toggle-auth");
+const authPantalla = document.getElementById("pantalla-auth");
+const authForm = document.getElementById("form-auth");
+const authGrupoNombre = document.getElementById("grupo-nombre");
+const authInputNombre = document.getElementById("auth-nombre");
+const authInputCorreo = document.getElementById("auth-correo");
+const authInputPassword = document.getElementById("auth-password");
+const authBtnSubmit = document.getElementById("btn-auth-submit");
+const authSubtituloTxt = document.getElementById("auth-subtitulo");
+const authTextoToggle = document.getElementById("texto-toggle-auth");
 
 let modoRegistro = false;
 
-// Alternar entre Iniciar Sesión y Registro
-linkToggleAuth.addEventListener("click", (e) => {
-  e.preventDefault();
-  modoRegistro = !modoRegistro;
+// Manejo unificado de clics para alternar entre Login y Registro
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.id === "link-toggle-auth") {
+    e.preventDefault();
+    modoRegistro = !modoRegistro;
 
-  if (modoRegistro) {
-    grupoNombre.style.display = "flex";
-    inputNombre.setAttribute("required", "true");
-    btnAuthSubmit.textContent = "Crear Cuenta";
-    authSubtitulo.textContent = "Regístrate para comenzar a chatear";
-    textoToggleAuth.innerHTML = '¿Ya tienes cuenta? <a href="#" id="link-toggle-auth">Inicia sesión aquí</a>';
-  } else {
-    grupoNombre.style.display = "none";
-    inputNombre.removeAttribute("required");
-    btnAuthSubmit.textContent = "Iniciar Sesión";
-    authSubtitulo.textContent = "Inicia sesión para conectarte";
-    textoToggleAuth.innerHTML = '¿No tienes una cuenta? <a href="#" id="link-toggle-auth">Regístrate aquí</a>';
+    if (modoRegistro) {
+      if (authGrupoNombre) authGrupoNombre.style.display = "flex";
+      if (authInputNombre) authInputNombre.setAttribute("required", "true");
+      if (authBtnSubmit) authBtnSubmit.textContent = "Crear Cuenta";
+      if (authSubtituloTxt) authSubtituloTxt.textContent = "Regístrate para comenzar a chatear";
+      if (authTextoToggle) authTextoToggle.innerHTML = '¿Ya tienes cuenta? <a href="#" id="link-toggle-auth">Inicia sesión aquí</a>';
+    } else {
+      if (authGrupoNombre) authGrupoNombre.style.display = "none";
+      if (authInputNombre) authInputNombre.removeAttribute("required");
+      if (authBtnSubmit) authBtnSubmit.textContent = "Iniciar Sesión";
+      if (authSubtituloTxt) authSubtituloTxt.textContent = "Inicia sesión para conectarte";
+      if (authTextoToggle) authTextoToggle.innerHTML = '¿No tienes una cuenta? <a href="#" id="link-toggle-auth">Regístrate aquí</a>';
+    }
   }
-  
-  // Reasignar el evento al nuevo link generado
-  document.getElementById("link-toggle-auth").addEventListener("click", arguments.callee);
 });
 
 // Enviar Formulario (Login / Registro)
-formAuth.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  
-  const correo = inputCorreo.value.trim();
-  const password = inputPassword.value.trim();
-  const nombre = inputNombre.value.trim();
+if (authForm) {
+  authForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    
+    const correo = authInputCorreo.value.trim();
+    const password = authInputPassword.value.trim();
+    const nombre = authInputNombre ? authInputNombre.value.trim() : "";
 
-  btnAuthSubmit.disabled = true;
-  btnAuthSubmit.textContent = "Procesando...";
+    authBtnSubmit.disabled = true;
+    authBtnSubmit.textContent = "Procesando...";
 
-  try {
-    if (modoRegistro) {
-      // 1. Crear usuario en Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, correo, password);
-      const user = userCredential.user;
+    try {
+      if (modoRegistro) {
+        // 1. Crear usuario en Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, correo, password);
+        const user = userCredential.user;
 
-      // 2. Guardar nombre de usuario en el perfil de Auth
-      await updateProfile(user, { displayName: nombre });
+        // 2. Guardar nombre de usuario en el perfil de Auth
+        await updateProfile(user, { displayName: nombre });
 
-      // 3. Guardar datos en la base de datos (Realtime Database)
-      await set(ref(db, 'usuarios/' + user.uid), {
-        uid: user.uid,
-        nombre: nombre,
-        correo: correo,
-        estado: "🚀 Conectado con MovaChat",
-        fotoUrl: ""
-      });
+        // 3. Guardar datos en la base de datos (Realtime Database)
+        await set(ref(db, 'usuarios/' + user.uid), {
+          uid: user.uid,
+          nombre: nombre,
+          correo: correo,
+          estado: "🚀 Conectado con MovaChat",
+          fotoUrl: ""
+        });
 
-      console.log("✅ Usuario registrado exitosamente");
-    } else {
-      // Iniciar sesión
-      await signInWithEmailAndPassword(auth, correo, password);
-      console.log("✅ Sesión iniciada con éxito");
+        console.log("✅ Usuario registrado exitosamente");
+      } else {
+        // Iniciar sesión
+        await signInWithEmailAndPassword(auth, correo, password);
+        console.log("✅ Sesión iniciada con éxito");
+      }
+    } catch (error) {
+      console.error("❌ Error de autenticación:", error);
+      alert("Error: " + error.message);
+    } finally {
+      authBtnSubmit.disabled = false;
+      authBtnSubmit.textContent = modoRegistro ? "Crear Cuenta" : "Iniciar Sesión";
     }
-  } catch (error) {
-    console.error("❌ Error de autenticación:", error);
-    alert("Error: " + error.message);
-  } finally {
-    btnAuthSubmit.disabled = false;
-    btnAuthSubmit.textContent = modoRegistro ? "Crear Cuenta" : "Iniciar Sesión";
-  }
-});
+  });
+}
 
 // Listener de Estado de Autenticación
 onAuthStateChanged(auth, (user) => {
   if (user) {
     // Usuario logueado: Ocultar la pantalla de Auth
-    pantallaAuth.style.display = "none";
+    if (authPantalla) authPantalla.style.display = "none";
     console.log("Usuario activo:", user.displayName || user.email);
   } else {
     // Usuario no logueado: Mostrar pantalla de Auth
-    pantallaAuth.style.display = "flex";
+    if (authPantalla) authPantalla.style.display = "flex";
   }
 });
 
