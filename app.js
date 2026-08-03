@@ -3798,137 +3798,138 @@ function escucharMensajesChat(chatId) {
   }
 
   // 2. Iniciar escucha limpia (Optimizada para CPU + Soporte Total de Adjuntos)
-listenerChatActivo = onValue(mensajesRef, (snapshot) => {
-  if (!historialMensajes) return;
-  historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
-  
-  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  listenerChatActivo = onValue(mensajesRef, (snapshot) => {
+    if (!historialMensajes) return;
+    historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
+    
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
-  if (snapshot.exists()) {
-    const mensajes = snapshot.val();
+    if (snapshot.exists()) {
+      const mensajes = snapshot.val();
 
-    Object.keys(mensajes).forEach((msgId) => {
-      const msg = mensajes[msgId];
+      Object.keys(mensajes).forEach((msgId) => {
+        const msg = mensajes[msgId];
 
-      // 🚀 A) Detección de emisor flexible
-      const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
-      const esMio = idEmisorReal === miUid;
+        // 🚀 A) Detección de emisor flexible
+        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
+        const esMio = idEmisorReal === miUid;
 
-      // 🚀 B) Formateador de hora seguro
-      let horaFormateada = "00:00";
-      if (msg.hora) {
-        horaFormateada = msg.hora;
-      } else if (msg.fecha || msg.timestamp) {
-        const fechaObj = new Date(msg.fecha || msg.timestamp);
-        horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
+        // 🚀 B) Formateador de hora seguro
+        let horaFormateada = "00:00";
+        if (msg.hora) {
+          horaFormateada = msg.hora;
+        } else if (msg.fecha || msg.timestamp) {
+          const fechaObj = new Date(msg.fecha || msg.timestamp);
+          horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
 
-      const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
-      let contenidoBurbuja = "";
-      let estiloEspecialBurbuja = "";
+        const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
+        let contenidoBurbuja = "";
+        let estiloEspecialBurbuja = "";
 
-      // 📸 Adjunto Imagen
-      if (msg.tipoAdjunto === 'foto') {
-        contenidoBurbuja = `
-          <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
-            <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
-          </div>
-          ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-          <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
-        `;
-      }
-      // 📄 Adjunto Documento
-      else if (msg.tipoAdjunto === 'documento') {
-        contenidoBurbuja = `
-          <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
-            <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
-            <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
-          </div>
-          ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-          <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
-        `;
-      }
-      // 📹 Adjunto Video Circular
-      else if (msg.tipoAdjunto === 'video') {
-        estiloEspecialBurbuja = "padding: 10px;";
-        contenidoBurbuja = `
-          <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-            <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-              <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-            </svg>
-            <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-              <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+        // 📸 Adjunto Imagen
+        if (msg.tipoAdjunto === 'foto') {
+          contenidoBurbuja = `
+            <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
+              <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
             </div>
-            <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-              <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        }
+        // 📄 Adjunto Documento
+        else if (msg.tipoAdjunto === 'documento') {
+          contenidoBurbuja = `
+            <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+              <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
+              <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
             </div>
-          </div>
-          ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-          <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${horaFormateada}${textoEditadoHTML}</span>
-        `;
-      }
-      // 🎙️ Adjunto Nota de Voz
-      else if (msg.tipoAdjunto === 'audio') {
-        contenidoBurbuja = `
-          <div class="reproductor-audio-burbuja">
-            <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
-            <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-              <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
-              <span class="onda-barra"></span><span class="onda-barra"></span>
-              <span class="onda-barra"></span><span class="onda-barra"></span>
-              <span class="onda-barra"></span><span class="onda-barra"></span>
-            </div>
-            <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-            <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
-          </div>
-          <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
-        `;
-      }
-      // 📇 Adjunto Contacto Compartido
-      else if (msg.tipoAdjunto === 'contacto') {
-        contenidoBurbuja = `
-          <div class="tarjeta-contacto-compartido">
-            <div class="cabecera-contacto-card">
-              <img src="${msg.avatarContacto || 'https://i.pravatar.cc/150'}" alt="${msg.nombreContacto}" class="avatar-contacto-card">
-              <div class="info-contacto-card">
-                <span class="nombre-contacto-card">${msg.nombreContacto}</span>
-                <span class="subtexto-contacto-card">
-                  <i data-lucide="shield-check" style="width:12px; height:12px;"></i> Contacto MovaChat
-                </span>
+            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        }
+        // 📹 Adjunto Video Circular
+        else if (msg.tipoAdjunto === 'video') {
+          estiloEspecialBurbuja = "padding: 10px;";
+          contenidoBurbuja = `
+            <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
+              <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+                <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
+              </svg>
+              <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
+                <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+              </div>
+              <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
+                <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
               </div>
             </div>
-            <button class="btn-accion-contacto-card">
-              <i data-lucide="message-square" style="width:14px; height:14px;"></i> Chatear
-            </button>
-          </div>
-          <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
-        `;
-      }
-      // 💬 Mensaje de solo texto
-      else {
-        contenidoBurbuja = `
-          <p class="mensaje-texto">${msg.texto || ''}</p>
-          <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
-        `;
-      }
+            ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        }
+        // 🎙️ Adjunto Nota de Voz
+        else if (msg.tipoAdjunto === 'audio') {
+          contenidoBurbuja = `
+            <div class="reproductor-audio-burbuja">
+              <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+              <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
+                <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
+                <span class="onda-barra"></span><span class="onda-barra"></span>
+                <span class="onda-barra"></span><span class="onda-barra"></span>
+                <span class="onda-barra"></span><span class="onda-barra"></span>
+              </div>
+              <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
+              <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
+            </div>
+            <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        }
+        // 📇 Adjunto Contacto Compartido
+        else if (msg.tipoAdjunto === 'contacto') {
+          contenidoBurbuja = `
+            <div class="tarjeta-contacto-compartido">
+              <div class="cabecera-contacto-card">
+                <img src="${msg.avatarContacto || 'https://i.pravatar.cc/150'}" alt="${msg.nombreContacto}" class="avatar-contacto-card">
+                <div class="info-contacto-card">
+                  <span class="nombre-contacto-card">${msg.nombreContacto}</span>
+                  <span class="subtexto-contacto-card">
+                    <i data-lucide="shield-check" style="width:12px; height:12px;"></i> Contacto MovaChat
+                  </span>
+                </div>
+              </div>
+              <button class="btn-accion-contacto-card">
+                <i data-lucide="message-square" style="width:14px; height:14px;"></i> Chatear
+              </button>
+            </div>
+            <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        }
+        // 💬 Mensaje de solo texto
+        else {
+          contenidoBurbuja = `
+            <p class="mensaje-texto">${msg.texto || ''}</p>
+            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        }
 
-      // Crear contenedor HTML de la burbuja
-      const burbujaHTML = document.createElement("div");
-      burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
-      burbujaHTML.setAttribute("data-msg-id", msgId);
-      if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
-      burbujaHTML.innerHTML = contenidoBurbuja;
+        // Crear contenedor HTML de la burbuja
+        const burbujaHTML = document.createElement("div");
+        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
+        burbujaHTML.setAttribute("data-msg-id", msgId);
+        if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
+        burbujaHTML.innerHTML = contenidoBurbuja;
 
-      historialMensajes.appendChild(burbujaHTML);
-    });
-
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar ÚNICAMENTE los iconos dentro del área de chat
-    if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [historialMensajes]
+        historialMensajes.appendChild(burbujaHTML);
       });
-    }
 
-    historialMensajes.scrollTop = historialMensajes.scrollHeight;
-  }
-});
+      // ⚡ OPTIMIZACIÓN CPU: Renderizar ÚNICAMENTE los iconos dentro del área de chat
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [historialMensajes]
+        });
+      }
+
+      historialMensajes.scrollTop = historialMensajes.scrollHeight;
+    }
+  }); // Cierre de onValue
+} // 🚀 AQUÍ ESTÁ EL CIERRE QUE FALTABA (Cierra escucharMensajesChat)
