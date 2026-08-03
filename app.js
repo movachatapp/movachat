@@ -3324,65 +3324,72 @@ let contactoSeleccionado = null;
 
 // Función para cargar los contactos aprobados en tiempo real
 function cargarContactosAprobados(usuarioActualUid) {
-  const contenedorContactos = document.getElementById("contenedor-lista-contactos"); // Asegúrate que coincida con el ID de tu HTML
+  const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
 
   const usuariosRef = ref(db, 'usuarios');
 
   // Escuchar en tiempo real cualquier cambio en la base de datos de usuarios
   onValue(usuariosRef, (snapshot) => {
-    contenedorContactos.innerHTML = ""; // Limpiar lista anterior
+    // Guardar la tarjeta de "Mi Estado" antes de limpiar para no perderla
+    const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+
+    // Limpiar lista anterior
+    contenedorContactos.innerHTML = "";
+
+    // Preservar la tarjeta de "Mi Estado" arriba del todo
+    if (tarjetaMiEstado) {
+      contenedorContactos.appendChild(tarjetaMiEstado);
+    }
 
     if (snapshot.exists()) {
       const usuarios = snapshot.val();
-      let contadorAprobados = 0;
 
       Object.keys(usuarios).forEach((uid) => {
         // Excluir al usuario logueado actualmente y solo mostrar los aprobados
         if (uid !== usuarioActualUid && usuarios[uid].estadoAcceso === "aprobado") {
-          contadorAprobados++;
           const usuario = usuarios[uid];
 
           // Crear la tarjeta HTML del contacto
           const itemContacto = document.createElement("div");
-          itemContacto.className = "contacto-item";
+          itemContacto.className = "tarjeta-chat contacto-item";
           itemContacto.dataset.uid = usuario.uid;
 
           // Foto o avatar por defecto con la inicial del nombre
-          const foto = usuario.fotoUrl
-            ? `<img src="${usuario.fotoUrl}" class="avatar-contacto" alt="${usuario.nombre}">`
-            : `<div class="avatar-placeholder">${usuario.nombre.charAt(0).toUpperCase()}</div>`;
+          const foto = usuario.fotoUrl 
+            ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre}">`
+            : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${(usuario.nombre || 'U').charAt(0).toUpperCase()}</div>`;
 
           itemContacto.innerHTML = `
-            ${foto}
-            <div class="info-contacto">
-              <div class="nombre-contacto">${usuario.nombre}</div>
-              <div class="estado-contacto">${usuario.estado || "¡Disponible en MovaChat!"}</div>
+            <div class="chat-avatar-caja">
+              ${foto}
+            </div>
+            <div class="chat-info">
+              <div class="chat-cabecera">
+                <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
+              </div>
+              <div class="chat-mensaje-caja">
+                <p class="chat-texto">${usuario.estado || "¡Disponible en MovaChat!"}</p>
+              </div>
             </div>
           `;
 
           // Evento al hacer clic en un contacto de la lista
           itemContacto.addEventListener("click", () => {
             // Remover clase activa de otros contactos
-            document.querySelectorAll(".contacto-item").forEach(el => el.classList.remove("activo"));
+            document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
             itemContacto.classList.add("activo");
 
             // Guardar el contacto seleccionado y abrir la ventana de chat
             contactoSeleccionado = usuario;
-            abrirChatConUsuario(usuario);
+            if (typeof abrirChatConUsuario === "function") {
+              abrirChatConUsuario(usuario);
+            }
           });
 
           contenedorContactos.appendChild(itemContacto);
         }
       });
-
-      if (contadorAprobados === 0) {
-        contenedorContactos.innerHTML = `
-          <div style="text-align: center; color: #888; padding: 20px; font-size: 0.9rem;">
-            Aún no hay otros miembros aprobados ✨
-          </div>
-        `;
-      }
     }
   });
 }
