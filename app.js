@@ -3225,31 +3225,13 @@ function mostrarToast(mensaje) {
   }, 2500);
 }
 
-// --- REGISTRO DE SERVICE WORKER CON AUTO-ACTUALIZACIÓN Y CACHE-BUSTING ---
+// --- SERVICE WORKER DESACTIVADO PARA EVITAR BUCLES Y TIMEOUTS ---
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    // Agregamos un parametro de version/timestamp para forzar la actualizacion en la red
-    navigator.serviceWorker.register('./sw.js?v=' + Date.now())
-      .then((reg) => {
-        console.log('✅ PWA Service Worker registrado con éxito:', reg.scope);
-        
-        // Forzar al Service Worker a buscar actualizaciones inmediatamente
-        reg.update();
-
-        // Si hay una actualización lista, tomar el control sin esperar
-        reg.onupdatefound = () => {
-          const installingWorker = reg.installing;
-          if (installingWorker) {
-            installingWorker.onstatechange = () => {
-              if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('🔄 Nueva versión detectada. Recargando la app...');
-                window.location.reload();
-              }
-            };
-          }
-        };
-      })
-      .catch((err) => console.warn('❌ Error al registrar Service Worker:', err));
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (let registration of registrations) {
+      registration.unregister(); // Elimina cualquier Service Worker atascado en el teléfono
+      console.log('🧹 Service Worker atascado eliminado con éxito.');
+    }
   });
 }
 
