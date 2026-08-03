@@ -1050,7 +1050,7 @@ async function enviarMensajeNuevo() {
 
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
   // Guardamos el UID del contacto con el que estamos chateando actualmente
-  const contactoUid = window.contactoActivoUid; 
+  const contactoUid = window.contactoActivoUid;
 
   if (!miUid || !contactoUid) {
     if (typeof mostrarAvisoPremium === "function") {
@@ -1286,20 +1286,28 @@ if (btnAccionChat) {
   });
 }
 
-// Evento para filtrar contactos con el buscador en tiempo real
+// Evento para filtrar contactos con el buscador en tiempo real (Soporta @tags)
 const inputBuscadorModal = document.getElementById("input-buscar-contacto");
 
-if (inputBuscador) {
-  inputBuscador.addEventListener("input", (e) => {
-    const textoBusqueda = e.target.value.toLowerCase();
+if (inputBuscadorModal) {
+  inputBuscadorModal.addEventListener("input", (e) => {
+    // 1. Limpiamos el texto: quitamos el '@' si lo escriben y pasamos a minúsculas
+    const textoBusqueda = e.target.value.replace("@", "").trim().toLowerCase();
     const items = document.querySelectorAll(".contacto-item");
 
+    // 2. Filtramos cada tarjeta de la lista
     items.forEach((item) => {
-      const nombre = item.querySelector(".nombre-contacto").textContent.toLowerCase();
-      if (nombre.includes(textoBusqueda)) {
-        item.style.display = "flex";
-      } else {
-        item.style.display = "none";
+      const elementoNombre = item.querySelector(".nombre-contacto");
+      
+      if (elementoNombre) {
+        const nombre = elementoNombre.textContent.toLowerCase();
+        
+        // Si la caja de texto está vacía o el nombre coincide, se muestra
+        if (!textoBusqueda || nombre.includes(textoBusqueda)) {
+          item.style.display = "flex";
+        } else {
+          item.style.display = "none";
+        }
       }
     });
   });
@@ -2743,7 +2751,7 @@ async function renderizarListaContactosModal(filtro = "") {
 
             // Foto real subida a Firebase o avatar con la inicial del nombre
             const primerLetra = nombreContacto.charAt(0).toUpperCase();
-            const fotoHTML = usuario.fotoUrl 
+            const fotoHTML = usuario.fotoUrl
               ? `<img src="${usuario.fotoUrl}" alt="${nombreContacto}" class="avatar-contacto-mini">`
               : `<div class="avatar-contacto-mini" style="background:#00f2fe; color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; border-radius:50%; width:32px; height:32px;">${primerLetra}</div>`;
 
@@ -2820,7 +2828,7 @@ if (btnCerrarContactos && modalContactos) {
 if (btnGuardarContacto && inputNuevoContacto) {
   btnGuardarContacto.addEventListener("click", async () => {
     const nombreNuevo = inputNuevoContacto.value.trim().toLowerCase();
-    
+
     if (nombreNuevo === "") return;
 
     try {
@@ -2855,7 +2863,7 @@ if (btnGuardarContacto && inputNuevoContacto) {
           }
 
           inputNuevoContacto.value = "";
-          
+
           if (typeof renderizarListaContactosModal === "function") {
             renderizarListaContactosModal(inputBuscarContacto ? inputBuscarContacto.value : "");
           }
@@ -3345,7 +3353,7 @@ function cargarContactosAprobados(usuarioActualUid) {
 
             const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
 
-            const foto = usuario.fotoUrl 
+            const foto = usuario.fotoUrl
               ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
               : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
 
@@ -3367,16 +3375,22 @@ function cargarContactosAprobados(usuarioActualUid) {
             itemContacto.addEventListener("click", (e) => {
               e.stopPropagation();
 
+              // 1. Destacar contacto seleccionado visualmente
               document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
               itemContacto.classList.add("activo");
 
               contactoSeleccionado = usuario;
 
+              // 2. Abrir chat y cargar mensajes de Firebase
               if (typeof abrirChatConUsuario === "function") {
                 abrirChatConUsuario(usuario);
               } else if (window.abrirChatConUsuario) {
                 window.abrirChatConUsuario(usuario);
               }
+
+              // 3. 🚀 ¡CRUCIAL PARA MÓVILES! Mostrar la pantalla de la conversación
+              const panelChat = document.querySelector(".panel-chat");
+              if (panelChat) panelChat.classList.add("activo");
             });
 
             contenedorContactos.appendChild(itemContacto);
@@ -3495,7 +3509,7 @@ if (inputChatPrivado) {
 // 📌 Escuchar mensajes en tiempo real desde Firebase
 function escucharMensajesChat(chatId) {
   if (!historialMensajes) return;
-  
+
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
 
   // Escuchar cambios en la base de datos de Firebase
@@ -3522,7 +3536,7 @@ function escucharMensajesChat(chatId) {
             ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
             <span class="mensaje-hora">${msg.hora}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
           `;
-        } 
+        }
         // Adjunto Documento
         else if (msg.tipoAdjunto === 'documento') {
           contenidoBurbuja = `
@@ -3552,7 +3566,7 @@ function escucharMensajesChat(chatId) {
             ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
             <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${msg.hora}${msg.editado ? ' (editado)' : ''}</span>
           `;
-        } 
+        }
         // Mensaje de solo texto
         else {
           contenidoBurbuja = `
