@@ -1,14 +1,14 @@
 // --- CONFIGURACIÓN DE FIREBASE ---
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   onAuthStateChanged,
   updateProfile,
-  signOut 
+  signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, get, child, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, get, child, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
@@ -76,10 +76,10 @@ document.addEventListener("click", (e) => {
 
   // 2. Buscar el elemento del icono (sea <i> o <svg> que genera Lucide)
   const icono = btn.querySelector("[data-lucide]") || btn.querySelector("svg");
-  
+
   if (icono) {
     const nuevoIcono = esPassword ? "eye-off" : "eye";
-    
+
     // Si ya se convirtió en SVG, actualizamos la propiedad interna de Lucide y data-lucide
     icono.setAttribute("data-lucide", nuevoIcono);
 
@@ -96,7 +96,7 @@ document.addEventListener("click", (e) => {
 if (authForm) {
   authForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    
+
     const correo = authInputCorreo.value.trim();
     const password = authInputPassword.value.trim();
     const nombre = authInputNombre ? authInputNombre.value.trim() : "";
@@ -131,8 +131,8 @@ if (authForm) {
         // 5. Aviso de revisión
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium(
-            "⏳ Cuenta registrada con éxito. Un administrador debe aprobar tu acceso.", 
-            "🔒", 
+            "⏳ Cuenta registrada con éxito. Un administrador debe aprobar tu acceso.",
+            "🔒",
             "#ffb703"
           );
         } else {
@@ -180,7 +180,7 @@ onAuthStateChanged(auth, async (user) => {
     try {
       // 1. Ocultar la app inmediatamente mientras se verifica el acceso
       const snapshot = await get(ref(db, 'usuarios/' + user.uid));
-      
+
       if (snapshot.exists()) {
         const datosUsuario = snapshot.val();
         const estadoAcceso = datosUsuario.estadoAcceso || "pendiente";
@@ -189,6 +189,8 @@ onAuthStateChanged(auth, async (user) => {
           // 🟢 ACCESO AUTORIZADO -> Entra a MovaChat
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
+          // 🚀 CARGAR LISTA DE CONTACTOS EN TIEMPO REAL
+          cargarContactosAprobados(user.uid);
 
           // Lógica de Panel Admin
           const btnAdmin = document.getElementById("btn-abrir-admin");
@@ -197,7 +199,7 @@ onAuthStateChanged(auth, async (user) => {
 
           if (datosUsuario.rol === "admin") {
             if (btnAdmin) btnAdmin.style.display = "inline-block";
-            
+
             if (btnAdmin && modalAdmin) {
               btnAdmin.onclick = () => {
                 modalAdmin.style.display = "flex";
@@ -219,7 +221,7 @@ onAuthStateChanged(auth, async (user) => {
           await signOut(auth);
           if (authPantalla) authPantalla.style.display = "flex";
 
-          const mensaje = estadoAcceso === "baneado" 
+          const mensaje = estadoAcceso === "baneado"
             ? "⛔ Tu cuenta ha sido suspendida."
             : "⏳ Tu cuenta está en revisión por el Administrador. Intenta ingresar cuando seas aprobado.";
 
@@ -458,10 +460,10 @@ if (contenedorChats) {
       return;
     }
 
-   // Abrir estado al hacer clic en la foto de avatar si tiene historia
+    // Abrir estado al hacer clic en la foto de avatar si tiene historia
     if (e.target.closest(".chat-avatar-caja")) {
       e.stopPropagation();
-      
+
       // Buscar si la tarjeta tiene la clase o indicador de historia/estado activo
       const tieneEstado = tarjeta.dataset.estadoUrl;
       if (tieneEstado) {
@@ -476,7 +478,7 @@ if (contenedorChats) {
     const ledSuperiorEnfoque = document.getElementById("led-enfoque-app");
 
     document.querySelector(".amigo-nombre-chat").textContent = nombreSeleccionado;
-    
+
     cargarMensajesDeAmigo(nombreSeleccionado, historialMensajes);
 
     const srcImg = tarjeta.querySelector("img") ? tarjeta.querySelector("img").src : "";
@@ -899,7 +901,7 @@ async function iniciarGrabacionVoz(e) {
       if (segundosGrabados >= 1 && fragmentosAudio.length > 0) {
         const blobAudio = new Blob(fragmentosAudio, { type: mimeAudio });
         const urlAudioReal = URL.createObjectURL(blobAudio);
-        
+
         inyectarNotaDeVozBurbuja(contadorAudio.textContent, urlAudioReal);
       }
     };
@@ -1138,8 +1140,8 @@ function enviarMensajeNuevo() {
           });
         }
       }, 10);
-    
-      } else if (tipoAdjuntoActivo === 'video') {
+
+    } else if (tipoAdjuntoActivo === 'video') {
       estiloEspecialBurbuja = "padding: 10px;";
       const urlVideoCapturado = imgMiniaturaAdjunto.src && imgMiniaturaAdjunto.src.startsWith("blob:")
         ? imgMiniaturaAdjunto.src
@@ -1395,8 +1397,23 @@ if (btnAccionChat) {
   });
 }
 
+// Evento para filtrar contactos con el buscador en tiempo real
+const inputBuscador = document.getElementById("input-buscar-contacto"); // Revisa que este ID coincida con tu HTML
+
 if (inputBuscador) {
-  inputBuscador.addEventListener("input", filtrarYRenderizar);
+  inputBuscador.addEventListener("input", (e) => {
+    const textoBusqueda = e.target.value.toLowerCase();
+    const items = document.querySelectorAll(".contacto-item");
+
+    items.forEach((item) => {
+      const nombre = item.querySelector(".nombre-contacto").textContent.toLowerCase();
+      if (nombre.includes(textoBusqueda)) {
+        item.style.display = "flex";
+      } else {
+        item.style.display = "none";
+      }
+    });
+  });
 }
 
 const botonesFiltros = document.querySelectorAll(".caja-filtros .filtro-btn");
@@ -1438,7 +1455,7 @@ function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
   ocultar1.style.display = "none";
   ocultar2.style.display = "none";
   ocultar3.style.display = "none";
-  
+
   mostrar.style.display = "flex";
   if (mostrar === pantallaChats || mostrar === pantallaPerfil) {
     mostrar.style.flexDirection = "column";
@@ -1540,14 +1557,14 @@ function asignarEventosMenuCabecera() {
   if (opcionCambiarPassword) {
     opcionCambiarPassword.addEventListener("click", async () => {
       menuCabeceraFlotante.classList.add("oculto");
-      
+
       const usuarioActual = auth.currentUser;
       if (usuarioActual && usuarioActual.email) {
         try {
           // Importar dinámicamente o usar sendPasswordResetEmail de Firebase
           const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
           await sendPasswordResetEmail(auth, usuarioActual.email);
-          
+
           mostrarAvisoPremium(`Enlace enviado a <b>${usuarioActual.email}</b> 🔑`, "✉️", "#00f2fe");
         } catch (error) {
           console.error("Error al enviar correo:", error);
@@ -1565,7 +1582,7 @@ function asignarEventosMenuCabecera() {
       try {
         const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
         await signOut(auth); // Cierra sesión en Firebase
-        
+
         mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
         // El listener onAuthStateChanged que ya tienes mostrará pantalla-auth automáticamente
       } catch (error) {
@@ -1869,7 +1886,7 @@ function mostrarAvisoPremium(mensaje, icono = "🔔", colorNeon = "#00f2fe") {
 
 // Puerta de enlace por si no existe 'mostrarAvisoPremium' usar el Toast flotante
 if (typeof mostrarAvisoPremium === "undefined") {
-  window.mostrarAvisoPremium = function(mensaje) {
+  window.mostrarAvisoPremium = function (mensaje) {
     if (typeof mostrarToast === "function") {
       mostrarToast(mensaje);
     }
@@ -2464,40 +2481,47 @@ function guardarMensajesEnMemoria(nombreAmigo, historialNodo) {
   localStorage.setItem(`movachat_msgs_${nombreAmigo}`, historialLimpio.innerHTML);
 }
 
-function cargarMensajesDeAmigo(nombreAmigo, historialNodo) {
-  if (!historialNodo) return;
+// Función para generar un ID único entre dos usuarios
+function obtenerChatId(uid1, uid2) {
+  return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
+}
 
-  historialNodo.innerHTML = "";
+// 🟢 FUNCIÓN REAL QUE REEMPLAZARÁ A LA ANTERIOR:
+function cargarMensajesChat(contactoUid) {
+  const usuarioActual = auth.currentUser;
+  if (!usuarioActual) return;
 
-  const mensajesGuardados = localStorage.getItem(`movachat_msgs_${nombreAmigo}`);
+  const chatId = obtenerChatId(usuarioActual.uid, contactoUid);
+  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
 
-  if (mensajesGuardados !== null) {
-    historialNodo.innerHTML = mensajesGuardados;
-  } else {
-    if (nombreAmigo === "Valeria Cross") {
-      historialNodo.innerHTML = `
-        <div class="mensaje-burbuja recibido">
-          <p class="mensaje-texto">¡Hola hermano! ¿Pudiste revisar los últimos cambios del diseño?</p>
-          <span class="mensaje-hora">10:40 AM</span>
-        </div>
-        <div class="mensaje-burbuja enviado">
-          <p class="mensaje-texto">¡Qué tal Alex! Sí, justo los acabo de montar. ¡El scroll y los filtros se sienten súper fluidos!</p>
-          <span class="mensaje-hora">10:41 AM</span>
-        </div>
-      `;
-    } else if (nombreAmigo === "Alex Mercer") {
-      historialNodo.innerHTML = `
-        <div class="mensaje-burbuja recibido">
-          <p class="mensaje-texto">¡El diseño quedó brutal, hermano! Esa respuesta elástica en los botones es otra cosa. 🔥</p>
-          <span class="mensaje-hora">10:42 AM</span>
-        </div>
-      `;
+  // Escuchar mensajes en tiempo real
+  onValue(mensajesRef, (snapshot) => {
+    const contenedorMensajes = document.getElementById("historial-mensajes"); // Ajusta según tu HTML
+    if (!contenedorMensajes) return;
+
+    contenedorMensajes.innerHTML = "";
+
+    if (snapshot.exists()) {
+      const mensajes = snapshot.val();
+      Object.keys(mensajes).forEach((key) => {
+        const msg = mensajes[key];
+        const esMio = msg.emisorUid === usuarioActual.uid;
+
+        const burbuja = document.createElement("div");
+        burbuja.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
+        burbuja.innerHTML = `
+          <p class="mensaje-texto">${msg.texto}</p>
+          <span class="mensaje-hora">${new Date(msg.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        `;
+        contenedorMensajes.appendChild(burbuja);
+      });
+
+      // Auto-scroll al final del chat
+      contenedorMensajes.scrollTop = contenedorMensajes.scrollHeight;
     } else {
-      historialNodo.innerHTML = "";
+      contenedorMensajes.innerHTML = `<div style="text-align:center; color:#888; padding:20px;">Inicia la conversación 👋</div>`;
     }
-  }
-
-  if (window.lucide) window.lucide.createIcons();
+  });
 }
 
 const chatsBloqueadosBD = {};
@@ -2757,7 +2781,7 @@ function alternarFijarChat(tarjeta) {
   } else {
     tarjeta.classList.add("tarjeta-fijada");
     tarjeta.style.order = "-1";
-    
+
     if (!pinIcono && cabecera) {
       cabecera.insertAdjacentHTML(
         "beforeend",
@@ -2968,7 +2992,7 @@ function conectarBotonEmoji() {
   const inputTexto = document.getElementById("input-chat-privado") || document.querySelector(".caja-input-chat input");
 
   if (btnEmoji && inputTexto) {
-    btnEmoji.onclick = function(e) {
+    btnEmoji.onclick = function (e) {
       e.preventDefault();
       e.stopPropagation();
 
@@ -3002,7 +3026,7 @@ document.addEventListener("DOMContentLoaded", () => {
 document.addEventListener("click", (e) => {
   // 1. Verificar si hiciste clic en una fila de contacto
   const filaContacto = e.target.closest(".item-contacto-fila");
-  
+
   // Si no es un contacto o diste clic en eliminar, no hacemos nada
   if (!filaContacto || e.target.closest(".btn-eliminar-contacto-item")) return;
 
@@ -3131,7 +3155,7 @@ document.addEventListener("click", (e) => {
   if (!btnLimpiar) return;
 
   const tarjetasChat = document.querySelectorAll(".lista-chats .tarjeta-chat");
-  
+
   if (tarjetasChat.length === 0) {
     mostrarToast("La lista ya está vacía");
     return;
@@ -3179,7 +3203,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Función global para alternar visibilidad de contraseña
-window.togglePasswordVisibility = function() {
+window.togglePasswordVisibility = function () {
   const inputPass = document.getElementById("auth-password");
   const iconoOjito = document.getElementById("icono-ojito");
 
@@ -3201,15 +3225,15 @@ const opcionCambiarPassword = document.getElementById("opcion-cambiar-password")
 if (opcionCambiarPassword) {
   opcionCambiarPassword.addEventListener("click", async () => {
     menuCabeceraFlotante.classList.add("oculto");
-    
+
     const usuarioActual = auth.currentUser;
 
     if (usuarioActual && usuarioActual.email) {
       try {
         const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-        
+
         await sendPasswordResetEmail(auth, usuarioActual.email);
-        
+
         // Notificación explícita para que revise su correo
         mostrarAvisoPremium(`Te enviamos un enlace de cambio a <b>${usuarioActual.email}</b>. Revisa tu correo 🔑`, "✉️", "#00f2fe");
       } catch (error) {
@@ -3229,7 +3253,7 @@ function cargarUsuariosPendientes() {
 
   // Consultar en tiempo real a los usuarios en la base de datos
   const usuariosRef = ref(db, 'usuarios');
-  
+
   onValue(usuariosRef, (snapshot) => {
     contenedorPendientes.innerHTML = ""; // Limpiar lista anterior
     let hayPendientes = false;
@@ -3280,12 +3304,12 @@ function cargarUsuariosPendientes() {
 }
 
 // Función global para cambiar el estado de acceso desde los botones
-window.cambiarEstadoAcceso = async function(uid, nuevoEstado) {
+window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
   try {
     await update(ref(db, 'usuarios/' + uid), {
       estadoAcceso: nuevoEstado
     });
-    
+
     if (typeof mostrarAvisoPremium === "function") {
       mostrarAvisoPremium(`Usuario ${nuevoEstado === 'aprobado' ? 'aprobado' : 'rechazado'} con éxito`, "✅", "#2ec4b6");
     }
@@ -3294,3 +3318,145 @@ window.cambiarEstadoAcceso = async function(uid, nuevoEstado) {
     alert("Error al actualizar el estado del usuario.");
   }
 };
+
+// Variable global para guardar el contacto seleccionado actualmente
+let contactoSeleccionado = null;
+
+// Función para cargar los contactos aprobados en tiempo real
+function cargarContactosAprobados(usuarioActualUid) {
+  const contenedorContactos = document.getElementById("lista-contactos"); // Asegúrate que coincida con el ID de tu HTML
+  if (!contenedorContactos) return;
+
+  const usuariosRef = ref(db, 'usuarios');
+
+  // Escuchar en tiempo real cualquier cambio en la base de datos de usuarios
+  onValue(usuariosRef, (snapshot) => {
+    contenedorContactos.innerHTML = ""; // Limpiar lista anterior
+
+    if (snapshot.exists()) {
+      const usuarios = snapshot.val();
+      let contadorAprobados = 0;
+
+      Object.keys(usuarios).forEach((uid) => {
+        // Excluir al usuario logueado actualmente y solo mostrar los aprobados
+        if (uid !== usuarioActualUid && usuarios[uid].estadoAcceso === "aprobado") {
+          contadorAprobados++;
+          const usuario = usuarios[uid];
+
+          // Crear la tarjeta HTML del contacto
+          const itemContacto = document.createElement("div");
+          itemContacto.className = "contacto-item";
+          itemContacto.dataset.uid = usuario.uid;
+
+          // Foto o avatar por defecto con la inicial del nombre
+          const foto = usuario.fotoUrl
+            ? `<img src="${usuario.fotoUrl}" class="avatar-contacto" alt="${usuario.nombre}">`
+            : `<div class="avatar-placeholder">${usuario.nombre.charAt(0).toUpperCase()}</div>`;
+
+          itemContacto.innerHTML = `
+            ${foto}
+            <div class="info-contacto">
+              <div class="nombre-contacto">${usuario.nombre}</div>
+              <div class="estado-contacto">${usuario.estado || "¡Disponible en MovaChat!"}</div>
+            </div>
+          `;
+
+          // Evento al hacer clic en un contacto de la lista
+          itemContacto.addEventListener("click", () => {
+            // Remover clase activa de otros contactos
+            document.querySelectorAll(".contacto-item").forEach(el => el.classList.remove("activo"));
+            itemContacto.classList.add("activo");
+
+            // Guardar el contacto seleccionado y abrir la ventana de chat
+            contactoSeleccionado = usuario;
+            abrirChatConUsuario(usuario);
+          });
+
+          contenedorContactos.appendChild(itemContacto);
+        }
+      });
+
+      if (contadorAprobados === 0) {
+        contenedorContactos.innerHTML = `
+          <div style="text-align: center; color: #888; padding: 20px; font-size: 0.9rem;">
+            Aún no hay otros miembros aprobados ✨
+          </div>
+        `;
+      }
+    }
+  });
+}
+
+// Función para abrir la ventana de chat con el usuario seleccionado
+function abrirChatConUsuario(usuario) {
+  // 1. Mostrar la cabecera/chat activo
+  const nombreChatActivo = document.getElementById("nombre-chat-activo"); // Ajusta el ID según tu HTML
+  const fotoChatActivo = document.getElementById("foto-chat-activo");     // Ajusta el ID según tu HTML
+
+  if (nombreChatActivo) nombreChatActivo.textContent = usuario.nombre;
+  
+  if (fotoChatActivo) {
+    if (usuario.fotoUrl) {
+      fotoChatActivo.src = usuario.fotoUrl;
+      fotoChatActivo.style.display = "block";
+    } else {
+      fotoChatActivo.style.display = "none";
+    }
+  }
+
+  console.log("💬 Chat abierto con:", usuario.nombre);
+
+  // 2. Aquí escucharemos los mensajes en vivo entre tú y este usuario
+  cargarMensajesChat(usuario.uid);
+}
+
+// Función para enviar un mensaje al contacto activo
+async function enviarMensaje() {
+  const inputMensaje = document.getElementById("input-chat-privado");
+  if (!inputMensaje) return;
+
+  const texto = inputMensaje.value.trim();
+  const usuarioActual = auth.currentUser;
+
+  // Validar que haya texto, usuario logueado y contacto seleccionado
+  if (!texto || !usuarioActual || !contactoSeleccionado) return;
+
+  const chatId = obtenerChatId(usuarioActual.uid, contactoSeleccionado.uid);
+  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+
+  try {
+    const nuevoMensajeRef = push(mensajesRef);
+
+    await set(nuevoMensajeRef, {
+      emisorUid: usuarioActual.uid,
+      receptorUid: contactoSeleccionado.uid,
+      texto: texto,
+      fecha: Date.now(),
+      leido: false
+    });
+
+    // Limpiar input
+    inputMensaje.value = "";
+    inputMensaje.focus();
+
+  } catch (error) {
+    console.error("❌ Error al enviar mensaje:", error);
+  }
+}
+
+// 📌 ESCUCHAR EVENTOS (Click en el botón y tecla Enter)
+const btnAccionChat = document.getElementById("btn-accion-chat");
+const inputChatPrivado = document.getElementById("input-chat-privado");
+
+if (btnAccionChat) {
+  btnAccionChat.addEventListener("click", enviarMensaje);
+}
+
+if (inputChatPrivado) {
+  inputChatPrivado.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      enviarMensaje();
+    }
+  });
+}
