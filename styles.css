@@ -896,6 +896,7 @@ body {
   mask-image: linear-gradient(to bottom, transparent 0%, black 25px, black 100%);
 }
 
+/* 🛠️ ESTILO COMPLETO Y FIX DE EVENTOS EN MÓVILES PARA TARJETA CHAT */
 .tarjeta-chat {
   display: flex;
   align-items: center;
@@ -910,6 +911,12 @@ body {
   max-width: 100%;
   min-width: 100%;
   box-sizing: border-box;
+
+  /* Propiedades esenciales para teléfonos móviles: */
+  pointer-events: auto !important;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .tarjeta-chat:hover {
@@ -2577,13 +2584,6 @@ body {
     transform: scale(1.2) translateY(-2px);
     opacity: 1;
   }
-}
-
-/* 🛠️ FIX DE EVENTOS Y Z-INDEX PARA MENÚ CONTEXTUAL */
-.tarjeta-chat {
-  pointer-events: auto !important;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 .tarjeta-chat * {

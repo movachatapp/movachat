@@ -289,7 +289,7 @@ const btnPerfilMenu = botonesMenu[1];
 const btnRegistrarse = document.querySelector(".btn-primario");
 const btnBuscarAmigo = document.querySelector(".btn-secundario");
 
-const inputBuscador = document.querySelector(".input-buscador");
+let inputBuscador = document.querySelector(".input-buscador");
 const contenedorChats = document.querySelector(".lista-chats");
 const chatsOriginalesHTML = Array.from(contenedorChats ? contenedorChats.children : []);
 
@@ -3329,67 +3329,71 @@ function cargarContactosAprobados(usuarioActualUid) {
 
   const usuariosRef = ref(db, 'usuarios');
 
-  // Escuchar en tiempo real cualquier cambio en la base de datos de usuarios
   onValue(usuariosRef, (snapshot) => {
-    // Guardar la tarjeta de "Mi Estado" antes de limpiar para no perderla
-    const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+    try {
+      const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
 
-    // Limpiar lista anterior
-    contenedorContactos.innerHTML = "";
+      // Limpiar lista anterior
+      contenedorContactos.innerHTML = "";
 
-    // Preservar la tarjeta de "Mi Estado" arriba del todo
-    if (tarjetaMiEstado) {
-      contenedorContactos.appendChild(tarjetaMiEstado);
-    }
+      // Preservar la tarjeta de "Mi Estado" arriba del todo
+      if (tarjetaMiEstado) {
+        contenedorContactos.appendChild(tarjetaMiEstado);
+      }
 
-    if (snapshot.exists()) {
-      const usuarios = snapshot.val();
+      if (snapshot.exists()) {
+        const usuarios = snapshot.val();
 
-      Object.keys(usuarios).forEach((uid) => {
-        // Excluir al usuario logueado actualmente y solo mostrar los aprobados
-        if (uid !== usuarioActualUid && usuarios[uid].estadoAcceso === "aprobado") {
+        Object.keys(usuarios).forEach((uid) => {
           const usuario = usuarios[uid];
 
-          // Crear la tarjeta HTML del contacto
-          const itemContacto = document.createElement("div");
-          itemContacto.className = "tarjeta-chat contacto-item";
-          itemContacto.dataset.uid = usuario.uid;
+          if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
+            const itemContacto = document.createElement("div");
+            itemContacto.className = "tarjeta-chat contacto-item";
+            itemContacto.dataset.uid = uid;
 
-          // Foto o avatar por defecto con la inicial del nombre
-          const foto = usuario.fotoUrl 
-            ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre}">`
-            : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${(usuario.nombre || 'U').charAt(0).toUpperCase()}</div>`;
+            const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
 
-          itemContacto.innerHTML = `
-            <div class="chat-avatar-caja">
-              ${foto}
-            </div>
-            <div class="chat-info">
-              <div class="chat-cabecera">
-                <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
+            const foto = usuario.fotoUrl 
+              ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
+              : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
+
+            itemContacto.innerHTML = `
+              <div class="chat-avatar-caja">
+                ${foto}
               </div>
-              <div class="chat-mensaje-caja">
-                <p class="chat-texto">${usuario.estado || "¡Disponible en MovaChat!"}</p>
+              <div class="chat-info">
+                <div class="chat-cabecera">
+                  <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
+                </div>
+                <div class="chat-mensaje-caja">
+                  <p class="chat-texto">${usuario.estado || "¡Disponible en MovaChat!"}</p>
+                </div>
               </div>
-            </div>
-          `;
+            `;
 
-          // Evento al hacer clic en un contacto de la lista
-          itemContacto.addEventListener("click", () => {
-            // Remover clase activa de otros contactos
-            document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
-            itemContacto.classList.add("activo");
+            // Evento optimizado para PC y móviles
+            itemContacto.addEventListener("click", (e) => {
+              e.stopPropagation();
 
-            // Guardar el contacto seleccionado y abrir la ventana de chat
-            contactoSeleccionado = usuario;
-            if (typeof abrirChatConUsuario === "function") {
-              abrirChatConUsuario(usuario);
-            }
-          });
+              document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
+              itemContacto.classList.add("activo");
 
-          contenedorContactos.appendChild(itemContacto);
-        }
-      });
+              contactoSeleccionado = usuario;
+
+              if (typeof abrirChatConUsuario === "function") {
+                abrirChatConUsuario(usuario);
+              } else if (window.abrirChatConUsuario) {
+                window.abrirChatConUsuario(usuario);
+              }
+            });
+
+            contenedorContactos.appendChild(itemContacto);
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Error al cargar la lista de contactos:", e);
     }
   });
 }
@@ -3401,7 +3405,7 @@ function abrirChatConUsuario(usuario) {
   const fotoChatActivo = document.getElementById("foto-chat-activo");     // Ajusta el ID según tu HTML
 
   if (nombreChatActivo) nombreChatActivo.textContent = usuario.nombre;
-  
+
   if (fotoChatActivo) {
     if (usuario.fotoUrl) {
       fotoChatActivo.src = usuario.fotoUrl;
@@ -3451,19 +3455,27 @@ async function enviarMensaje() {
   }
 }
 
-// 📌 ESCUCHAR EVENTOS (Click en el botón y tecla Enter)
+// 📌 ESCUCHAR EVENTOS (Click en el botón y tecla Enter en el teclado móvil/PC)
 const btnAccionChat = document.getElementById("btn-accion-chat");
 const inputChatPrivado = document.getElementById("input-chat-privado");
 
 if (btnAccionChat) {
-  btnAccionChat.addEventListener("click", enviarMensaje);
+  btnAccionChat.addEventListener("click", (e) => {
+    e.preventDefault(); // Impide recargas accidentales en móviles
+    if (typeof enviarMensaje === "function") {
+      enviarMensaje();
+    }
+  });
 }
 
 if (inputChatPrivado) {
-  inputChatPrivado.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      enviarMensaje();
+  // 'keydown' es compatible con todos los teclados virtuales de Android y iOS
+  inputChatPrivado.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault(); // Evita el salto de línea y el envío doble
+      if (typeof enviarMensaje === "function") {
+        enviarMensaje();
+      }
     }
   });
 }
