@@ -5,7 +5,8 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   onAuthStateChanged,
-  updateProfile 
+  updateProfile,
+  signOut 
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getDatabase, ref, set, get, child, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
@@ -109,31 +110,42 @@ if (authForm) {
         const userCredential = await createUserWithEmailAndPassword(auth, correo, password);
         const user = userCredential.user;
 
-        // 2. Guardar nombre en el perfil de Auth
+        // 2. Guardar nombre en Auth
         await updateProfile(user, { displayName: nombre });
 
-        // 3. Guardar datos iniciales en Realtime Database con APROBACIÓN PENDIENTE
+        // 3. Guardar datos iniciales en Database
         await set(ref(db, 'usuarios/' + user.uid), {
           uid: user.uid,
           nombre: nombre,
           correo: correo,
           estado: "🚀 Nuevo en MovaChat",
           fotoUrl: "",
-          rol: "usuario",              // "usuario" o "admin"
-          estadoAcceso: "pendiente",   // "pendiente", "aprobado" o "baneado"
+          rol: "usuario",
+          estadoAcceso: "pendiente",
           fechaRegistro: Date.now()
         });
 
-        console.log("✅ Usuario registrado exitosamente (Pendiente de aprobación)");
+        // 4. 🔴 CERRAR SESIÓN DE INMEDIATO
+        await signOut(auth);
+
+        // 5. Aviso de revisión
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(
+            "⏳ Cuenta registrada con éxito. Un administrador debe aprobar tu acceso.", 
+            "🔒", 
+            "#ffb703"
+          );
+        } else {
+          alert("⏳ Cuenta registrada. Tu acceso está pendiente de aprobación.");
+        }
+
       } else {
         // Iniciar sesión
         await signInWithEmailAndPassword(auth, correo, password);
-        console.log("✅ Sesión iniciada con éxito");
       }
     } catch (error) {
       console.error("❌ Error de autenticación:", error);
 
-      // Traducir los errores feos de Firebase a mensajes amigables y elegantes
       let mensajeLegible = "Ocurrió un error inesperado. Inténtalo de nuevo.";
 
       if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -148,7 +160,6 @@ if (authForm) {
         mensajeLegible = "El formato del correo electrónico no es válido.";
       }
 
-      // Mostrar el aviso flotante moderno
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium(mensajeLegible, "⚠️", "#ff4d4d");
       } else {
@@ -203,23 +214,25 @@ onAuthStateChanged(auth, async (user) => {
           }
 
         } else if (estadoAcceso === "pendiente") {
-          // CUENTA EN REVISIÓN -> Oculta login para que no vuelva a intentar entrar
-          if (authPantalla) authPantalla.style.display = "none";
+          // 🔴 CUENTA EN REVISIÓN -> EXPULSAR DE INMEDIATO
+          await signOut(auth);
+          if (authPantalla) authPantalla.style.display = "flex";
           
           if (typeof mostrarAvisoPremium === "function") {
             mostrarAvisoPremium(
-              "⏳ Tu cuenta está en revisión por el Administrador. Te avisaremos cuando seas aprobado.", 
+              "⏳ Tu cuenta aún está en revisión por el Administrador.", 
               "🔒", 
               "#ffb703"
             );
           } else {
-            alert("⏳ Tu cuenta está en revisión por el Administrador.");
+            alert("⏳ Tu cuenta aún está en revisión por el Administrador.");
           }
           
         } else if (estadoAcceso === "baneado") {
-          // CUENTA SUSPENDIDA
-          alert("⛔ Tu cuenta ha sido suspendida.");
+          // CUENTA SUSPENDIDA -> EXPULSAR
           await signOut(auth);
+          if (authPantalla) authPantalla.style.display = "flex";
+          alert("⛔ Tu cuenta ha sido suspendida.");
         }
       } else {
         console.warn("⚠️ No se encontraron datos para este usuario en /usuarios");
