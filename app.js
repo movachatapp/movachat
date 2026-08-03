@@ -852,32 +852,6 @@ if (btnBorrarVistaPrevia) {
 }
 
 // ========================================================
-// 4. LÓGICA DE APERTURA Y NAVEGACIÓN DE CHATS
-// ========================================================
-
-function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
-  window.contactoActivoUid = contactoUid; // Guardar el contacto activo globalmente
-
-  // 1. Actualizar el header del chat (Nombre y Foto)
-  const nombreHeader = document.querySelector(".amigo-nombre-chat");
-  if (nombreHeader) nombreHeader.textContent = nombreContacto;
-
-  const imgHeader = document.querySelector(".amigo-avatar-chat"); // Ajusta el selector si varía en tu HTML
-  if (imgHeader && fotoContacto) imgHeader.src = fotoContacto;
-
-  // 2. Obtener mi UID y generar el ID de sala compartido
-  const miUid = auth.currentUser ? auth.currentUser.uid : null;
-  if (!miUid) return;
-
-  const chatId = obtenerChatId(miUid, contactoUid);
-
-  // 3. Empezar a escuchar mensajes en tiempo real desde Firebase
-  if (typeof escucharMensajesChat === "function") {
-    escucharMensajesChat(chatId);
-  }
-}
-
-// ========================================================
 // 4. SISTEMA DE AUDIOS Y NOTAS DE VOZ
 // ========================================================
 let mediaRecorderAudio = null;
@@ -3415,27 +3389,49 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// Función para abrir la ventana de chat con el usuario seleccionado
-function abrirChatConUsuario(usuario) {
-  // 1. Mostrar la cabecera/chat activo
-  const nombreChatActivo = document.getElementById("nombre-chat-activo"); // Ajusta el ID según tu HTML
-  const fotoChatActivo = document.getElementById("foto-chat-activo");     // Ajusta el ID según tu HTML
+// 🟢 Función unificada para abrir la ventana de chat y conectar Firebase
+function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
+  // Manejo flexible de parámetros (por si le pasas un objeto 'usuario' o variables sueltas)
+  let uidTarget, nombreTarget, fotoTarget;
 
-  if (nombreChatActivo) nombreChatActivo.textContent = usuario.nombre;
+  if (typeof contactoUid === 'object' && contactoUid !== null) {
+    uidTarget = contactoUid.uid;
+    nombreTarget = contactoUid.nombre || "Usuario";
+    fotoTarget = contactoUid.fotoUrl || "";
+  } else {
+    uidTarget = contactoUid;
+    nombreTarget = nombreContacto || "Usuario";
+    fotoTarget = fotoContacto || "";
+  }
+
+  // Guardar el UID activo globalmente
+  window.contactoActivoUid = uidTarget;
+
+  // 1. Actualizar la cabecera/chat activo en pantalla
+  const nombreChatActivo = document.getElementById("nombre-chat-activo") || document.querySelector(".amigo-nombre-chat");
+  const fotoChatActivo = document.getElementById("foto-chat-activo") || document.querySelector(".amigo-avatar-chat");
+
+  if (nombreChatActivo) nombreChatActivo.textContent = nombreTarget;
 
   if (fotoChatActivo) {
-    if (usuario.fotoUrl) {
-      fotoChatActivo.src = usuario.fotoUrl;
+    if (fotoTarget) {
+      fotoChatActivo.src = fotoTarget;
       fotoChatActivo.style.display = "block";
     } else {
       fotoChatActivo.style.display = "none";
     }
   }
 
-  console.log("💬 Chat abierto con:", usuario.nombre);
+  console.log("💬 Chat abierto con:", nombreTarget);
 
-  // 2. Aquí escucharemos los mensajes en vivo entre tú y este usuario
-  cargarMensajesChat(usuario.uid);
+  // 2. Conectar sala única en Firebase Realtime Database
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  if (miUid && uidTarget) {
+    const chatId = obtenerChatId(miUid, uidTarget);
+    if (typeof escucharMensajesChat === "function") {
+      escucharMensajesChat(chatId);
+    }
+  }
 }
 
 // Función para enviar un mensaje al contacto activo
