@@ -106,6 +106,9 @@ if (authForm) {
 
     try {
       if (modoRegistro) {
+        // Generar username limpio a partir del nombre (ej. "Juan Perez" -> "juanperez")
+        const usernameGenerado = nombre.toLowerCase().replace(/\s+/g, "").replace(/[^a-z0-9]/g, "");
+
         // 1. Crear usuario en Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, correo, password);
         const user = userCredential.user;
@@ -113,10 +116,11 @@ if (authForm) {
         // 2. Guardar nombre en Auth
         await updateProfile(user, { displayName: nombre });
 
-        // 3. Guardar datos iniciales en Database
+        // 3. Guardar datos completos con @username en Database
         await set(ref(db, 'usuarios/' + user.uid), {
           uid: user.uid,
           nombre: nombre,
+          username: usernameGenerado, // 🚀 ¡Campo de Username agregado!
           correo: correo,
           estado: "🚀 Nuevo en MovaChat",
           fotoUrl: "",
@@ -125,7 +129,7 @@ if (authForm) {
           fechaRegistro: Date.now()
         });
 
-        // 4. 🔴 CERRAR SESIÓN DE INMEDIATO
+        // 4. CERRAR SESIÓN DE INMEDIATO
         await signOut(auth);
 
         // 5. Aviso de revisión
@@ -178,7 +182,7 @@ onAuthStateChanged(auth, async (user) => {
 
   if (user) {
     try {
-      // 1. Ocultar la app inmediatamente mientras se verifica el acceso
+      // 1. Obtener datos del usuario logueado en Realtime Database
       const snapshot = await get(ref(db, 'usuarios/' + user.uid));
 
       if (snapshot.exists()) {
@@ -189,10 +193,24 @@ onAuthStateChanged(auth, async (user) => {
           // 🟢 ACCESO AUTORIZADO -> Entra a MovaChat
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
-          // 🚀 CARGAR LISTA DE CONTACTOS EN TIEMPO REAL
-          cargarContactosAprobados(user.uid);
 
-          // Lógica de Panel Admin
+          // 🚀 2. LE DARÁ VIDA AL PERFIL EN PANTALLA
+          const elemNombrePerfil = document.getElementById("perfil-nombre") || document.querySelector(".nombre-usuario");
+          const elemUsernamePerfil = document.getElementById("perfil-username") || document.querySelector(".username-usuario");
+          const elemEmailPerfil = document.getElementById("perfil-email") || document.querySelector(".email-usuario");
+          const elemFotoPerfil = document.getElementById("perfil-foto") || document.querySelector(".foto-usuario");
+
+          if (elemNombrePerfil) elemNombrePerfil.textContent = datosUsuario.nombre || "Usuario";
+          if (elemUsernamePerfil) elemUsernamePerfil.textContent = datosUsuario.username ? `@${datosUsuario.username}` : `@${(datosUsuario.nombre || "user").toLowerCase().replace(/\s+/g, "")}`;
+          if (elemEmailPerfil) elemEmailPerfil.textContent = datosUsuario.correo || user.email;
+          if (elemFotoPerfil && datosUsuario.fotoUrl) elemFotoPerfil.src = datosUsuario.fotoUrl;
+
+          // 🚀 3. CARGAR LISTA DE CONTACTOS EN TIEMPO REAL
+          if (typeof cargarContactosAprobados === "function") {
+            cargarContactosAprobados(user.uid);
+          }
+
+          // 🚀 4. Lógica de Panel Admin
           const btnAdmin = document.getElementById("btn-abrir-admin");
           const modalAdmin = document.getElementById("modal-admin");
           const btnCerrarAdmin = document.getElementById("btn-cerrar-admin");
@@ -203,7 +221,9 @@ onAuthStateChanged(auth, async (user) => {
             if (btnAdmin && modalAdmin) {
               btnAdmin.onclick = () => {
                 modalAdmin.style.display = "flex";
-                cargarUsuariosPendientes();
+                if (typeof cargarUsuariosPendientes === "function") {
+                  cargarUsuariosPendientes();
+                }
               };
             }
 
@@ -232,7 +252,7 @@ onAuthStateChanged(auth, async (user) => {
           }
         }
       } else {
-        // Si por alguna razón el registro no se guardó a tiempo en /usuarios, expulsar por seguridad
+        // Si no existe el registro en la BD, expulsar
         await signOut(auth);
         if (authPantalla) authPantalla.style.display = "flex";
       }
