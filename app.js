@@ -1059,16 +1059,21 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
   }
 }
 
+// Variable candado global para evitar envíos dobles por rebote de eventos
+let estaEnviandoMensaje = false;
+
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (CORREGIDO Y BLINDADO)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS)
 // ========================================================
 async function enviarMensajeNuevo() {
+  // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
+  if (estaEnviandoMensaje) return;
+
   const texto = inputChat ? inputChat.value.trim() : "";
   const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
 
   if (texto === "" && !tieneAdjunto) return;
 
-  // Obtener UID activo de Firebase Auth de forma segura
   const usuarioActual = auth.currentUser;
   const miUid = usuarioActual ? usuarioActual.uid : null;
   const contactoUid = window.contactoActivoUid;
@@ -1080,7 +1085,9 @@ async function enviarMensajeNuevo() {
     return;
   }
 
-  // Asegurar un chatId idéntico para ambos teléfonos
+  // Activar candado
+  estaEnviandoMensaje = true;
+
   const chatId = typeof obtenerChatId === "function" 
     ? obtenerChatId(miUid, contactoUid) 
     : [miUid, contactoUid].sort().join("_");
@@ -1104,13 +1111,16 @@ async function enviarMensajeNuevo() {
     window.mensajeEnEdicionId = null;
     if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
+    
+    // Liberar candado
+    estaEnviandoMensaje = false;
     return;
   }
 
   // 🟢 CASO: NUEVO MENSAJE
   let objetoMensaje = {
-    emisor: miUid,               // Identificador único del que envía
-    receptor: contactoUid,       // Identificador único del que recibe
+    emisor: miUid,
+    receptor: contactoUid,
     texto: texto,
     hora: horaFormateada,
     timestamp: Date.now(),
@@ -1134,7 +1144,7 @@ async function enviarMensajeNuevo() {
       objetoMensaje.urlAdjunto = urlVideoCapturado;
     }
 
-    // Limpiar caja de vista previa de adjuntos
+    // Limpiar caja de vista previa
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
     if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
@@ -1143,20 +1153,26 @@ async function enviarMensajeNuevo() {
     if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
   }
 
+  // Limpiar el campo de texto INMEDIATAMENTE
+  if (inputChat) inputChat.value = "";
+
   // 🚀 SUBIR A FIREBASE
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
 
-    // Limpiar input sin pintar burbujas manuales
-    if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
   } catch (error) {
     console.error("❌ Error al enviar mensaje a Firebase:", error);
     if (typeof mostrarAvisoPremium === "function") {
       mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
     }
+  } finally {
+    // Liberar el candado tras 300ms para permitir el siguiente mensaje
+    setTimeout(() => {
+      estaEnviandoMensaje = false;
+    }, 300);
   }
 }
 
