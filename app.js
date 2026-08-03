@@ -1311,7 +1311,7 @@ if (inputBuscadorModal) {
       }
     });
   });
-}
+} 
 
 const botonesFiltros = document.querySelectorAll(".caja-filtros .filtro-btn");
 botonesFiltros.forEach((boton, index) => {
