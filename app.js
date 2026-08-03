@@ -3932,4 +3932,38 @@ function escucharMensajesChat(chatId) {
       historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
   }); // Cierre de onValue
-} // 🚀 AQUÍ ESTÁ EL CIERRE QUE FALTABA (Cierra escucharMensajesChat)
+} 
+
+// 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
+function actualizarEstadoPantallaInicio() {
+  const contenedorVacio = document.getElementById("pantalla-lista-vacia");
+  const listaChats = document.querySelector(".lista-chats");
+
+  if (!contenedorVacio || !listaChats) return;
+
+  // Contamos cuántas tarjetas de chat reales hay cargadas
+  const tarjetasReales = listaChats.querySelectorAll(".tarjeta-chat");
+
+  if (tarjetasReales.length === 0) {
+    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida orientada a buscar amigos
+    contenedorVacio.classList.remove("oculto");
+  } else {
+    // 💬 CON CHATS: Ocultamos la tarjeta por completo para darle prioridad a la lista
+    contenedorVacio.classList.add("oculto");
+  }
+}
+
+// 🎯 Evento para el botón 'Buscar amigo' de la pantalla vacía
+document.addEventListener("DOMContentLoaded", () => {
+  const btnBuscarVacio = document.getElementById("btn-vacio-buscar-amigo");
+  if (btnBuscarVacio) {
+    btnBuscarVacio.addEventListener("click", () => {
+      // Abre el modal de búsqueda de usuarios/contactos
+      if (typeof abrirModalBuscarAmigos === "function") {
+        abrirModalBuscarAmigos();
+      } else if (typeof modalContactos !== "undefined" && modalContactos) {
+        modalContactos.classList.remove("oculto");
+      }
+    });
+  }
+});
