@@ -1398,7 +1398,7 @@ if (btnAccionChat) {
 }
 
 // Evento para filtrar contactos con el buscador en tiempo real
-inputBuscador = document.getElementById("input-buscar-contacto"); // Revisa que este ID coincida con tu HTML
+const inputBuscadorModal = document.getElementById("input-buscar-contacto");
 
 if (inputBuscador) {
   inputBuscador.addEventListener("input", (e) => {
