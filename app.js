@@ -3456,7 +3456,6 @@ async function enviarMensaje() {
 }
 
 // 📌 ESCUCHAR EVENTOS (Click en el botón y tecla Enter en el teclado móvil/PC)
-const btnAccionChat = document.getElementById("btn-accion-chat");
 const inputChatPrivado = document.getElementById("input-chat-privado");
 
 if (btnAccionChat) {
