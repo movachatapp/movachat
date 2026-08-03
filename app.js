@@ -1318,10 +1318,10 @@ if (inputBuscadorModal) {
     // 2. Filtramos cada tarjeta de la lista
     items.forEach((item) => {
       const elementoNombre = item.querySelector(".nombre-contacto");
-      
+
       if (elementoNombre) {
         const nombre = elementoNombre.textContent.toLowerCase();
-        
+
         // Si la caja de texto está vacía o el nombre coincide, se muestra
         if (!textoBusqueda || nombre.includes(textoBusqueda)) {
           item.style.display = "flex";
@@ -1331,7 +1331,7 @@ if (inputBuscadorModal) {
       }
     });
   });
-} 
+}
 
 const botonesFiltros = document.querySelectorAll(".caja-filtros .filtro-btn");
 botonesFiltros.forEach((boton, index) => {
@@ -2785,24 +2785,32 @@ async function renderizarListaContactosModal(filtro = "") {
               </button>
             `;
 
-            // 🟢 EVENTO PARA ABRIR CHAT EN TIEMPO REAL AL TOCAR EL CONTACTO
-            const infoIzq = filaHTML.querySelector(".info-contacto-izq");
-            if (infoIzq) {
-              infoIzq.addEventListener("click", () => {
-                // Abrir sala con este usuario
-                if (typeof abrirChatConUsuario === "function") {
-                  abrirChatConUsuario(targetUid, nombreContacto, usuario.fotoUrl || "");
-                }
+            // Evento optimizado para la lista principal (PC y móviles)
+            itemContacto.addEventListener("click", (e) => {
+              e.stopPropagation();
 
-                // Cerrar el modal de contactos
-                const modalContactos = document.getElementById("modal-contactos");
-                if (modalContactos) modalContactos.classList.add("oculto");
+              // 1. Destacar contacto seleccionado visualmente
+              document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
+              itemContacto.classList.add("activo");
 
-                // Activar pantalla de chat en móviles
-                const panelChat = document.querySelector(".panel-chat");
-                if (panelChat) panelChat.classList.add("activo");
-              });
-            }
+              contactoSeleccionado = usuario;
+
+              // 2. Extraer datos del usuario (soportando distintas estructuras de objeto)
+              const uidContacto = usuario.uid || usuario.id;
+              const nombreContacto = usuario.nombre || usuario.displayName || "Usuario";
+              const fotoContacto = usuario.fotoUrl || usuario.photoURL || "";
+
+              // 3. Abrir chat y cargar mensajes de Firebase con los 3 parámetros correctos
+              if (typeof abrirChatConUsuario === "function") {
+                abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+              } else if (window.abrirChatConUsuario) {
+                window.abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+              }
+
+              // 4. Mostrar la pantalla de conversación en móviles
+              const panelChat = document.querySelector(".panel-chat");
+              if (panelChat) panelChat.classList.add("activo");
+            });
 
             // 🔴 EVENTO PARA ELIMINAR CONTACTO
             const btnZafacon = filaHTML.querySelector(".btn-eliminar-contacto-item");
