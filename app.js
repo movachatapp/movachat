@@ -852,6 +852,32 @@ if (btnBorrarVistaPrevia) {
 }
 
 // ========================================================
+// 4. LÓGICA DE APERTURA Y NAVEGACIÓN DE CHATS
+// ========================================================
+
+function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
+  window.contactoActivoUid = contactoUid; // Guardar el contacto activo globalmente
+
+  // 1. Actualizar el header del chat (Nombre y Foto)
+  const nombreHeader = document.querySelector(".amigo-nombre-chat");
+  if (nombreHeader) nombreHeader.textContent = nombreContacto;
+
+  const imgHeader = document.querySelector(".amigo-avatar-chat"); // Ajusta el selector si varía en tu HTML
+  if (imgHeader && fotoContacto) imgHeader.src = fotoContacto;
+
+  // 2. Obtener mi UID y generar el ID de sala compartido
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  if (!miUid) return;
+
+  const chatId = obtenerChatId(miUid, contactoUid);
+
+  // 3. Empezar a escuchar mensajes en tiempo real desde Firebase
+  if (typeof escucharMensajesChat === "function") {
+    escucharMensajesChat(chatId);
+  }
+}
+
+// ========================================================
 // 4. SISTEMA DE AUDIOS Y NOTAS DE VOZ
 // ========================================================
 let mediaRecorderAudio = null;
@@ -1040,209 +1066,98 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 }
 
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (CONECTADO A FIREBASE)
 // ========================================================
-function enviarMensajeNuevo() {
+async function enviarMensajeNuevo() {
   const texto = inputChat.value.trim();
   const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
 
   if (texto === "" && !tieneAdjunto) return;
 
-  const ahora = new Date();
-  const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  // Guardamos el UID del contacto con el que estamos chateando actualmente
+  const contactoUid = window.contactoActivoUid; 
 
-  if (window.burbujaEnEdicion) {
-    const nodoTexto = window.burbujaEnEdicion.querySelector(".mensaje-texto");
-    const nodoHora = window.burbujaEnEdicion.querySelector(".mensaje-hora");
-
-    if (nodoTexto) {
-      nodoTexto.textContent = texto;
-    }
-    if (nodoHora && !nodoHora.innerHTML.includes("(editado)")) {
-      nodoHora.innerHTML = `${horaFormateada} <span style="font-size: 0.65rem; opacity: 0.6; margin-left: 4px;">(editado)</span>`;
-    }
-
-    window.burbujaEnEdicion = null;
-    inputChat.value = "";
-    actualizarIconoBotonAccion();
-
-    const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
-    if (typeof guardarMensajesEnMemoria === "function") {
-      guardarMensajesEnMemoria(nombreAmigoActual, historialMensajes);
+  if (!miUid || !contactoUid) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Selecciona un contacto para chatear.", "⚠️", "#ff4b2b");
     }
     return;
   }
 
-  let contenidoBurbuja = "";
-  let estiloEspecialBurbuja = "";
+  const chatId = obtenerChatId(miUid, contactoUid);
+  const ahora = new Date();
+  const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  // 🔴 CASO: EDICIÓN DE MENSAJE EN FIREBASE
+  if (window.burbujaEnEdicion && window.mensajeEnEdicionId) {
+    const mensajeRef = ref(db, `chats/${chatId}/mensajes/${window.mensajeEnEdicionId}`);
+    try {
+      await update(mensajeRef, {
+        texto: texto,
+        editado: true
+      });
+    } catch (e) {
+      console.error("Error al editar en Firebase:", e);
+    }
+
+    window.burbujaEnEdicion = null;
+    window.mensajeEnEdicionId = null;
+    inputChat.value = "";
+    actualizarIconoBotonAccion();
+    return;
+  }
+
+  // 🟢 CASO: NUEVO MENSAJE (PREPARAR DATOS)
+  let objetoMensaje = {
+    emisor: miUid,
+    receptor: contactoUid,
+    texto: texto,
+    hora: horaFormateada,
+    timestamp: Date.now(),
+    tipoAdjunto: null,
+    urlAdjunto: null,
+    nombreDoc: null
+  };
 
   if (tieneAdjunto) {
+    objetoMensaje.tipoAdjunto = tipoAdjuntoActivo;
+
     if (tipoAdjuntoActivo === 'foto') {
-      const urlFotoUnica = imgMiniaturaAdjunto.src;
-
-      contenidoBurbuja = `
-        <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;" title="Toca para ampliar">
-          <img src="${urlFotoUnica}" style="width: 100%; display: block; border-radius: 8px;">
-        </div>
-        ${texto ? `<p class="mensaje-texto">${texto}</p>` : ""}
-        <span class="mensaje-hora">${horaFormateada}</span>
-      `;
-
-      setTimeout(() => {
-        const ultimaBurbuja = historialMensajes.lastElementChild;
-        const contenedorFotoUnica = ultimaBurbuja ? ultimaBurbuja.querySelector(".contenedor-foto-enviada") : null;
-
-        if (contenedorFotoUnica) {
-          contenedorFotoUnica.addEventListener("click", () => {
-            if (typeof visorEstados !== 'undefined' && visorEstados && typeof imgEstadoRender !== 'undefined') {
-              imgEstadoRender.src = urlFotoUnica;
-              if (textoEstadoRender) textoEstadoRender.textContent = "Imagen enviada en el chat";
-
-              likesSimulados = 0;
-              if (typeof contadorLikesEstado !== 'undefined' && contadorLikesEstado) {
-                contadorLikesEstado.textContent = likesSimulados;
-              }
-              if (typeof btnCorazonEstado !== 'undefined' && btnCorazonEstado) {
-                btnCorazonEstado.classList.remove("activo");
-              }
-
-              if (lineaProgreso && lineaProgreso.parentNode) {
-                lineaProgreso.parentNode.style.visibility = "hidden";
-              }
-              visorEstados.classList.remove("oculto");
-            }
-          });
-        }
-      }, 10);
+      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto.src;
     } else if (tipoAdjuntoActivo === 'documento') {
-      const nombreDocUnico = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : "Documento_Mova.pdf";
-
-      contenidoBurbuja = `
-        <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;" title="Toca para abrir documento">
-          <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
-          <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${nombreDocUnico}</span>
-        </div>
-        ${texto ? `<p class="mensaje-texto">${texto}</p>` : ""}
-        <span class="mensaje-hora">${horaFormateada}</span>
-      `;
-
-      setTimeout(() => {
-        const ultimaBurbuja = historialMensajes.lastElementChild;
-        const contenedorDocUnico = ultimaBurbuja ? ultimaBurbuja.querySelector(".contenedor-documento-enviado") : null;
-
-        if (contenedorDocUnico) {
-          contenedorDocUnico.addEventListener("click", () => {
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium(`Abriendo documento: ${nombreDocUnico} 📄`, "📂", "#00f2fe");
-            } else {
-              alert(`Abriendo documento: ${nombreDocUnico}`);
-            }
-          });
-        }
-      }, 10);
-
+      objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : "Documento_Mova.pdf";
+      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto.src || "";
     } else if (tipoAdjuntoActivo === 'video') {
-      estiloEspecialBurbuja = "padding: 10px;";
       const urlVideoCapturado = imgMiniaturaAdjunto.src && imgMiniaturaAdjunto.src.startsWith("blob:")
         ? imgMiniaturaAdjunto.src
         : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
-
-      contenidoBurbuja = `
-        <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-          <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-            <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414" style="transition: stroke-dashoffset 0.1s linear;"></circle>
-          </svg>
-          <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%; pointer-events: none;">
-            <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
-          </div>
-          <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-            <video src="${urlVideoCapturado}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-          </div>
-        </div>
-        ${texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${texto}</p>` : ""}
-        <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${horaFormateada}</span>
-      `;
-
-      setTimeout(() => {
-        const todosLosVideos = document.querySelectorAll(".contenedor-video-circular-burbuja");
-        const contenedorVideo = todosLosVideos[todosLosVideos.length - 1];
-
-        if (contenedorVideo) {
-          const videoElem = contenedorVideo.querySelector("video");
-          const circuloProgreso = contenedorVideo.querySelector(".progreso-anillo-nodo");
-          const capaPlay = contenedorVideo.querySelector(".capa-play-video-sim");
-
-          videoElem.load();
-
-          contenedorVideo.onclick = function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-
-            if (videoElem.paused) {
-              videoElem.muted = true;
-              videoElem.play().then(() => {
-                if (capaPlay) capaPlay.style.opacity = "0";
-              }).catch(err => console.log("Error al reproducir video:", err));
-
-              videoElem.ontimeupdate = function () {
-                if (videoElem.currentTime >= 10) {
-                  videoElem.pause();
-                  videoElem.currentTime = 0;
-                  if (capaPlay) capaPlay.style.opacity = "1";
-                  if (circuloProgreso) circuloProgreso.style.strokeDashoffset = "414";
-                  return;
-                }
-
-                const duracionRef = 10;
-                const porcentaje = videoElem.currentTime / duracionRef;
-                const offset = 414 - (porcentaje * 414);
-                if (circuloProgreso) circuloProgreso.style.strokeDashoffset = Math.max(0, offset);
-              };
-            } else {
-              videoElem.pause();
-              if (capaPlay) capaPlay.style.opacity = "1";
-            }
-          };
-
-          videoElem.onended = function () {
-            videoElem.currentTime = 0;
-            if (capaPlay) capaPlay.style.opacity = "1";
-            if (circuloProgreso) circuloProgreso.style.strokeDashoffset = "414";
-          };
-        }
-      }, 100);
+      objetoMensaje.urlAdjunto = urlVideoCapturado;
     }
 
+    // Limpiar caja de vista previa de adjuntos
     cajaVistaPrevia.classList.add("oculto");
     imgMiniaturaAdjunto.src = "";
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
     if (iconoPrevio) iconoPrevio.remove();
     tipoAdjuntoActivo = null;
     inputChat.placeholder = "Escribe un mensaje privado...";
-  } else {
-    contenidoBurbuja = `
-      <p class="mensaje-texto">${texto}</p>
-      <span class="mensaje-hora">${horaFormateada}</span>
-    `;
   }
 
-  const nuevaBurbujaHTML = document.createElement("div");
-  nuevaBurbujaHTML.className = "mensaje-burbuja enviado";
-  if (estiloEspecialBurbuja) nuevaBurbujaHTML.style.cssText = estiloEspecialBurbuja;
-  nuevaBurbujaHTML.innerHTML = contenidoBurbuja;
+  // 🚀 SUBIR MENSAJE A FIREBASE REALTIME DATABASE
+  try {
+    const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
+    const nuevoMensajeRef = push(listaMensajesRef);
+    await set(nuevoMensajeRef, objetoMensaje);
 
-  historialMensajes.appendChild(nuevaBurbujaHTML);
-  aplicarRelojArenaEfecto(nuevaBurbujaHTML);
-
-  inputChat.value = "";
-  actualizarIconoBotonAccion();
-
-  if (window.lucide) window.lucide.createIcons();
-  historialMensajes.scrollTop = historialMensajes.scrollHeight;
-
-  const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
-  if (typeof guardarMensajesEnMemoria === "function") {
-    guardarMensajesEnMemoria(nombreAmigoActual, historialMensajes);
+    // Limpiar input
+    inputChat.value = "";
+    actualizarIconoBotonAccion();
+  } catch (error) {
+    console.error("Error al enviar mensaje a Firebase:", error);
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
+    }
   }
 }
 
@@ -2820,40 +2735,98 @@ let contactoParaEliminarNodo = null;
 
 const listaContactosBD = [];
 
-function renderizarListaContactosModal(filtro = "") {
+// 🟢 LÓGICA CONECTADA A FIREBASE (Contactos reales + Apertura de chat directa)
+async function renderizarListaContactosModal(filtro = "") {
   if (!contenedorListaContactos) return;
   contenedorListaContactos.innerHTML = "";
 
   const textoFiltro = filtro.toLowerCase().trim();
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
-  listaContactosBD.forEach((contacto) => {
-    if (contacto.nombre.toLowerCase().includes(textoFiltro)) {
-      const filaHTML = document.createElement("div");
-      filaHTML.className = "item-contacto-fila";
-      filaHTML.innerHTML = `
-        <div class="info-contacto-izq">
-          <img src="https://i.pravatar.cc/150?img=${contacto.img}" alt="${contacto.nombre}" class="avatar-contacto-mini">
-          <span class="nombre-contacto-texto">${contacto.nombre}</span>
-        </div>
-        <button class="btn-eliminar-contacto-item" aria-label="Eliminar contacto" title="Eliminar">
-          <i data-lucide="trash-2"></i>
-        </button>
-      `;
+  if (!miUid) return;
 
-      const btnZafacon = filaHTML.querySelector(".btn-eliminar-contacto-item");
-      btnZafacon.addEventListener("click", () => {
-        contactoParaEliminarNodo = { nodo: filaHTML, nombre: contacto.nombre };
-        if (textoConfirmarEliminar) {
-          textoConfirmarEliminar.innerHTML = `¿Seguro que deseas eliminar a <b>${contacto.nombre}</b>?`;
+  try {
+    // 1. Obtener los contactos del usuario desde Firebase Realtime Database
+    const misContactosRef = ref(db, `mis_contactos/${miUid}`);
+    const snapshotContactos = await get(misContactosRef);
+
+    if (snapshotContactos.exists()) {
+      const contactosUids = Object.keys(snapshotContactos.val());
+
+      // 2. Traer los datos reales de la colección 'usuarios'
+      for (const targetUid of contactosUids) {
+        const usuarioRef = ref(db, `usuarios/${targetUid}`);
+        const snapUsuario = await get(usuarioRef);
+
+        if (snapUsuario.exists()) {
+          const usuario = snapUsuario.val();
+          const nombreContacto = usuario.nombre || "Usuario";
+
+          // Filtro por texto de búsqueda
+          if (nombreContacto.toLowerCase().includes(textoFiltro)) {
+            const filaHTML = document.createElement("div");
+            filaHTML.className = "item-contacto-fila";
+
+            // Foto real subida a Firebase o avatar con la inicial del nombre
+            const primerLetra = nombreContacto.charAt(0).toUpperCase();
+            const fotoHTML = usuario.fotoUrl 
+              ? `<img src="${usuario.fotoUrl}" alt="${nombreContacto}" class="avatar-contacto-mini">`
+              : `<div class="avatar-contacto-mini" style="background:#00f2fe; color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; border-radius:50%; width:32px; height:32px;">${primerLetra}</div>`;
+
+            filaHTML.innerHTML = `
+              <div class="info-contacto-izq" style="cursor: pointer; display: flex; align-items: center; gap: 10px; flex-grow: 1;">
+                ${fotoHTML}
+                <span class="nombre-contacto-texto">${nombreContacto}</span>
+              </div>
+              <button class="btn-eliminar-contacto-item" aria-label="Eliminar contacto" title="Eliminar">
+                <i data-lucide="trash-2"></i>
+              </button>
+            `;
+
+            // 🟢 EVENTO PARA ABRIR CHAT EN TIEMPO REAL AL TOCAR EL CONTACTO
+            const infoIzq = filaHTML.querySelector(".info-contacto-izq");
+            if (infoIzq) {
+              infoIzq.addEventListener("click", () => {
+                // Abrir sala con este usuario
+                if (typeof abrirChatConUsuario === "function") {
+                  abrirChatConUsuario(targetUid, nombreContacto, usuario.fotoUrl || "");
+                }
+
+                // Cerrar el modal de contactos
+                const modalContactos = document.getElementById("modal-contactos");
+                if (modalContactos) modalContactos.classList.add("oculto");
+
+                // Activar pantalla de chat en móviles
+                const panelChat = document.querySelector(".panel-chat");
+                if (panelChat) panelChat.classList.add("activo");
+              });
+            }
+
+            // 🔴 EVENTO PARA ELIMINAR CONTACTO
+            const btnZafacon = filaHTML.querySelector(".btn-eliminar-contacto-item");
+            if (btnZafacon) {
+              btnZafacon.addEventListener("click", (e) => {
+                e.stopPropagation(); // Impide que abra el chat al tocar la papelera
+                contactoParaEliminarNodo = { nodo: filaHTML, uid: targetUid, nombre: nombreContacto };
+                if (textoConfirmarEliminar) {
+                  textoConfirmarEliminar.innerHTML = `¿Seguro que deseas eliminar a <b>${nombreContacto}</b>?`;
+                }
+                if (capaConfirmarEliminar) capaConfirmarEliminar.classList.remove("oculto");
+              });
+            }
+
+            contenedorListaContactos.appendChild(filaHTML);
+          }
         }
-        if (capaConfirmarEliminar) capaConfirmarEliminar.classList.remove("oculto");
-      });
+      }
 
-      contenedorListaContactos.appendChild(filaHTML);
+      if (window.lucide) window.lucide.createIcons();
+    } else {
+      contenedorListaContactos.innerHTML = `<p style="color:rgba(255,255,255,0.5); font-size:12px; text-align:center; padding:10px;">No tienes contactos agregados aún.</p>`;
     }
-  });
-
-  if (window.lucide) window.lucide.createIcons();
+  } catch (error) {
+    console.error("Error al cargar la lista de contactos:", error);
+  }
 }
 
 if (btnAbrirContactos && modalContactos) {
@@ -2871,14 +2844,58 @@ if (btnCerrarContactos && modalContactos) {
 }
 
 if (btnGuardarContacto && inputNuevoContacto) {
-  btnGuardarContacto.addEventListener("click", () => {
-    const nombreNuevo = inputNuevoContacto.value.trim();
-    if (nombreNuevo !== "") {
-      const imgRand = Math.floor(Math.random() * 70) + 1;
-      listaContactosBD.unshift({ nombre: nombreNuevo, img: imgRand.toString() });
-      inputNuevoContacto.value = "";
-      renderizarListaContactosModal(inputBuscarContacto ? inputBuscarContacto.value : "");
-      mostrarAvisoPremium(`Contacto <b>${nombreNuevo}</b> añadido con éxito.`, "👤", "#00f2fe");
+  btnGuardarContacto.addEventListener("click", async () => {
+    const nombreNuevo = inputNuevoContacto.value.trim().toLowerCase();
+    
+    if (nombreNuevo === "") return;
+
+    try {
+      // 1. Consultar usuarios reales en Firebase
+      const usuariosRef = ref(db, 'usuarios');
+      const snapshot = await get(usuariosRef);
+
+      if (snapshot.exists()) {
+        const usuarios = snapshot.val();
+        let usuarioEncontrado = null;
+        let uidEncontrado = null;
+
+        // 2. Buscar si coincide por correo o por nombre real
+        Object.keys(usuarios).forEach((uid) => {
+          const u = usuarios[uid];
+          if (
+            (u.email && u.email.toLowerCase() === nombreNuevo) ||
+            (u.nombre && u.nombre.toLowerCase() === nombreNuevo)
+          ) {
+            usuarioEncontrado = u;
+            uidEncontrado = uid;
+          }
+        });
+
+        // 3. Si existe, lo agregamos; si no, mostramos aviso
+        if (usuarioEncontrado) {
+          const miUid = auth.currentUser ? auth.currentUser.uid : null;
+
+          if (miUid) {
+            // Guardar la relación en la base de datos
+            await set(ref(db, `mis_contactos/${miUid}/${uidEncontrado}`), true);
+          }
+
+          inputNuevoContacto.value = "";
+          
+          if (typeof renderizarListaContactosModal === "function") {
+            renderizarListaContactosModal(inputBuscarContacto ? inputBuscarContacto.value : "");
+          }
+
+          mostrarAvisoPremium(`Contacto <b>${usuarioEncontrado.nombre}</b> añadido con éxito.`, "👤", "#00f2fe");
+        } else {
+          mostrarAvisoPremium(`El usuario <b>${nombreNuevo}</b> no existe en la plataforma.`, "⚠️", "#ff4b2b");
+        }
+      } else {
+        mostrarAvisoPremium("No hay usuarios registrados.", "⚠️", "#ff4b2b");
+      }
+    } catch (error) {
+      console.error("Error al añadir contacto:", error);
+      mostrarAvisoPremium("Error al buscar el usuario.", "❌", "#ff4b2b");
     }
   });
 }
@@ -3475,6 +3492,92 @@ if (inputChatPrivado) {
       if (typeof enviarMensaje === "function") {
         enviarMensaje();
       }
+    }
+  });
+}
+
+// 📌 Escuchar mensajes en tiempo real desde Firebase
+function escucharMensajesChat(chatId) {
+  if (!historialMensajes) return;
+  
+  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+
+  // Escuchar cambios en la base de datos de Firebase
+  onValue(mensajesRef, (snapshot) => {
+    historialMensajes.innerHTML = ""; // Limpiar lista antes de redibujar
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+
+    if (snapshot.exists()) {
+      const mensajes = snapshot.val();
+
+      Object.keys(mensajes).forEach((msgId) => {
+        const msg = mensajes[msgId];
+        const esMio = msg.emisor === miUid;
+
+        let contenidoBurbuja = "";
+        let estiloEspecialBurbuja = "";
+
+        // Adjunto Imagen
+        if (msg.tipoAdjunto === 'foto') {
+          contenidoBurbuja = `
+            <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
+              <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
+            </div>
+            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora">${msg.hora}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
+          `;
+        } 
+        // Adjunto Documento
+        else if (msg.tipoAdjunto === 'documento') {
+          contenidoBurbuja = `
+            <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+              <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
+              <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
+            </div>
+            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora">${msg.hora}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
+          `;
+        }
+        // Adjunto Video Circular
+        else if (msg.tipoAdjunto === 'video') {
+          estiloEspecialBurbuja = "padding: 10px;";
+          contenidoBurbuja = `
+            <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
+              <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+                <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
+              </svg>
+              <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
+                <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+              </div>
+              <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
+                <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+              </div>
+            </div>
+            ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${msg.hora}${msg.editado ? ' (editado)' : ''}</span>
+          `;
+        } 
+        // Mensaje de solo texto
+        else {
+          contenidoBurbuja = `
+            <p class="mensaje-texto">${msg.texto}</p>
+            <span class="mensaje-hora">${msg.hora}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
+          `;
+        }
+
+        // Crear contenedor HTML de la burbuja
+        const burbujaHTML = document.createElement("div");
+        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
+        burbujaHTML.setAttribute("data-msg-id", msgId);
+        if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
+        burbujaHTML.innerHTML = contenidoBurbuja;
+
+        historialMensajes.appendChild(burbujaHTML);
+      });
+
+      // Refrescar iconos y hacer scroll hacia el último mensaje
+      if (window.lucide) window.lucide.createIcons();
+      historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
   });
 }
