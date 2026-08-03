@@ -413,7 +413,8 @@ function filtrarYRenderizar() {
 
   // 2. Renderizar tarjetas HTML originales
   chatsOriginalesHTML.forEach((tarjeta) => {
-    const nombre = tarjeta.querySelector(".chat-nombre").textContent.toLowerCase();
+    const nombreElem = tarjeta.querySelector(".chat-nombre");
+    const nombre = nombreElem ? nombreElem.textContent.toLowerCase() : "";
     const tieneBadge = tarjeta.querySelector(".badge-mensaje") !== null;
 
     let pasaFiltro = false;
@@ -439,11 +440,12 @@ function filtrarYRenderizar() {
         ? `<div class="avatar-grupo"><i data-lucide="users"></i></div>`
         : `<img src="https://i.pravatar.cc/150?img=${chat.img}" alt="${chat.nombre}">`;
 
+      // 🚀 Agregamos data-uid para que al hacer clic sepa a quién abrir en Firebase
       const tarjetaFalsa = `
-        <div class="tarjeta-chat">
+        <div class="tarjeta-chat" data-uid="${chat.uid || ''}">
           <div class="chat-avatar-caja">
             ${avatarHTML}
-            ${chat.group ? "" : `<span class="punto-online-chat" style="--led-color: ${chat.led};"></span>`}
+            ${chat.group ? "" : `<span class="punto-online-chat" style="--led-color: ${chat.led || '#00f2fe'};"></span>`}
           </div>
           <div class="chat-info">
             <div class="chat-cabecera">
@@ -460,7 +462,12 @@ function filtrarYRenderizar() {
     }
   });
 
-  if (window.lucide) window.lucide.createIcons();
+  // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de 'contenedorChats'
+  if (window.lucide) {
+    window.lucide.createIcons({
+      targets: [contenedorChats]
+    });
+  }
 }
 
 if (contenedorChats) {
@@ -610,34 +617,48 @@ async function activarCamaraMovaPro(tipoMedia) {
   const menuCamaraPro = document.getElementById("menu-camara-pro");
   if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
 
-  // 📸 FOTO
-  if (tipoMedia === "foto") {
-    const inputCamara = document.createElement("input");
-    inputCamara.type = "file";
-    inputCamara.accept = "image/*";
-    inputCamara.capture = "user";
+  // 📸 FOTO (Optimizada para rendimiento y compatibilidad)
+if (tipoMedia === "foto") {
+  const inputCamara = document.createElement("input");
+  inputCamara.type = "file";
+  inputCamara.accept = "image/*";
+  // Opcional: quita capture="user" si prefieres que el usuario elija entre frontal/trasera en el selector nativo
 
-    inputCamara.onchange = (evt) => {
-      const archivo = evt.target.files[0];
-      if (archivo) {
-        tipoAdjuntoActivo = 'foto';
+  inputCamara.onchange = (evt) => {
+    const archivo = evt.target.files && evt.target.files[0];
+    if (archivo) {
+      tipoAdjuntoActivo = 'foto';
+      
+      if (imgMiniaturaAdjunto) {
         imgMiniaturaAdjunto.style.display = "block";
         imgMiniaturaAdjunto.src = URL.createObjectURL(archivo);
+      }
 
-        const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
-        if (iconoPrevio) iconoPrevio.remove();
+      const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
+      if (iconoPrevio) iconoPrevio.remove();
 
-        cajaVistaPrevia.classList.remove("oculto");
+      if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
+      
+      if (inputChat) {
         inputChat.placeholder = "Añade un comentario a la imagen...";
         inputChat.focus();
-
-        if (btnAccionChat) btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-        if (window.lucide) window.lucide.createIcons();
       }
-    };
-    inputCamara.click();
-    return;
-  }
+
+      // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono dentro del botón de acción
+      if (btnAccionChat) {
+        btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+        if (window.lucide) {
+          window.lucide.createIcons({
+            targets: [btnAccionChat]
+          });
+        }
+      }
+    }
+  };
+  
+  inputCamara.click();
+  return;
+}
 
   // 🎥 VIDEO CIRCULAR: Intento de Modal
   const modalCamara = document.getElementById("modal-camara-circular");
@@ -762,8 +783,11 @@ function recortarVideoA10Segundos(videoElem) {
 
 function asignarPreviewVideoCircular(urlFinal) {
   tipoAdjuntoActivo = 'video';
-  imgMiniaturaAdjunto.src = urlFinal;
-  imgMiniaturaAdjunto.style.display = "none";
+  
+  if (imgMiniaturaAdjunto) {
+    imgMiniaturaAdjunto.src = urlFinal;
+    imgMiniaturaAdjunto.style.display = "none";
+  }
 
   const wrapper = document.querySelector(".wrapper-miniatura");
   const iconoPrevio = wrapper ? wrapper.querySelector(".icono-doc-preview") : null;
@@ -775,15 +799,31 @@ function asignarPreviewVideoCircular(urlFinal) {
         <i data-lucide="video" style="width: 28px; height: 28px;"></i>
       </div>
     `);
+
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono recién inyectado
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [wrapper]
+      });
+    }
   }
-  if (window.lucide) window.lucide.createIcons();
 
-  cajaVistaPrevia.classList.remove("oculto");
-  inputChat.placeholder = "Comentar video circular (Máx 10s)...";
-  inputChat.focus();
+  if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
 
-  if (btnAccionChat) btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-  if (window.lucide) window.lucide.createIcons();
+  if (inputChat) {
+    inputChat.placeholder = "Comentar video circular (Máx 10s)...";
+    inputChat.focus();
+  }
+
+  // ⚡ OPTIMIZACIÓN CPU: Cambiar icono del botón y renderizar solo ese botón
+  if (btnAccionChat) {
+    btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btnAccionChat]
+      });
+    }
+  }
 }
 
 const btnFotoMova = document.querySelector('[data-camara="foto"]');
@@ -808,21 +848,41 @@ if (inputRealGaleria) {
   inputRealGaleria.addEventListener("change", (e) => {
     if (e.target.files && e.target.files[0]) {
       const reader = new FileReader();
+      
       reader.onload = function (evt) {
         const wrapper = document.querySelector(".wrapper-miniatura");
-        const iconoPrevio = wrapper.querySelector(".icono-doc-preview");
-        if (iconoPrevio) iconoPrevio.remove();
-        imgMiniaturaAdjunto.style.display = "block";
+        
+        // Validar wrapper de forma segura antes de buscar hijos
+        if (wrapper) {
+          const iconoPrevio = wrapper.querySelector(".icono-doc-preview");
+          if (iconoPrevio) iconoPrevio.remove();
+        }
 
-        imgMiniaturaAdjunto.src = evt.target.result;
+        if (imgMiniaturaAdjunto) {
+          imgMiniaturaAdjunto.style.display = "block";
+          imgMiniaturaAdjunto.src = evt.target.result;
+        }
+
         tipoAdjuntoActivo = 'foto';
-        cajaVistaPrevia.classList.remove("oculto");
-        inputChat.placeholder = "Añade un comentario a la imagen...";
-        inputChat.focus();
 
-        btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-        if (window.lucide) window.lucide.createIcons();
+        if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
+
+        if (inputChat) {
+          inputChat.placeholder = "Añade un comentario a la imagen...";
+          inputChat.focus();
+        }
+
+        // ⚡ OPTIMIZACIÓN CPU: Dibujar solo el icono dentro de btnAccionChat
+        if (btnAccionChat) {
+          btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+          if (window.lucide) {
+            window.lucide.createIcons({
+              targets: [btnAccionChat]
+            });
+          }
+        }
       };
+
       reader.readAsDataURL(e.target.files[0]);
     }
   });
@@ -859,15 +919,26 @@ if (inputRealDocumento) {
 if (btnBorrarVistaPrevia) {
   btnBorrarVistaPrevia.addEventListener("click", (e) => {
     e.stopPropagation();
-    cajaVistaPrevia.classList.add("oculto");
-    imgMiniaturaAdjunto.src = "";
+
+    if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
+    if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
+
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
     if (iconoPrevio) iconoPrevio.remove();
 
     tipoAdjuntoActivo = null;
-    inputChat.placeholder = "Escribe un mensaje privado...";
-    btnAccionChat.innerHTML = `<i data-lucide="mic"></i>`;
-    if (window.lucide) window.lucide.createIcons();
+
+    if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
+
+    // ⚡ OPTIMIZACIÓN CPU: Restaurar solo el icono del micrófono en el botón
+    if (btnAccionChat) {
+      btnAccionChat.innerHTML = `<i data-lucide="mic"></i>`;
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [btnAccionChat]
+        });
+      }
+    }
   });
 }
 
@@ -987,10 +1058,18 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
     <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}</span>
   `;
 
-  historialMensajes.appendChild(nuevaBurbujaHTML);
-  if (typeof aplicarRelojArenaEfecto === "function") aplicarRelojArenaEfecto(nuevaBurbujaHTML);
-  if (window.lucide) window.lucide.createIcons();
-  historialMensajes.scrollTop = historialMensajes.scrollHeight;
+  if (historialMensajes) {
+    historialMensajes.appendChild(nuevaBurbujaHTML);
+    if (typeof aplicarRelojArenaEfecto === "function") aplicarRelojArenaEfecto(nuevaBurbujaHTML);
+    
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de la nueva burbuja
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [nuevaBurbujaHTML]
+      });
+    }
+    historialMensajes.scrollTop = historialMensajes.scrollHeight;
+  }
 
   const btnPlay = nuevaBurbujaHTML.querySelector(".btn-play-audio");
   const audioElem = nuevaBurbujaHTML.querySelector(".audio-elemento-nativo");
@@ -999,62 +1078,79 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
   const pistaOndas = nuevaBurbujaHTML.querySelector(".ondas-audio-preview");
   const barras = nuevaBurbujaHTML.querySelectorAll(".onda-barra");
 
-  btnPlay.addEventListener("click", function () {
-    document.querySelectorAll(".audio-elemento-nativo").forEach(a => {
-      if (a !== audioElem) {
-        a.pause();
-        a.currentTime = 0;
+  if (btnPlay && audioElem) {
+    btnPlay.addEventListener("click", function () {
+      document.querySelectorAll(".audio-elemento-nativo").forEach(a => {
+        if (a !== audioElem) {
+          a.pause();
+          a.currentTime = 0;
+        }
+      });
+
+      if (audioElem.paused) {
+        audioElem.play();
+        btnPlay.innerHTML = `<i data-lucide="square" style="width:14px; height:14px;"></i>`;
+        barras.forEach(b => b.style.backgroundColor = "#00f2fe");
+      } else {
+        audioElem.pause();
+        btnPlay.innerHTML = `<i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i>`;
+        barras.forEach(b => b.style.backgroundColor = "rgba(255,255,255,0.2)");
+      }
+
+      // ⚡ OPTIMIZACIÓN CPU: Redibujar solo el botón de Play/Pause
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [btnPlay]
+        });
       }
     });
 
-    if (audioElem.paused) {
-      audioElem.play();
-      btnPlay.innerHTML = `<i data-lucide="square" style="width:14px; height:14px;"></i>`;
-      barras.forEach(b => b.style.backgroundColor = "#00f2fe");
-    } else {
-      audioElem.pause();
+    audioElem.ontimeupdate = function () {
+      if (audioElem.duration) {
+        const porcentaje = (audioElem.currentTime / audioElem.duration) * 100;
+        if (agujaRoja) agujaRoja.style.left = `${porcentaje}%`;
+
+        const segsActuales = Math.floor(audioElem.currentTime);
+        let mins = Math.floor(segsActuales / 60).toString().padStart(2, '0');
+        let secs = (segsActuales % 60).toString().padStart(2, '0');
+        if (nodoTextoTiempo) nodoTextoTiempo.textContent = `${mins}:${secs}`;
+      }
+    };
+
+    audioElem.onended = function () {
       btnPlay.innerHTML = `<i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i>`;
       barras.forEach(b => b.style.backgroundColor = "rgba(255,255,255,0.2)");
-    }
-    if (window.lucide) window.lucide.createIcons();
-  });
+      if (agujaRoja) agujaRoja.style.left = "0%";
+      if (nodoTextoTiempo) nodoTextoTiempo.textContent = duracion;
 
-  audioElem.ontimeupdate = function () {
-    if (audioElem.duration) {
-      const porcentaje = (audioElem.currentTime / audioElem.duration) * 100;
-      agujaRoja.style.left = `${porcentaje}%`;
+      // ⚡ OPTIMIZACIÓN CPU: Redibujar solo el botón al terminar
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [btnPlay]
+        });
+      }
+    };
+  }
 
-      const segsActuales = Math.floor(audioElem.currentTime);
-      let mins = Math.floor(segsActuales / 60).toString().padStart(2, '0');
-      let secs = (segsActuales % 60).toString().padStart(2, '0');
-      nodoTextoTiempo.textContent = `${mins}:${secs}`;
-    }
-  };
+  if (pistaOndas && audioElem) {
+    pistaOndas.addEventListener("click", function (e) {
+      const rectPista = pistaOndas.getBoundingClientRect();
+      const clickX = e.clientX - rectPista.left;
+      let porcentaje = (clickX / rectPista.width);
 
-  audioElem.onended = function () {
-    btnPlay.innerHTML = `<i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i>`;
-    barras.forEach(b => b.style.backgroundColor = "rgba(255,255,255,0.2)");
-    agujaRoja.style.left = "0%";
-    nodoTextoTiempo.textContent = duracion;
-    if (window.lucide) window.lucide.createIcons();
-  };
+      if (porcentaje < 0) porcentaje = 0;
+      if (porcentaje > 1) porcentaje = 1;
 
-  pistaOndas.addEventListener("click", function (e) {
-    const rectPista = pistaOndas.getBoundingClientRect();
-    const clickX = e.clientX - rectPista.left;
-    let porcentaje = (clickX / rectPista.width);
+      if (audioElem.duration) {
+        audioElem.currentTime = porcentaje * audioElem.duration;
+        if (agujaRoja) agujaRoja.style.left = `${porcentaje * 100}%`;
+      }
+    });
+  }
 
-    if (porcentaje < 0) porcentaje = 0;
-    if (porcentaje > 1) porcentaje = 1;
-
-    if (audioElem.duration) {
-      audioElem.currentTime = porcentaje * audioElem.duration;
-      agujaRoja.style.left = `${porcentaje * 100}%`;
-    }
-  });
-
-  const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
-  if (typeof guardarMensajesEnMemoria === "function") {
+  const elemNombreAmigo = document.querySelector(".amigo-nombre-chat");
+  const nombreAmigoActual = elemNombreAmigo ? elemNombreAmigo.textContent : null;
+  if (nombreAmigoActual && typeof guardarMensajesEnMemoria === "function") {
     guardarMensajesEnMemoria(nombreAmigoActual, historialMensajes);
   }
 }
@@ -1088,8 +1184,8 @@ async function enviarMensajeNuevo() {
   // Activar candado
   estaEnviandoMensaje = true;
 
-  const chatId = typeof obtenerChatId === "function" 
-    ? obtenerChatId(miUid, contactoUid) 
+  const chatId = typeof obtenerChatId === "function"
+    ? obtenerChatId(miUid, contactoUid)
     : [miUid, contactoUid].sort().join("_");
 
   const ahora = new Date();
@@ -1111,7 +1207,7 @@ async function enviarMensajeNuevo() {
     window.mensajeEnEdicionId = null;
     if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
-    
+
     // Liberar candado
     estaEnviandoMensaje = false;
     return;
@@ -1262,24 +1358,57 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
     const nodoMensaje = (typeof mensajeSeleccionadoNode !== "undefined") ? mensajeSeleccionadoNode : null;
     const nodoTexto = nodoMensaje ? nodoMensaje.querySelector(".mensaje-texto") : null;
     const textoMensaje = nodoTexto ? nodoTexto.textContent : "";
+    const msgId = nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null;
 
+    // 📋 OPCIÓN 1: COPIAR
     if (accion === "copiar" && textoMensaje) {
       navigator.clipboard.writeText(textoMensaje);
-    } else if (accion === "eliminar" && nodoMensaje) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Texto copiado al portapapeles 📋", "✨", "#00f2fe");
+      }
+    } 
+    // 🗑️ OPCIÓN 2: ELIMINAR (De la pantalla y de Firebase)
+    else if (accion === "eliminar" && nodoMensaje) {
       nodoMensaje.style.transition = "all 0.2s ease-out";
       nodoMensaje.style.opacity = "0";
       nodoMensaje.style.transform = "scale(0.9)";
-      setTimeout(() => { if (nodoMensaje) nodoMensaje.remove(); }, 200);
-    } else if (accion === "editar" && textoMensaje && typeof inputChat !== "undefined") {
+      
+      setTimeout(() => { 
+        if (nodoMensaje) nodoMensaje.remove(); 
+      }, 200);
+
+      // Si existe ID de Firebase y chat activo, borrarlo en la nube
+      const usuarioActual = auth.currentUser;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
+      const contactoUid = window.contactoActivoUid;
+
+      if (msgId && miUid && contactoUid) {
+        const chatId = typeof obtenerChatId === "function" 
+          ? obtenerChatId(miUid, contactoUid) 
+          : [miUid, contactoUid].sort().join("_");
+
+        const mensajeRef = ref(db, `chats/${chatId}/mensajes/${msgId}`);
+        set(mensajeRef, null).catch(err => console.error("Error al eliminar de Firebase:", err));
+      }
+    } 
+    // ✏️ OPCIÓN 3: EDITAR
+    else if (accion === "editar" && textoMensaje && typeof inputChat !== "undefined") {
       inputChat.value = textoMensaje;
       inputChat.focus();
 
       window.burbujaEnEdicion = nodoMensaje;
+      window.mensajeEnEdicionId = msgId; // 🚀 Guardamos el ID de Firebase para editarlo
 
-      if (typeof btnAccionChat !== "undefined") {
+      if (btnAccionChat) {
         btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+        
+        // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono del botón de enviar
+        if (window.lucide) {
+          window.lucide.createIcons({
+            targets: [btnAccionChat]
+          });
+        }
       }
-      if (window.lucide) window.lucide.createIcons();
     }
 
     if (typeof menuMensajes !== "undefined" && menuMensajes) {
@@ -1290,11 +1419,13 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
 
 function actualizarIconoBotonAccion() {
   if (!btnAccionChat) return;
-  const tieneTexto = inputChat.value.trim().length > 0;
+
+  const tieneTexto = inputChat ? inputChat.value.trim().length > 0 : false;
   const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
 
   if (!tieneTexto && window.burbujaEnEdicion) {
     window.burbujaEnEdicion = null;
+    window.mensajeEnEdicionId = null; // Limpiamos también el ID de edición en Firebase
   }
 
   if (tieneTexto || tieneAdjunto) {
@@ -1302,7 +1433,13 @@ function actualizarIconoBotonAccion() {
   } else {
     btnAccionChat.innerHTML = `<i data-lucide="mic"></i>`;
   }
-  if (window.lucide) window.lucide.createIcons();
+
+  // ⚡ OPTIMIZACIÓN CPU: Redibujar ÚNICAMENTE el botón de acción
+  if (window.lucide) {
+    window.lucide.createIcons({
+      targets: [btnAccionChat]
+    });
+  }
 }
 
 if (inputChat) {
@@ -1467,7 +1604,13 @@ if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
         `;
       }
 
-      if (window.lucide) window.lucide.createIcons();
+      // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro de 'listaOpcionesCabecera'
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [listaOpcionesCabecera]
+        });
+      }
+
       asignarEventosMenuCabecera();
 
       menuCabeceraFlotante.classList.remove("oculto");
@@ -2317,13 +2460,17 @@ if (btnCtxSilenciar) {
   btnCtxSilenciar.addEventListener("click", (e) => {
     e.stopPropagation();
 
-    const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
+    const elemNombreCabecera = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombreCabecera ? elemNombreCabecera.textContent.trim() : null;
+
+    if (!nombreAmigoActual) return;
 
     if (menuCabecera) menuCabecera.classList.add("oculto");
 
     let tarjetaAmigoNodo = null;
     document.querySelectorAll(".lista-chats .tarjeta-chat").forEach(tarjeta => {
-      if (tarjeta.querySelector(".chat-nombre").textContent === nombreAmigoActual) {
+      const elemNombreTarjeta = tarjeta.querySelector(".chat-nombre");
+      if (elemNombreTarjeta && elemNombreTarjeta.textContent.trim() === nombreAmigoActual) {
         tarjetaAmigoNodo = tarjeta;
       }
     });
@@ -2359,7 +2506,15 @@ if (btnCtxSilenciar) {
       mostrarAvisoPremium(`Alertas reactivadas para <b>${nombreAmigoActual}</b>.`, "🔔", "#00f2fe");
     }
 
-    if (window.lucide) window.lucide.createIcons();
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el botón y la tarjeta modificada
+    if (window.lucide) {
+      const objetivos = [btnCtxSilenciar];
+      if (tarjetaAmigoNodo) objetivos.push(tarjetaAmigoNodo);
+
+      window.lucide.createIcons({
+        targets: objetivos
+      });
+    }
   });
 }
 
@@ -2370,7 +2525,10 @@ if (btnCtxTemporales) {
   btnCtxTemporales.addEventListener("click", (e) => {
     e.stopPropagation();
 
-    const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : null;
+
+    if (!nombreAmigoActual) return;
 
     if (menuCabecera) menuCabecera.classList.add("oculto");
 
@@ -2384,20 +2542,31 @@ if (btnCtxTemporales) {
       mostrarAvisoPremium(`Modo permanente restaurado con <b>${nombreAmigoActual}</b>.`, "📡", "#00f2fe");
     }
 
-    if (window.lucide) window.lucide.createIcons();
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxTemporales
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btnCtxTemporales]
+      });
+    }
   });
 }
 
 function aplicarRelojArenaEfecto(burbujaNodo) {
-  const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
+  const nombreAmigoActual = document.querySelector(".amigo-nombre-chat")?.textContent;
 
-  if (chatsTemporalesBD[nombreAmigoActual]) {
+  if (nombreAmigoActual && chatsTemporalesBD[nombreAmigoActual]) {
     burbujaNodo.classList.add("mensaje-efimero");
 
     const horaNodo = burbujaNodo.querySelector(".mensaje-hora");
     if (horaNodo && !horaNodo.querySelector("[data-lucide='hourglass']")) {
       horaNodo.insertAdjacentHTML("afterbegin", `<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>`);
-      if (window.lucide) window.lucide.createIcons();
+
+      // 🚀 OPTIMIZACIÓN CPU: Renderizar solo el icono dentro de 'horaNodo'
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [horaNodo]
+        });
+      }
     }
 
     setTimeout(() => {
@@ -2469,13 +2638,17 @@ if (btnCtxBloquear) {
   btnCtxBloquear.addEventListener("click", (e) => {
     e.stopPropagation();
 
-    const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : null;
+
+    if (!nombreAmigoActual) return;
 
     if (menuCabecera) menuCabecera.classList.add("oculto");
 
     let tarjetaAmigoNodo = null;
     document.querySelectorAll(".lista-chats .tarjeta-chat").forEach(tarjeta => {
-      if (tarjeta.querySelector(".chat-nombre").textContent === nombreAmigoActual) {
+      const elemNombreTarjeta = tarjeta.querySelector(".chat-nombre");
+      if (elemNombreTarjeta && elemNombreTarjeta.textContent.trim() === nombreAmigoActual) {
         tarjetaAmigoNodo = tarjeta;
       }
     });
@@ -2528,7 +2701,12 @@ if (btnCtxBloquear) {
       mostrarAvisoPremium(`Has desbloqueado a <b>${nombreAmigoActual}</b>. Conexión restaurada.`, "📡", "#00f2fe");
     }
 
-    if (window.lucide) window.lucide.createIcons();
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxBloquear
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btnCtxBloquear]
+      });
+    }
   });
 }
 
@@ -2638,8 +2816,9 @@ function abrirMenuContextualMova(x, y, tarjeta) {
   tarjetaChatSeleccionada = tarjeta;
   const esFijado = tarjeta.classList.contains("tarjeta-fijada");
 
-  // 📐 Referencia del contenedor principal para evitar overflow en PC y móvil
-  const marcoApp = document.querySelector(".contenedor-chat").getBoundingClientRect();
+  // 📐 Referencia del contenedor principal de forma segura
+  const elContenedor = document.querySelector(".contenedor-chat") || document.body;
+  const marcoApp = elContenedor.getBoundingClientRect();
 
   // 🧮 Coordenadas relativas dentro de la tarjeta / app
   let posX = x - marcoApp.left;
@@ -2657,6 +2836,7 @@ function abrirMenuContextualMova(x, y, tarjeta) {
   if (posY + altoMenu > marcoApp.height) {
     posY = marcoApp.height - altoMenu - 10;
   }
+  if (posY < 10) posY = 10; // 🚀 Control de seguridad para el borde superior
 
   // 📍 Posicionamiento absoluto seguro
   menuTarjetas.style.position = "absolute";
@@ -2667,7 +2847,13 @@ function abrirMenuContextualMova(x, y, tarjeta) {
 
   if (btnCtxFijar) {
     btnCtxFijar.innerHTML = `<i data-lucide="pin"></i> <span>${esFijado ? 'Desfijar chat' : 'Fijar chat arriba'}</span>`;
-    if (window.lucide) window.lucide.createIcons();
+    
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxFijar
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btnCtxFijar]
+      });
+    }
   }
 
   menuTarjetas.classList.remove("oculto");
@@ -2709,6 +2895,8 @@ if (btnCtxCerrar) {
 
 // 📌 Lógica para Fijar / Desfijar Chat
 function alternarFijarChat(tarjeta) {
+  if (!tarjeta) return;
+
   const cabecera = tarjeta.querySelector(".chat-cabecera");
   let pinIcono = tarjeta.querySelector(".indicador-pin-neon");
 
@@ -2725,7 +2913,13 @@ function alternarFijarChat(tarjeta) {
         "beforeend",
         `<span class="indicador-pin-neon"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>`
       );
-      if (window.lucide) window.lucide.createIcons();
+
+      // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el pin recién insertado dentro de cabecera
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [cabecera]
+        });
+      }
     }
   }
 }
@@ -2776,13 +2970,14 @@ async function renderizarListaContactosModal(filtro = "") {
     if (snapshotContactos.exists()) {
       const contactosUids = Object.keys(snapshotContactos.val());
 
-      // 2. Traer los datos reales de la colección 'usuarios'
-      for (const targetUid of contactosUids) {
-        const usuarioRef = ref(db, `usuarios/${targetUid}`);
-        const snapUsuario = await get(usuarioRef);
+      // 2. Traer los datos reales de la colección 'usuarios' en PARALELO (Mucho más rápido)
+      const promesasUsuarios = contactosUids.map(uid => get(ref(db, `usuarios/${uid}`)));
+      const snapshotsUsuarios = await Promise.all(promesasUsuarios);
 
+      snapshotsUsuarios.forEach((snapUsuario, index) => {
         if (snapUsuario.exists()) {
           const usuario = snapUsuario.val();
+          const targetUid = contactosUids[index];
           const nombreContacto = usuario.nombre || "Usuario";
 
           // Filtro por texto de búsqueda
@@ -2806,31 +3001,30 @@ async function renderizarListaContactosModal(filtro = "") {
               </button>
             `;
 
-            // Evento optimizado para la lista principal (PC y móviles)
-            itemContacto.addEventListener("click", (e) => {
+            // 🚀 CORREGIDO: Usamos filaHTML en lugar de itemContacto
+            filaHTML.addEventListener("click", (e) => {
               e.stopPropagation();
 
               // 1. Destacar contacto seleccionado visualmente
-              document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
-              itemContacto.classList.add("activo");
+              document.querySelectorAll(".item-contacto-fila").forEach(el => el.classList.remove("activo"));
+              filaHTML.classList.add("activo");
 
               contactoSeleccionado = usuario;
 
-              // 2. Extraer datos del usuario (soportando distintas estructuras de objeto)
-              const uidContacto = usuario.uid || usuario.id;
-              const nombreContacto = usuario.nombre || usuario.displayName || "Usuario";
-              const fotoContacto = usuario.fotoUrl || usuario.photoURL || "";
+              // 2. Extraer datos del usuario
+              const uidContacto = usuario.uid || targetUid;
+              const nomContacto = usuario.nombre || "Usuario";
+              const fotoContacto = usuario.fotoUrl || "";
 
-              // 3. Abrir chat y cargar mensajes de Firebase con los 3 parámetros correctos
+              // 3. Abrir chat privado
               if (typeof abrirChatConUsuario === "function") {
-                abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+                abrirChatConUsuario(uidContacto, nomContacto, fotoContacto);
               } else if (window.abrirChatConUsuario) {
-                window.abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+                window.abrirChatConUsuario(uidContacto, nomContacto, fotoContacto);
               }
 
-              // 4. Mostrar la pantalla de conversación en móviles
-              const panelChat = document.querySelector(".panel-chat");
-              if (panelChat) panelChat.classList.add("activo");
+              // 4. Cerrar el modal de contactos si está abierto
+              if (modalContactos) modalContactos.classList.add("oculto");
             });
 
             // 🔴 EVENTO PARA ELIMINAR CONTACTO
@@ -2849,9 +3043,14 @@ async function renderizarListaContactosModal(filtro = "") {
             contenedorListaContactos.appendChild(filaHTML);
           }
         }
-      }
+      });
 
-      if (window.lucide) window.lucide.createIcons();
+      // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de contenedorListaContactos
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [contenedorListaContactos]
+        });
+      }
     } else {
       contenedorListaContactos.innerHTML = `<p style="color:rgba(255,255,255,0.5); font-size:12px; text-align:center; padding:10px;">No tienes contactos agregados aún.</p>`;
     }
@@ -3004,10 +3203,13 @@ function inyectarContactoCompartidoBurbuja(nombre, avatar) {
   nuevaBurbujaHTML.className = "mensaje-burbuja enviado";
   nuevaBurbujaHTML.style.padding = "8px";
 
+  // Foto por defecto o la url provista
+  const avatarUrl = avatar || "https://i.pravatar.cc/150";
+
   nuevaBurbujaHTML.innerHTML = `
     <div class="tarjeta-contacto-compartido">
       <div class="cabecera-contacto-card">
-        <img src="${avatar}" alt="${nombre}" class="avatar-contacto-card">
+        <img src="${avatarUrl}" alt="${nombre}" class="avatar-contacto-card">
         <div class="info-contacto-card">
           <span class="nombre-contacto-card">${nombre}</span>
           <span class="subtexto-contacto-card">
@@ -3015,20 +3217,42 @@ function inyectarContactoCompartidoBurbuja(nombre, avatar) {
           </span>
         </div>
       </div>
-      <button class="btn-accion-contacto-card" onclick="mostrarAvisoPremium('Iniciando conversación con ${nombre}...', '💬', '#00f2fe')">
+      <button class="btn-accion-contacto-card">
         <i data-lucide="message-square" style="width:14px; height:14px;"></i> Chatear
       </button>
     </div>
     <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}</span>
   `;
 
+  // 🛡️ Asignar el evento al botón desde JS para evitar fallos de sintaxis con nombres complejos
+  const btnChatear = nuevaBurbujaHTML.querySelector(".btn-accion-contacto-card");
+  if (btnChatear) {
+    btnChatear.addEventListener("click", () => {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(`Iniciando conversación con ${nombre}...`, '💬', '#00f2fe');
+      }
+    });
+  }
+
   if (historialMensajes) {
     historialMensajes.appendChild(nuevaBurbujaHTML);
-    aplicarRelojArenaEfecto(nuevaBurbujaHTML);
-    if (window.lucide) window.lucide.createIcons();
+
+    if (typeof aplicarRelojArenaEfecto === "function") {
+      aplicarRelojArenaEfecto(nuevaBurbujaHTML);
+    }
+
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro de la nueva tarjeta de contacto
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [nuevaBurbujaHTML]
+      });
+    }
+
     historialMensajes.scrollTop = historialMensajes.scrollHeight;
 
-    mostrarAvisoPremium(`Contacto <b>${nombre}</b> compartido con éxito.`, "📇", "#00f2fe");
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(`Contacto <b>${nombre}</b> compartido con éxito.`, "📇", "#00f2fe");
+    }
   }
 }
 
@@ -3223,6 +3447,9 @@ document.addEventListener("click", (e) => {
   }, 300);
 });
 
+// Variable para controlar el temporizador activo del toast
+let toastTimeoutId = null;
+
 function mostrarToast(mensaje) {
   // Comprobar si el usuario desactivó las notificaciones
   const notifEstado = localStorage.getItem("movachat-notificaciones");
@@ -3233,11 +3460,22 @@ function mostrarToast(mensaje) {
   if (!toast) return;
 
   if (texto) texto.textContent = mensaje;
+  
   toast.classList.remove("oculto");
-  if (window.lucide) window.lucide.createIcons();
 
-  setTimeout(() => {
+  // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro del elemento Toast
+  if (window.lucide) {
+    window.lucide.createIcons({
+      targets: [toast]
+    });
+  }
+
+  // ⏱️ Reiniciar el temporizador si ya había una alerta mostrándose
+  if (toastTimeoutId) clearTimeout(toastTimeoutId);
+
+  toastTimeoutId = setTimeout(() => {
     toast.classList.add("oculto");
+    toastTimeoutId = null;
   }, 2500);
 }
 
@@ -3499,7 +3737,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   // 4. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
   if (encabezadoGlobal) encabezadoGlobal.style.display = "none";
   if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
-  
+
   const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
   if (btnFlotanteContacto) btnFlotanteContacto.style.display = "none";
 
@@ -3559,94 +3797,138 @@ function escucharMensajesChat(chatId) {
     listenerChatActivo(); // Cancela la suscripción previa
   }
 
-  // 2. Iniciar escucha limpia
-  listenerChatActivo = onValue(mensajesRef, (snapshot) => {
-    historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
-    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  // 2. Iniciar escucha limpia (Optimizada para CPU + Soporte Total de Adjuntos)
+listenerChatActivo = onValue(mensajesRef, (snapshot) => {
+  if (!historialMensajes) return;
+  historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
+  
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
-    if (snapshot.exists()) {
-      const mensajes = snapshot.val();
+  if (snapshot.exists()) {
+    const mensajes = snapshot.val();
 
-      Object.keys(mensajes).forEach((msgId) => {
-        const msg = mensajes[msgId];
+    Object.keys(mensajes).forEach((msgId) => {
+      const msg = mensajes[msgId];
 
-        // 🚀 A) Detección de emisor flexible (soporta 'emisor', 'remitente' o 'uid')
-        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
-        const esMio = idEmisorReal === miUid;
+      // 🚀 A) Detección de emisor flexible
+      const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
+      const esMio = idEmisorReal === miUid;
 
-        // 🚀 B) Formateador de hora seguro (Evita el 'undefined')
-        let horaFormateada = "00:00";
-        if (msg.hora) {
-          horaFormateada = msg.hora;
-        } else if (msg.fecha || msg.timestamp) {
-          const fechaObj = new Date(msg.fecha || msg.timestamp);
-          horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
+      // 🚀 B) Formateador de hora seguro
+      let horaFormateada = "00:00";
+      if (msg.hora) {
+        horaFormateada = msg.hora;
+      } else if (msg.fecha || msg.timestamp) {
+        const fechaObj = new Date(msg.fecha || msg.timestamp);
+        horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
 
-        let contenidoBurbuja = "";
-        let estiloEspecialBurbuja = "";
+      const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
+      let contenidoBurbuja = "";
+      let estiloEspecialBurbuja = "";
 
-        // Adjunto Imagen
-        if (msg.tipoAdjunto === 'foto') {
-          contenidoBurbuja = `
-            <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
-              <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
+      // 📸 Adjunto Imagen
+      if (msg.tipoAdjunto === 'foto') {
+        contenidoBurbuja = `
+          <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
+            <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
+          </div>
+          ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+          <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+        `;
+      }
+      // 📄 Adjunto Documento
+      else if (msg.tipoAdjunto === 'documento') {
+        contenidoBurbuja = `
+          <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+            <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
+            <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
+          </div>
+          ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+          <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+        `;
+      }
+      // 📹 Adjunto Video Circular
+      else if (msg.tipoAdjunto === 'video') {
+        estiloEspecialBurbuja = "padding: 10px;";
+        contenidoBurbuja = `
+          <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
+            <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+              <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
+            </svg>
+            <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
+              <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
             </div>
-            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${horaFormateada}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
-          `;
-        }
-        // Adjunto Documento
-        else if (msg.tipoAdjunto === 'documento') {
-          contenidoBurbuja = `
-            <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
-              <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
-              <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
+            <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
+              <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
             </div>
-            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${horaFormateada}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
-          `;
-        }
-        // Adjunto Video Circular
-        else if (msg.tipoAdjunto === 'video') {
-          estiloEspecialBurbuja = "padding: 10px;";
-          contenidoBurbuja = `
-            <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-              <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-              </svg>
-              <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-                <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+          </div>
+          ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+          <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${horaFormateada}${textoEditadoHTML}</span>
+        `;
+      }
+      // 🎙️ Adjunto Nota de Voz
+      else if (msg.tipoAdjunto === 'audio') {
+        contenidoBurbuja = `
+          <div class="reproductor-audio-burbuja">
+            <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+            <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
+              <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
+              <span class="onda-barra"></span><span class="onda-barra"></span>
+              <span class="onda-barra"></span><span class="onda-barra"></span>
+              <span class="onda-barra"></span><span class="onda-barra"></span>
+            </div>
+            <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
+            <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
+          </div>
+          <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
+        `;
+      }
+      // 📇 Adjunto Contacto Compartido
+      else if (msg.tipoAdjunto === 'contacto') {
+        contenidoBurbuja = `
+          <div class="tarjeta-contacto-compartido">
+            <div class="cabecera-contacto-card">
+              <img src="${msg.avatarContacto || 'https://i.pravatar.cc/150'}" alt="${msg.nombreContacto}" class="avatar-contacto-card">
+              <div class="info-contacto-card">
+                <span class="nombre-contacto-card">${msg.nombreContacto}</span>
+                <span class="subtexto-contacto-card">
+                  <i data-lucide="shield-check" style="width:12px; height:12px;"></i> Contacto MovaChat
+                </span>
               </div>
-              <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-              </div>
             </div>
-            ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${horaFormateada}${msg.editado ? ' (editado)' : ''}</span>
-          `;
-        }
-        // Mensaje de solo texto
-        else {
-          contenidoBurbuja = `
-            <p class="mensaje-texto">${msg.texto}</p>
-            <span class="mensaje-hora">${horaFormateada}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
-          `;
-        }
+            <button class="btn-accion-contacto-card">
+              <i data-lucide="message-square" style="width:14px; height:14px;"></i> Chatear
+            </button>
+          </div>
+          <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
+        `;
+      }
+      // 💬 Mensaje de solo texto
+      else {
+        contenidoBurbuja = `
+          <p class="mensaje-texto">${msg.texto || ''}</p>
+          <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+        `;
+      }
 
-        // Crear contenedor HTML de la burbuja
-        const burbujaHTML = document.createElement("div");
-        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
-        burbujaHTML.setAttribute("data-msg-id", msgId);
-        if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
-        burbujaHTML.innerHTML = contenidoBurbuja;
+      // Crear contenedor HTML de la burbuja
+      const burbujaHTML = document.createElement("div");
+      burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
+      burbujaHTML.setAttribute("data-msg-id", msgId);
+      if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
+      burbujaHTML.innerHTML = contenidoBurbuja;
 
-        historialMensajes.appendChild(burbujaHTML);
+      historialMensajes.appendChild(burbujaHTML);
+    });
+
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar ÚNICAMENTE los iconos dentro del área de chat
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [historialMensajes]
       });
-
-      // Refrescar iconos y scroll al final
-      if (window.lucide) window.lucide.createIcons();
-      historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
-  });
-}
+
+    historialMensajes.scrollTop = historialMensajes.scrollHeight;
+  }
+});
