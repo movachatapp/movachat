@@ -1060,16 +1060,17 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 }
 
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (CONECTADO A FIREBASE)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (CORREGIDO Y BLINDADO)
 // ========================================================
 async function enviarMensajeNuevo() {
-  const texto = inputChat.value.trim();
+  const texto = inputChat ? inputChat.value.trim() : "";
   const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
 
   if (texto === "" && !tieneAdjunto) return;
 
-  const miUid = auth.currentUser ? auth.currentUser.uid : null;
-  // Guardamos el UID del contacto con el que estamos chateando actualmente
+  // Obtener UID activo de Firebase Auth de forma segura
+  const usuarioActual = auth.currentUser;
+  const miUid = usuarioActual ? usuarioActual.uid : null;
   const contactoUid = window.contactoActivoUid;
 
   if (!miUid || !contactoUid) {
@@ -1079,7 +1080,11 @@ async function enviarMensajeNuevo() {
     return;
   }
 
-  const chatId = obtenerChatId(miUid, contactoUid);
+  // Asegurar un chatId idéntico para ambos teléfonos
+  const chatId = typeof obtenerChatId === "function" 
+    ? obtenerChatId(miUid, contactoUid) 
+    : [miUid, contactoUid].sort().join("_");
+
   const ahora = new Date();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
@@ -1097,15 +1102,15 @@ async function enviarMensajeNuevo() {
 
     window.burbujaEnEdicion = null;
     window.mensajeEnEdicionId = null;
-    inputChat.value = "";
-    actualizarIconoBotonAccion();
+    if (inputChat) inputChat.value = "";
+    if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
     return;
   }
 
-  // 🟢 CASO: NUEVO MENSAJE (PREPARAR DATOS)
+  // 🟢 CASO: NUEVO MENSAJE
   let objetoMensaje = {
-    emisor: miUid,
-    receptor: contactoUid,
+    emisor: miUid,               // Identificador único del que envía
+    receptor: contactoUid,       // Identificador único del que recibe
     texto: texto,
     hora: horaFormateada,
     timestamp: Date.now(),
@@ -1115,40 +1120,40 @@ async function enviarMensajeNuevo() {
   };
 
   if (tieneAdjunto) {
-    objetoMensaje.tipoAdjunto = tipoAdjuntoActivo;
+    objetoMensaje.tipoAdjunto = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
 
-    if (tipoAdjuntoActivo === 'foto') {
-      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto.src;
-    } else if (tipoAdjuntoActivo === 'documento') {
+    if (objetoMensaje.tipoAdjunto === 'foto') {
+      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "";
+    } else if (objetoMensaje.tipoAdjunto === 'documento') {
       objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : "Documento_Mova.pdf";
-      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto.src || "";
-    } else if (tipoAdjuntoActivo === 'video') {
-      const urlVideoCapturado = imgMiniaturaAdjunto.src && imgMiniaturaAdjunto.src.startsWith("blob:")
+      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "";
+    } else if (objetoMensaje.tipoAdjunto === 'video') {
+      const urlVideoCapturado = imgMiniaturaAdjunto && imgMiniaturaAdjunto.src && imgMiniaturaAdjunto.src.startsWith("blob:")
         ? imgMiniaturaAdjunto.src
         : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
       objetoMensaje.urlAdjunto = urlVideoCapturado;
     }
 
     // Limpiar caja de vista previa de adjuntos
-    cajaVistaPrevia.classList.add("oculto");
-    imgMiniaturaAdjunto.src = "";
+    if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
+    if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
     if (iconoPrevio) iconoPrevio.remove();
-    tipoAdjuntoActivo = null;
-    inputChat.placeholder = "Escribe un mensaje privado...";
+    if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
+    if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
   }
 
-  // 🚀 SUBIR MENSAJE A FIREBASE REALTIME DATABASE
+  // 🚀 SUBIR A FIREBASE
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
 
-    // Limpiar input
-    inputChat.value = "";
-    actualizarIconoBotonAccion();
+    // Limpiar input sin pintar burbujas manuales
+    if (inputChat) inputChat.value = "";
+    if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
   } catch (error) {
-    console.error("Error al enviar mensaje a Firebase:", error);
+    console.error("❌ Error al enviar mensaje a Firebase:", error);
     if (typeof mostrarAvisoPremium === "function") {
       mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
     }
