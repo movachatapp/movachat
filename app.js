@@ -174,9 +174,11 @@ if (authForm) {
 
 // Listener de Estado de Autenticación con Guardián de Acceso
 onAuthStateChanged(auth, async (user) => {
+  const chatPantalla = document.querySelector(".contenedor-chat") || document.body;
+
   if (user) {
     try {
-      // Consultar el perfil del usuario en Realtime Database
+      // 1. Ocultar la app inmediatamente mientras se verifica el acceso
       const snapshot = await get(ref(db, 'usuarios/' + user.uid));
       
       if (snapshot.exists()) {
@@ -184,22 +186,22 @@ onAuthStateChanged(auth, async (user) => {
         const estadoAcceso = datosUsuario.estadoAcceso || "pendiente";
 
         if (estadoAcceso === "aprobado") {
-          // ACCESO AUTORIZADO -> Oculta login y entra a MovaChat
+          // 🟢 ACCESO AUTORIZADO -> Entra a MovaChat
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
-          // 👑 LÓGICA EXCLUSIVA DEL PANEL DE ADMINISTRACIÓN
+          // Lógica de Panel Admin
           const btnAdmin = document.getElementById("btn-abrir-admin");
           const modalAdmin = document.getElementById("modal-admin");
           const btnCerrarAdmin = document.getElementById("btn-cerrar-admin");
 
           if (datosUsuario.rol === "admin") {
-            if (btnAdmin) btnAdmin.style.display = "inline-block"; // Mostrar botón solo a Admin
+            if (btnAdmin) btnAdmin.style.display = "inline-block";
             
             if (btnAdmin && modalAdmin) {
               btnAdmin.onclick = () => {
                 modalAdmin.style.display = "flex";
-                cargarUsuariosPendientes(); // Carga las solicitudes en vivo
+                cargarUsuariosPendientes();
               };
             }
 
@@ -209,39 +211,36 @@ onAuthStateChanged(auth, async (user) => {
               };
             }
           } else {
-            // Si no es admin, aseguramos que el botón permanezca oculto
             if (btnAdmin) btnAdmin.style.display = "none";
           }
 
-        } else if (estadoAcceso === "pendiente") {
-          // 🔴 CUENTA EN REVISIÓN -> EXPULSAR DE INMEDIATO
+        } else {
+          // 🔴 SI NO ESTÁ APROBADO ("pendiente" o "baneado") -> EXPULSAR
           await signOut(auth);
           if (authPantalla) authPantalla.style.display = "flex";
-          
+
+          const mensaje = estadoAcceso === "baneado" 
+            ? "⛔ Tu cuenta ha sido suspendida."
+            : "⏳ Tu cuenta está en revisión por el Administrador. Intenta ingresar cuando seas aprobado.";
+
           if (typeof mostrarAvisoPremium === "function") {
-            mostrarAvisoPremium(
-              "⏳ Tu cuenta aún está en revisión por el Administrador.", 
-              "🔒", 
-              "#ffb703"
-            );
+            mostrarAvisoPremium(mensaje, "🔒", "#ffb703");
           } else {
-            alert("⏳ Tu cuenta aún está en revisión por el Administrador.");
+            alert(mensaje);
           }
-          
-        } else if (estadoAcceso === "baneado") {
-          // CUENTA SUSPENDIDA -> EXPULSAR
-          await signOut(auth);
-          if (authPantalla) authPantalla.style.display = "flex";
-          alert("⛔ Tu cuenta ha sido suspendida.");
         }
       } else {
-        console.warn("⚠️ No se encontraron datos para este usuario en /usuarios");
+        // Si por alguna razón el registro no se guardó a tiempo en /usuarios, expulsar por seguridad
+        await signOut(auth);
+        if (authPantalla) authPantalla.style.display = "flex";
       }
     } catch (error) {
-      console.error("❌ Error al verificar estado de acceso:", error);
+      console.error("❌ Error al verificar acceso:", error);
+      await signOut(auth);
+      if (authPantalla) authPantalla.style.display = "flex";
     }
   } else {
-    // Usuario no logueado: Mostrar pantalla de Auth
+    // Usuario no autenticado -> Mostrar login
     if (authPantalla) authPantalla.style.display = "flex";
   }
 });
