@@ -3324,7 +3324,7 @@ let contactoSeleccionado = null;
 
 // Función para cargar los contactos aprobados en tiempo real
 function cargarContactosAprobados(usuarioActualUid) {
-  const contenedorContactos = document.getElementById("lista-contactos"); // Asegúrate que coincida con el ID de tu HTML
+  const contenedorContactos = document.getElementById("contenedor-lista-contactos"); // Asegúrate que coincida con el ID de tu HTML
   if (!contenedorContactos) return;
 
   const usuariosRef = ref(db, 'usuarios');
