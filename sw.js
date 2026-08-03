@@ -1,5 +1,5 @@
 // Nombre de la versión del caché
-const CACHE_NAME = 'movachat-v0.1';
+const CACHE_NAME = 'movachat-v0.2';
 
 // Archivos básicos para guardar en caché y cargar súper rápido
 const ASSETS_TO_CACHE = [
