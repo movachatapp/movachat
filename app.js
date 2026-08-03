@@ -59,6 +59,38 @@ document.addEventListener("click", (e) => {
   }
 });
 
+// --- MOSTRAR / OCULTAR CONTRASEÑA ---
+document.addEventListener("click", (e) => {
+  // Encuentra el botón sin importar si se hizo clic en el SVG o en sus rutas internas
+  const btn = e.target.closest("#btn-toggle-password");
+  if (!btn) return;
+
+  e.preventDefault();
+  const inputPass = document.getElementById("auth-password");
+  if (!inputPass) return;
+
+  // 1. Alternar tipo de input entre password y text
+  const esPassword = inputPass.type === "password";
+  inputPass.type = esPassword ? "text" : "password";
+
+  // 2. Buscar el elemento del icono (sea <i> o <svg> que genera Lucide)
+  const icono = btn.querySelector("[data-lucide]") || btn.querySelector("svg");
+  
+  if (icono) {
+    const nuevoIcono = esPassword ? "eye-off" : "eye";
+    
+    // Si ya se convirtió en SVG, actualizamos la propiedad interna de Lucide y data-lucide
+    icono.setAttribute("data-lucide", nuevoIcono);
+
+    // Si Lucide está activo, reconstruimos los iconos del botón
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btn] // Re-renderiza únicamente el botón del ojito
+      });
+    }
+  }
+});
+
 // Enviar Formulario (Login / Registro)
 if (authForm) {
   authForm.addEventListener("submit", async (e) => {
@@ -77,19 +109,22 @@ if (authForm) {
         const userCredential = await createUserWithEmailAndPassword(auth, correo, password);
         const user = userCredential.user;
 
-        // 2. Guardar nombre de usuario en el perfil de Auth
+        // 2. Guardar nombre en el perfil de Auth
         await updateProfile(user, { displayName: nombre });
 
-        // 3. Guardar datos en la base de datos (Realtime Database)
+        // 3. Guardar datos iniciales en Realtime Database con APROBACIÓN PENDIENTE
         await set(ref(db, 'usuarios/' + user.uid), {
           uid: user.uid,
           nombre: nombre,
           correo: correo,
-          estado: "🚀 Conectado con MovaChat",
-          fotoUrl: ""
+          estado: "🚀 Nuevo en MovaChat",
+          fotoUrl: "",
+          rol: "usuario",              // "usuario" o "admin"
+          estadoAcceso: "pendiente",   // "pendiente", "aprobado" o "baneado"
+          fechaRegistro: Date.now()
         });
 
-        console.log("✅ Usuario registrado exitosamente");
+        console.log("✅ Usuario registrado exitosamente (Pendiente de aprobación)");
       } else {
         // Iniciar sesión
         await signInWithEmailAndPassword(auth, correo, password);
@@ -105,15 +140,73 @@ if (authForm) {
   });
 }
 
-// Listener de Estado de Autenticación
-onAuthStateChanged(auth, (user) => {
+// Listener de Estado de Autenticación con Guardián de Acceso
+onAuthStateChanged(auth, async (user) => {
   if (user) {
-    // Usuario logueado: Ocultar la pantalla de Auth
-    if (authPantalla) authPantalla.style.display = "none";
-    console.log("Usuario activo:", user.displayName || user.email);
+    try {
+      // Consultar el perfil del usuario en Realtime Database
+      const snapshot = await get(ref(db, 'usuarios/' + user.uid));
+      
+      if (snapshot.exists()) {
+        const datosUsuario = snapshot.val();
+        const estadoAcceso = datosUsuario.estadoAcceso || "pendiente";
+
+        if (estadoAcceso === "aprobado") {
+          // ACCESO AUTORIZADO -> Oculta login y entra a MovaChat
+          if (authPantalla) authPantalla.style.display = "none";
+          console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
+
+        } else if (estadoAcceso === "pendiente") {
+          // CUENTA EN REVISIÓN -> Oculta login para que no vuelva a intentar entrar
+          if (authPantalla) authPantalla.style.display = "none";
+          
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium(
+              "⏳ Tu cuenta está en revisión por el Administrador. Te avisaremos cuando seas aprobado.", 
+              "🔒", 
+              "#ffb703"
+            );
+          } else {
+            alert("⏳ Tu cuenta está en revisión por el Administrador.");
+          }
+          
+        } else if (estadoAcceso === "baneado") {
+          // CUENTA SUSPENDIDA
+          alert("⛔ Tu cuenta ha sido suspendida.");
+          await signOut(auth);
+        }
+      } else {
+        console.warn("⚠️ No se encontraron datos para este usuario en /usuarios");
+      }
+    } catch (error) {
+      console.error("❌ Error al verificar estado de acceso:", error);
+    }
   } else {
     // Usuario no logueado: Mostrar pantalla de Auth
     if (authPantalla) authPantalla.style.display = "flex";
+  }
+});
+
+// --- MOSTRAR / OCULTAR CONTRASEÑA ---
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("#btn-toggle-password");
+  if (!btn) return;
+
+  e.preventDefault();
+  const inputPass = document.getElementById("auth-password");
+  if (!inputPass) return;
+
+  // Alternar entre password y text
+  const esPassword = inputPass.type === "password";
+  inputPass.type = esPassword ? "text" : "password";
+
+  // Cambiar el icono en Lucide
+  const icono = btn.querySelector("[data-lucide]");
+  if (icono) {
+    icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
+    if (window.lucide) {
+      window.lucide.createIcons();
+    }
   }
 });
 
@@ -1334,18 +1427,100 @@ if (btnPerfilMenu) {
   });
 }
 
-const btnAjustesGlobales = document.getElementById("btn-ajustes-globales");
-if (btnAjustesGlobales && btnPerfilMenu) {
-  btnAjustesGlobales.addEventListener("click", () => {
-    const iconoEngranaje = btnAjustesGlobales.querySelector("svg");
-    if (iconoEngranaje) {
-      iconoEngranaje.style.transform = "rotate(90deg)";
-      setTimeout(() => { iconoEngranaje.style.transform = "rotate(0deg)"; }, 300);
+// --- MENÚ DINÁMICO DE 3 PUNTOS PARA LA CABECERA ---
+const btnOpcionesCabecera = document.getElementById("btn-opciones-cabecera");
+const menuCabeceraFlotante = document.getElementById("menu-desplegable-cabecera");
+const listaOpcionesCabecera = document.getElementById("lista-opciones-cabecera");
+
+if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
+  btnOpcionesCabecera.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    const estaOculto = menuCabeceraFlotante.classList.contains("oculto");
+
+    if (estaOculto) {
+      // Detección directa de si el perfil está visible
+      const estaEnPerfil = pantallaPerfil && (pantallaPerfil.style.display === "flex" || pantallaPerfil.classList.contains("activa"));
+
+      // Inyección dinámica de las opciones
+      if (estaEnPerfil) {
+        listaOpcionesCabecera.innerHTML = `
+          <li id="opcion-cambiar-password"><i data-lucide="key"></i> Cambiar Contraseña</li>
+          <li id="opcion-cerrar-sesion" class="opcion-peligro"><i data-lucide="log-out"></i> Cerrar Sesión</li>
+        `;
+      } else {
+        listaOpcionesCabecera.innerHTML = `
+          <li id="opcion-mi-perfil"><i data-lucide="user"></i> Mi Perfil</li>
+        `;
+      }
+
+      if (window.lucide) window.lucide.createIcons();
+      asignarEventosMenuCabecera();
+
+      menuCabeceraFlotante.classList.remove("oculto");
+    } else {
+      menuCabeceraFlotante.classList.add("oculto");
     }
-    btnPerfilMenu.click();
-    mostrarAvisoPremium("Cargando tus Ajustes de Inmersión... 🌌", "⚙️", "#00f2fe");
   });
 }
+
+function asignarEventosMenuCabecera() {
+  // --- 1. OPCIÓN: MI PERFIL ---
+  const opcionMiPerfil = document.getElementById("opcion-mi-perfil");
+  if (opcionMiPerfil) {
+    opcionMiPerfil.addEventListener("click", () => {
+      menuCabeceraFlotante.classList.add("oculto");
+      if (btnPerfilMenu) btnPerfilMenu.click();
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Abriendo tu Perfil... 👤", "✨", "#00f2fe");
+      }
+    });
+  }
+
+  // --- 2. OPCIÓN: CAMBIAR CONTRASEÑA (Envía correo de recuperación) ---
+  const opcionCambiarPassword = document.getElementById("opcion-cambiar-password");
+  if (opcionCambiarPassword) {
+    opcionCambiarPassword.addEventListener("click", async () => {
+      menuCabeceraFlotante.classList.add("oculto");
+      
+      const usuarioActual = auth.currentUser;
+      if (usuarioActual && usuarioActual.email) {
+        try {
+          // Importar dinámicamente o usar sendPasswordResetEmail de Firebase
+          const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+          await sendPasswordResetEmail(auth, usuarioActual.email);
+          
+          mostrarAvisoPremium(`Enlace enviado a <b>${usuarioActual.email}</b> 🔑`, "✉️", "#00f2fe");
+        } catch (error) {
+          console.error("Error al enviar correo:", error);
+          mostrarAvisoPremium("No se pudo enviar el correo de cambio ⚠️", "❌", "#ff4b2b");
+        }
+      }
+    });
+  }
+
+  // --- 3. OPCIÓN: CERRAR SESIÓN (Desconexión Real) ---
+  const opcionCerrarSesion = document.getElementById("opcion-cerrar-sesion");
+  if (opcionCerrarSesion) {
+    opcionCerrarSesion.addEventListener("click", async () => {
+      menuCabeceraFlotante.classList.add("oculto");
+      try {
+        const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        await signOut(auth); // Cierra sesión en Firebase
+        
+        mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
+        // El listener onAuthStateChanged que ya tienes mostrará pantalla-auth automáticamente
+      } catch (error) {
+        console.error("Error al cerrar sesión:", error);
+      }
+    });
+  }
+}
+
+// Cierre automático al tocar fuera
+document.addEventListener("click", () => {
+  if (menuCabeceraFlotante) menuCabeceraFlotante.classList.add("oculto");
+});
 
 if (btnVolver) {
   btnVolver.addEventListener("click", () => {
@@ -2942,5 +3117,49 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
       .then((reg) => console.log('✅ PWA Service Worker registrado con éxito:', reg.scope))
       .catch((err) => console.warn('❌ Error al registrar Service Worker:', err));
+  });
+}
+
+// Función global para alternar visibilidad de contraseña
+window.togglePasswordVisibility = function() {
+  const inputPass = document.getElementById("auth-password");
+  const iconoOjito = document.getElementById("icono-ojito");
+
+  if (inputPass) {
+    const esPassword = inputPass.type === "password";
+    inputPass.type = esPassword ? "text" : "password";
+
+    if (iconoOjito) {
+      iconoOjito.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    }
+  }
+};
+
+// --- 2. OPCIÓN: CAMBIAR CONTRASEÑA (Envío de correo real) ---
+const opcionCambiarPassword = document.getElementById("opcion-cambiar-password");
+if (opcionCambiarPassword) {
+  opcionCambiarPassword.addEventListener("click", async () => {
+    menuCabeceraFlotante.classList.add("oculto");
+    
+    const usuarioActual = auth.currentUser;
+
+    if (usuarioActual && usuarioActual.email) {
+      try {
+        const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        
+        await sendPasswordResetEmail(auth, usuarioActual.email);
+        
+        // Notificación explícita para que revise su correo
+        mostrarAvisoPremium(`Te enviamos un enlace de cambio a <b>${usuarioActual.email}</b>. Revisa tu correo 🔑`, "✉️", "#00f2fe");
+      } catch (error) {
+        console.error("❌ Error al solicitar cambio de clave:", error);
+        mostrarAvisoPremium("No se pudo enviar el correo de recuperación ⚠️", "❌", "#ff4b2b");
+      }
+    } else {
+      mostrarAvisoPremium("No se detectó un correo asociado activo ⚠️", "❌", "#ff4b2b");
+    }
   });
 }

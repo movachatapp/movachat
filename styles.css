@@ -182,9 +182,11 @@ body {
   transform: scale(1.1);
 }
 
-.icono-btn svg {
+.icono-btn svg,
+.icono-btn i {
   width: 22px;
   height: 22px;
+  transition: transform 0.3s ease; /* Permite la rotación suave del piñón */
 }
 
 /* --- FASE 2.1: MENÚ FLOTANTE INFERIOR --- */
@@ -2765,16 +2767,20 @@ body {
   margin-bottom: 25px;
 }
 
+/* --- CAMPOS DE ENTRADA (INPUTS) --- */
+
 /* Contenedor de cada Input + Icono */
 .input-grupo {
   position: relative;
-  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
   width: 100%;
+  margin-bottom: 16px; /* Separación vertical entre cajitas para que no se peguen */
 }
 
-/* Alineación exacta para Iconos SVG / Lucide */
-.input-grupo i,
-.input-grupo svg {
+/* Alineación de los iconos izquierdos (candado, sobre, usuario) */
+.input-grupo > i[data-lucide],
+.input-grupo > svg[data-lucide] {
   position: absolute;
   left: 14px;
   top: 50%;
@@ -2782,12 +2788,14 @@ body {
   color: #a0aec0;
   width: 18px;
   height: 18px;
-  pointer-events: none; /* Hace que el clic traspase directamente al input */
+  pointer-events: none; /* Evita bloquear la escritura */
+  z-index: 2;
 }
 
+/* El input dentro del grupo */
 .input-grupo input {
   width: 100%;
-  padding: 12px 12px 12px 42px; /* Margen interno izquierdo para no tapar el icono */
+  padding: 12px 42px 12px 42px; /* Margen a izq (icono) y der (ojito) */
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
@@ -2803,6 +2811,38 @@ body {
   box-shadow: 0 0 10px rgba(0, 242, 254, 0.3);
 }
 
+/* --- BOTÓN DEL OJITO (CONTRASEÑA) --- */
+.btn-eye {
+  position: absolute;
+  right: 12px; /* Alineado a la derecha DENTRO del recuadro */
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #a0aec0;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10; /* Prioridad de clic sobre el input */
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.btn-eye:hover {
+  color: #00f2fe;
+  transform: translateY(-50%) scale(1.1);
+}
+
+/* Ajuste del SVG interno del ojo (permite clic en todo el botón) */
+.btn-eye svg, 
+.btn-eye i {
+  width: 18px;
+  height: 18px;
+  pointer-events: none; 
+}
+
+/* --- BOTÓN PRINCIPAL Y FOOTER --- */
 .btn-principal {
   width: 100%;
   padding: 14px;
@@ -2831,4 +2871,65 @@ body {
   color: #00f2fe;
   text-decoration: none;
   font-weight: bold;
+}
+
+/* 1. ASEGURA QUE EL CONTENEDOR TENGAN POSICIÓN RELATIVA */
+.grupo-iconos {
+  position: relative;
+}
+
+/* 2. MENÚ DESPLEGABLE FLOTANTE (GLASSMORPHISM) */
+#menu-desplegable-cabecera {
+  position: absolute !important;
+  top: calc(100% + 10px) !important; /* Se ubica justo debajo del encabezado */
+  right: 0 !important;               /* Alineado a la derecha */
+  min-width: 190px !important;
+  background: rgba(15, 20, 35, 0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 16px !important;
+  padding: 6px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.1) !important;
+  z-index: 99999 !important;        /* Asegura que quede por encima del contenido */
+}
+
+/* Estilos de la lista dentro del desplegable */
+#lista-opciones-cabecera {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#lista-opciones-cabecera li {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 14px !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  border-radius: 10px !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease, color 0.15s ease !important;
+}
+
+#lista-opciones-cabecera li:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #00f2fe !important;
+}
+
+#lista-opciones-cabecera li.opcion-peligro {
+  color: rgba(255, 75, 43, 0.9) !important;
+}
+
+#lista-opciones-cabecera li.opcion-peligro:hover {
+  background: rgba(255, 75, 43, 0.15) !important;
+  color: #ff4b2b !important;
+}
+
+#lista-opciones-cabecera li svg,
+#lista-opciones-cabecera li i {
+  width: 16px !important;
+  height: 16px !important;
 }

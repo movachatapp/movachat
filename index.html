@@ -42,6 +42,9 @@
         <div class="input-grupo">
           <i data-lucide="lock"></i>
           <input type="password" id="auth-password" placeholder="Contraseña (mínimo 6 caracteres)" required />
+          <button type="button" class="btn-eye" aria-label="Mostrar contraseña" onclick="togglePasswordVisibility()">
+            <i data-lucide="eye" id="icono-ojito"></i>
+          </button>
         </div>
 
         <!-- Botón Principal -->
@@ -69,7 +72,7 @@
     <!-- Encabezado Superior -->
     <header class="encabezado-inicio">
       <h1 class="logo-movachat">MovaChat</h1>
-      <div class="grupo-iconos">
+      <div class="grupo-iconos" style="position: relative;">
         <button class="icono-btn" id="btn-buscador-encabezado" aria-label="Buscar">
           <i data-lucide="search"></i>
         </button>
@@ -78,9 +81,16 @@
           <span id="badge-campanita" class="oculto"
             style="position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #ff4b2b; border-radius: 50%; box-shadow: 0 0 8px #ff4b2b;"></span>
         </button>
-        <button class="icono-btn" id="btn-ajustes-globales" aria-label="Ir a Ajustes">
-          <i data-lucide="settings"></i>
+
+        <!-- 3 PUNTOS DE LA CABECERA -->
+        <button class="icono-btn" id="btn-opciones-cabecera" aria-label="Opciones">
+          <i data-lucide="more-vertical"></i>
         </button>
+
+        <!-- MENÚ FLOTANTE UNIFICADO -->
+        <div id="menu-desplegable-cabecera" class="menu-desplegable oculto">
+          <ul id="lista-opciones-cabecera"></ul>
+        </div>
       </div>
     </header>
 
@@ -618,7 +628,7 @@
 
   <script type="module" src="app.js"></script>
   <script>lucide.createIcons();</script>
-  
+
 </body>
 
 </html>
