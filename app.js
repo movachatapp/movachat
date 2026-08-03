@@ -3505,62 +3505,28 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   }
 }
 
-// Función para enviar un mensaje al contacto activo
-async function enviarMensaje() {
-  const inputMensaje = document.getElementById("input-chat-privado");
-  if (!inputMensaje) return;
-
-  const texto = inputMensaje.value.trim();
-  const usuarioActual = auth.currentUser;
-
-  // Validar que haya texto, usuario logueado y contacto seleccionado
-  if (!texto || !usuarioActual || !contactoSeleccionado) return;
-
-  const chatId = obtenerChatId(usuarioActual.uid, contactoSeleccionado.uid);
-  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
-
-  try {
-    const nuevoMensajeRef = push(mensajesRef);
-
-    await set(nuevoMensajeRef, {
-      emisorUid: usuarioActual.uid,
-      receptorUid: contactoSeleccionado.uid,
-      texto: texto,
-      fecha: Date.now(),
-      leido: false
-    });
-
-    // Limpiar input
-    inputMensaje.value = "";
-    inputMensaje.focus();
-
-  } catch (error) {
-    console.error("❌ Error al enviar mensaje:", error);
-  }
-}
-
-// 📌 ESCUCHAR EVENTOS (Click en el botón y tecla Enter en el teclado móvil/PC)
+// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES
 const inputChatPrivado = document.getElementById("input-chat-privado");
 
 if (btnAccionChat) {
-  btnAccionChat.addEventListener("click", (e) => {
-    e.preventDefault(); // Impide recargas accidentales en móviles
-    if (typeof enviarMensaje === "function") {
-      enviarMensaje();
+  btnAccionChat.onclick = (e) => {
+    e.preventDefault();
+    const tieneTexto = inputChatPrivado && inputChatPrivado.value.trim().length > 0;
+    const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
+
+    if (tieneTexto || tieneAdjunto) {
+      enviarMensajeNuevo();
     }
-  });
+  };
 }
 
 if (inputChatPrivado) {
-  // 'keydown' es compatible con todos los teclados virtuales de Android y iOS
-  inputChatPrivado.addEventListener("keydown", (e) => {
+  inputChatPrivado.onkeydown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault(); // Evita el salto de línea y el envío doble
-      if (typeof enviarMensaje === "function") {
-        enviarMensaje();
-      }
+      e.preventDefault();
+      enviarMensajeNuevo();
     }
-  });
+  };
 }
 
 // Variable global para controlar el listener activo y no acumular duplicados
@@ -3589,7 +3555,7 @@ function escucharMensajesChat(chatId) {
         const msg = mensajes[msgId];
 
         // 🚀 A) Detección de emisor flexible (soporta 'emisor', 'remitente' o 'uid')
-        const idEmisorReal = msg.emisor || msg.remitente || msg.remitenteId || msg.uid;
+        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
         const esMio = idEmisorReal === miUid;
 
         // 🚀 B) Formateador de hora seguro (Evita el 'undefined')
