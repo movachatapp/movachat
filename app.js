@@ -3399,7 +3399,7 @@ function cargarContactosAprobados(usuarioActualUid) {
               </div>
             `;
 
-            // Evento optimizado para PC y móviles
+            // Evento de clic en tarjeta de chat (Corregido)
             itemContacto.addEventListener("click", (e) => {
               e.stopPropagation();
 
@@ -3409,16 +3409,17 @@ function cargarContactosAprobados(usuarioActualUid) {
 
               contactoSeleccionado = usuario;
 
-              // 2. Abrir chat y cargar mensajes de Firebase
-              if (typeof abrirChatConUsuario === "function") {
-                abrirChatConUsuario(usuario);
-              } else if (window.abrirChatConUsuario) {
-                window.abrirChatConUsuario(usuario);
-              }
+              // 2. Extraer los datos limpios del usuario
+              const uidContacto = usuario.uid || usuario.id;
+              const nombreContacto = usuario.nombre || usuario.displayName || "Usuario";
+              const fotoContacto = usuario.fotoUrl || usuario.photoURL || "";
 
-              // 3. 🚀 ¡CRUCIAL PARA MÓVILES! Mostrar la pantalla de la conversación
-              const panelChat = document.querySelector(".panel-chat");
-              if (panelChat) panelChat.classList.add("activo");
+              // 3. Abrir chat pasando los 3 parámetros correctos
+              if (typeof abrirChatConUsuario === "function") {
+                abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+              } else if (window.abrirChatConUsuario) {
+                window.abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+              }
             });
 
             contenedorContactos.appendChild(itemContacto);
@@ -3433,17 +3434,22 @@ function cargarContactosAprobados(usuarioActualUid) {
 
 // 🟢 Función unificada para abrir la ventana de chat y conectar Firebase
 function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
-  // Manejo flexible de parámetros (por si le pasas un objeto 'usuario' o variables sueltas)
   let uidTarget, nombreTarget, fotoTarget;
 
+  // Manejo flexible por si se pasa un objeto o variables sueltas
   if (typeof contactoUid === 'object' && contactoUid !== null) {
-    uidTarget = contactoUid.uid;
-    nombreTarget = contactoUid.nombre || "Usuario";
-    fotoTarget = contactoUid.fotoUrl || "";
+    uidTarget = contactoUid.uid || contactoUid.id;
+    nombreTarget = contactoUid.nombre || contactoUid.displayName || "Usuario";
+    fotoTarget = contactoUid.fotoUrl || contactoUid.photoURL || "";
   } else {
     uidTarget = contactoUid;
     nombreTarget = nombreContacto || "Usuario";
     fotoTarget = fotoContacto || "";
+  }
+
+  if (!uidTarget) {
+    console.error("❌ No se pudo abrir el chat: UID de contacto no válido.");
+    return;
   }
 
   // Guardar el UID activo globalmente
@@ -3464,9 +3470,16 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
+  // 2. 🚀 FORZAR DESPLIEGUE DEL PANEL DE CHAT (Para PC y Móviles)
+  const panelChat = document.querySelector(".panel-chat") || document.querySelector(".contenedor-chat") || document.querySelector(".chat-area");
+  if (panelChat) {
+    panelChat.classList.add("activo");
+    panelChat.style.display = "flex";
+  }
+
   console.log("💬 Chat abierto con:", nombreTarget);
 
-  // 2. Conectar sala única en Firebase Realtime Database
+  // 3. Conectar sala única en Firebase Realtime Database
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
   if (miUid && uidTarget) {
     const chatId = obtenerChatId(miUid, uidTarget);
