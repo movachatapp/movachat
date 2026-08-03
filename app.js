@@ -3432,60 +3432,53 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// 🟢 Función unificada para abrir la ventana de chat y conectar Firebase
+// 🟢 Función unificada adaptada a tus selectores
 function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   let uidTarget, nombreTarget, fotoTarget;
 
-  // Manejo flexible por si se pasa un objeto o variables sueltas
   if (typeof contactoUid === 'object' && contactoUid !== null) {
     uidTarget = contactoUid.uid || contactoUid.id;
-    nombreTarget = contactoUid.nombre || contactoUid.displayName || "Usuario";
+    nombreTarget = contactoUid.nombre || contactoUid.displayName || "Contacto";
     fotoTarget = contactoUid.fotoUrl || contactoUid.photoURL || "";
   } else {
     uidTarget = contactoUid;
-    nombreTarget = nombreContacto || "Usuario";
+    nombreTarget = nombreContacto || "Contacto";
     fotoTarget = fotoContacto || "";
   }
 
-  if (!uidTarget) {
-    console.error("❌ No se pudo abrir el chat: UID de contacto no válido.");
-    return;
-  }
+  if (!uidTarget) return;
 
-  // Guardar el UID activo globalmente
   window.contactoActivoUid = uidTarget;
 
-  // 1. Actualizar la cabecera/chat activo en pantalla
-  const nombreChatActivo = document.getElementById("nombre-chat-activo") || document.querySelector(".amigo-nombre-chat");
-  const fotoChatActivo = document.getElementById("foto-chat-activo") || document.querySelector(".amigo-avatar-chat");
+  // 1. Actualizar datos en la cabecera del chat privado
+  const elemNombre = document.querySelector(".amigo-nombre-chat");
+  const elemFoto = document.getElementById("avatar-cabecera-privada");
 
-  if (nombreChatActivo) nombreChatActivo.textContent = nombreTarget;
+  if (elemNombre) elemNombre.textContent = nombreTarget;
+  if (elemFoto && fotoTarget) elemFoto.src = fotoTarget;
 
-  if (fotoChatActivo) {
-    if (fotoTarget) {
-      fotoChatActivo.src = fotoTarget;
-      fotoChatActivo.style.display = "block";
+  // 2. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
+  if (encabezadoGlobal) encabezadoGlobal.style.display = "none";
+  if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
+  
+  const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
+  if (btnFlotanteContacto) btnFlotanteContacto.style.display = "none";
+
+  if (pantallaChatPrivado) {
+    pantallaChatPrivado.classList.add("pantalla-completa");
+    if (typeof switchPantalla === "function") {
+      switchPantalla(pantallaChatPrivado, pantallaChats, pantallaBienvenida, pantallaPerfil);
     } else {
-      fotoChatActivo.style.display = "none";
+      if (pantallaChats) pantallaChats.style.display = "none";
+      pantallaChatPrivado.style.display = "flex";
     }
   }
 
-  // 2. 🚀 FORZAR DESPLIEGUE DEL PANEL DE CHAT (Para PC y Móviles)
-  const panelChat = document.querySelector(".panel-chat") || document.querySelector(".contenedor-chat") || document.querySelector(".chat-area");
-  if (panelChat) {
-    panelChat.classList.add("activo");
-    panelChat.style.display = "flex";
-  }
-
-  console.log("💬 Chat abierto con:", nombreTarget);
-
-  // 3. Conectar sala única en Firebase Realtime Database
+  // 3. Conectar Firebase
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
-  if (miUid && uidTarget) {
+  if (miUid && uidTarget && typeof escucharMensajesChat === "function") {
     const chatId = obtenerChatId(miUid, uidTarget);
-    if (typeof escucharMensajesChat === "function") {
-      escucharMensajesChat(chatId);
-    }
+    escucharMensajesChat(chatId);
   }
 }
 
