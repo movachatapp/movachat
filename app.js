@@ -3432,7 +3432,7 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// 🟢 Función unificada adaptada a tus selectores
+// 🟢 Función unificada adaptada a tus selectores y limpia de duplicados
 function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   let uidTarget, nombreTarget, fotoTarget;
 
@@ -3450,14 +3450,31 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
 
   window.contactoActivoUid = uidTarget;
 
-  // 1. Actualizar datos en la cabecera del chat privado
+  // 1. Limpiar pantalla de mensajes previa para evitar "parpadeo" de la conversación anterior
+  if (historialMensajes) {
+    historialMensajes.innerHTML = "";
+  }
+
+  // 2. Actualizar datos en la cabecera del chat privado
   const elemNombre = document.querySelector(".amigo-nombre-chat");
   const elemFoto = document.getElementById("avatar-cabecera-privada");
 
   if (elemNombre) elemNombre.textContent = nombreTarget;
-  if (elemFoto && fotoTarget) elemFoto.src = fotoTarget;
+  if (elemFoto) {
+    if (fotoTarget) {
+      elemFoto.src = fotoTarget;
+      elemFoto.style.display = "block";
+    } else {
+      // Avatar genérico por defecto si no tiene foto
+      elemFoto.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(nombreTarget)}`;
+    }
+  }
 
-  // 2. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
+  // 3. Ocultar menús flotantes abiertos
+  const menuTarjetas = document.getElementById("menu-tarjetas-chat");
+  if (menuTarjetas) menuTarjetas.classList.add("oculto");
+
+  // 4. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
   if (encabezadoGlobal) encabezadoGlobal.style.display = "none";
   if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
   
@@ -3474,7 +3491,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // 3. Conectar Firebase
+  // 5. Conectar Firebase de forma limpia
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
   if (miUid && uidTarget && typeof escucharMensajesChat === "function") {
     const chatId = obtenerChatId(miUid, uidTarget);
@@ -3540,15 +3557,23 @@ if (inputChatPrivado) {
   });
 }
 
-// 📌 Escuchar mensajes en tiempo real desde Firebase
+// Variable global para controlar el listener activo y no acumular duplicados
+let listenerChatActivo = null;
+
+// 📌 Escuchar mensajes en tiempo real desde Firebase (Versión Definitiva)
 function escucharMensajesChat(chatId) {
   if (!historialMensajes) return;
 
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
 
-  // Escuchar cambios en la base de datos de Firebase
-  onValue(mensajesRef, (snapshot) => {
-    historialMensajes.innerHTML = ""; // Limpiar lista antes de redibujar
+  // 1. Apagar listener anterior si existía para evitar duplicación de mensajes
+  if (listenerChatActivo) {
+    listenerChatActivo(); // Cancela la suscripción previa
+  }
+
+  // 2. Iniciar escucha limpia
+  listenerChatActivo = onValue(mensajesRef, (snapshot) => {
+    historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
     if (snapshot.exists()) {
@@ -3556,7 +3581,19 @@ function escucharMensajesChat(chatId) {
 
       Object.keys(mensajes).forEach((msgId) => {
         const msg = mensajes[msgId];
-        const esMio = msg.emisor === miUid;
+
+        // 🚀 A) Detección de emisor flexible (soporta 'emisor', 'remitente' o 'uid')
+        const idEmisorReal = msg.emisor || msg.remitente || msg.remitenteId || msg.uid;
+        const esMio = idEmisorReal === miUid;
+
+        // 🚀 B) Formateador de hora seguro (Evita el 'undefined')
+        let horaFormateada = "00:00";
+        if (msg.hora) {
+          horaFormateada = msg.hora;
+        } else if (msg.fecha || msg.timestamp) {
+          const fechaObj = new Date(msg.fecha || msg.timestamp);
+          horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
 
         let contenidoBurbuja = "";
         let estiloEspecialBurbuja = "";
@@ -3568,7 +3605,7 @@ function escucharMensajesChat(chatId) {
               <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
             </div>
             ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${msg.hora}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
+            <span class="mensaje-hora">${horaFormateada}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
           `;
         }
         // Adjunto Documento
@@ -3579,7 +3616,7 @@ function escucharMensajesChat(chatId) {
               <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
             </div>
             ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${msg.hora}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
+            <span class="mensaje-hora">${horaFormateada}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
           `;
         }
         // Adjunto Video Circular
@@ -3598,14 +3635,14 @@ function escucharMensajesChat(chatId) {
               </div>
             </div>
             ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${msg.hora}${msg.editado ? ' (editado)' : ''}</span>
+            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${horaFormateada}${msg.editado ? ' (editado)' : ''}</span>
           `;
         }
         // Mensaje de solo texto
         else {
           contenidoBurbuja = `
             <p class="mensaje-texto">${msg.texto}</p>
-            <span class="mensaje-hora">${msg.hora}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
+            <span class="mensaje-hora">${horaFormateada}${msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : ''}</span>
           `;
         }
 
@@ -3619,7 +3656,7 @@ function escucharMensajesChat(chatId) {
         historialMensajes.appendChild(burbujaHTML);
       });
 
-      // Refrescar iconos y hacer scroll hacia el último mensaje
+      // Refrescar iconos y scroll al final
       if (window.lucide) window.lucide.createIcons();
       historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
