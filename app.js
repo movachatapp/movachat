@@ -7,7 +7,7 @@ import {
   onAuthStateChanged,
   updateProfile 
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, get, child, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
@@ -132,7 +132,28 @@ if (authForm) {
       }
     } catch (error) {
       console.error("❌ Error de autenticación:", error);
-      alert("Error: " + error.message);
+
+      // Traducir los errores feos de Firebase a mensajes amigables y elegantes
+      let mensajeLegible = "Ocurrió un error inesperado. Inténtalo de nuevo.";
+
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        mensajeLegible = "Contraseña incorrecta. Verifica tus datos e intenta de nuevo.";
+      } else if (error.code === 'auth/user-not-found') {
+        mensajeLegible = "No existe ninguna cuenta registrada con este correo.";
+      } else if (error.code === 'auth/email-already-in-use') {
+        mensajeLegible = "Este correo ya está registrado en MovaChat.";
+      } else if (error.code === 'auth/weak-password') {
+        mensajeLegible = "La contraseña debe tener al menos 6 caracteres.";
+      } else if (error.code === 'auth/invalid-email') {
+        mensajeLegible = "El formato del correo electrónico no es válido.";
+      }
+
+      // Mostrar el aviso flotante moderno
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(mensajeLegible, "⚠️", "#ff4d4d");
+      } else {
+        alert("⚠️ " + mensajeLegible);
+      }
     } finally {
       authBtnSubmit.disabled = false;
       authBtnSubmit.textContent = modoRegistro ? "Crear Cuenta" : "Iniciar Sesión";
@@ -155,6 +176,31 @@ onAuthStateChanged(auth, async (user) => {
           // ACCESO AUTORIZADO -> Oculta login y entra a MovaChat
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
+
+          // 👑 LÓGICA EXCLUSIVA DEL PANEL DE ADMINISTRACIÓN
+          const btnAdmin = document.getElementById("btn-abrir-admin");
+          const modalAdmin = document.getElementById("modal-admin");
+          const btnCerrarAdmin = document.getElementById("btn-cerrar-admin");
+
+          if (datosUsuario.rol === "admin") {
+            if (btnAdmin) btnAdmin.style.display = "inline-block"; // Mostrar botón solo a Admin
+            
+            if (btnAdmin && modalAdmin) {
+              btnAdmin.onclick = () => {
+                modalAdmin.style.display = "flex";
+                cargarUsuariosPendientes(); // Carga las solicitudes en vivo
+              };
+            }
+
+            if (btnCerrarAdmin && modalAdmin) {
+              btnCerrarAdmin.onclick = () => {
+                modalAdmin.style.display = "none";
+              };
+            }
+          } else {
+            // Si no es admin, aseguramos que el botón permanezca oculto
+            if (btnAdmin) btnAdmin.style.display = "none";
+          }
 
         } else if (estadoAcceso === "pendiente") {
           // CUENTA EN REVISIÓN -> Oculta login para que no vuelva a intentar entrar
@@ -3163,3 +3209,76 @@ if (opcionCambiarPassword) {
     }
   });
 }
+
+// --- PANEL DE ADMINISTRACIÓN: ESCUCHAR Y APROBAR USUARIOS ---
+function cargarUsuariosPendientes() {
+  const contenedorPendientes = document.getElementById("lista-pendientes");
+  if (!contenedorPendientes) return;
+
+  // Consultar en tiempo real a los usuarios en la base de datos
+  const usuariosRef = ref(db, 'usuarios');
+  
+  onValue(usuariosRef, (snapshot) => {
+    contenedorPendientes.innerHTML = ""; // Limpiar lista anterior
+    let hayPendientes = false;
+
+    if (snapshot.exists()) {
+      const usuarios = snapshot.val();
+
+      Object.keys(usuarios).forEach((uid) => {
+        const u = usuarios[uid];
+
+        // Filtrar solo los que están pendientes
+        if (u.estadoAcceso === "pendiente") {
+          hayPendientes = true;
+
+          const tarjeta = document.createElement("div");
+          tarjeta.className = "tarjeta-usuario-pendiente";
+          tarjeta.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+          `;
+
+          tarjeta.innerHTML = `
+            <div>
+              <p style="margin: 0; font-weight: bold; color: #fff;">${u.nombre || 'Sin nombre'}</p>
+              <p style="margin: 0; font-size: 0.8rem; color: #aaa;">${u.correo}</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button onclick="cambiarEstadoAcceso('${uid}', 'aprobado')" style="background: #2ec4b6; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Aprobar 🟢</button>
+              <button onclick="cambiarEstadoAcceso('${uid}', 'baneado')" style="background: #e71d36; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Rechazar 🔴</button>
+            </div>
+          `;
+
+          contenedorPendientes.appendChild(tarjeta);
+        }
+      });
+    }
+
+    if (!hayPendientes) {
+      contenedorPendientes.innerHTML = `<p style="color: #aaa; font-size: 0.9rem; text-align: center;">No hay solicitudes pendientes ✨</p>`;
+    }
+  });
+}
+
+// Función global para cambiar el estado de acceso desde los botones
+window.cambiarEstadoAcceso = async function(uid, nuevoEstado) {
+  try {
+    await update(ref(db, 'usuarios/' + uid), {
+      estadoAcceso: nuevoEstado
+    });
+    
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(`Usuario ${nuevoEstado === 'aprobado' ? 'aprobado' : 'rechazado'} con éxito`, "✅", "#2ec4b6");
+    }
+  } catch (error) {
+    console.error("Error al actualizar acceso:", error);
+    alert("Error al actualizar el estado del usuario.");
+  }
+};
