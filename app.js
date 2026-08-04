@@ -2113,7 +2113,7 @@ if (btnGuardarEstado && modalEstado) {
   });
 }
 
-// --- 4. CAMPANITA Y AJUSTES DE NOTIFICACIONES (VERSIÓN DEFINITIVA) ---
+// --- 4. CAMPANITA Y AJUSTES DE NOTIFICACIONES (UNIFICADO Y REPARADO) ---
 const btnCampanita = document.getElementById("btn-campanita-alertas");
 const badgeCampanita = document.getElementById("badge-campanita");
 const toggleNotificaciones = document.getElementById("check-notificaciones");
@@ -2124,89 +2124,104 @@ if (toggleNotificaciones) {
   toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
 }
 
-// 🚀 EVENTO CLIC EN LA CAMPANITA (Basado en datos reales de mensajes)
+// 🔔 FUNCIÓN GLOBAL PARA ACTUALIZAR BADGES (Resuelve el error rojo de la consola)
+window.actualizarBadgesNotificaciones = function() {
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
+
+  // Sumamos los badges visibles en las tarjetas
+  const badgesChats = document.querySelectorAll("#lista-chats-principal .badge-chat-no-leido:not(.oculto)");
+  let totalNoLeidos = 0;
+
+  badgesChats.forEach((badge) => {
+    const cantidad = parseInt(badge.textContent, 10) || 0;
+    totalNoLeidos += cantidad;
+  });
+
+  // 1️⃣ Actualizar la campanita arriba
+  if (badgeCampanita) {
+    if (totalNoLeidos > 0 && !estaSilenciado) {
+      badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos;
+      badgeCampanita.classList.remove("oculto");
+    } else {
+      badgeCampanita.classList.add("oculto");
+    }
+  }
+
+  // 2️⃣ Actualizar la pestaña 'No leídos (X)'
+  if (badgeFiltroNoLeidos) {
+    badgeFiltroNoLeidos.textContent = totalNoLeidos;
+  }
+};
+
+// 🚀 EVENTO CLIC EN LA CAMPANITA (Filtrado de chats)
 if (btnCampanita) {
   btnCampanita.onclick = function (e) {
     e.preventDefault();
     e.stopPropagation();
 
-    // 1. Obtener todas las tarjetas de chat de la lista
     const tarjetas = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
-    let totalMensajesSinLeer = 0;
-    let hayPendientes = false;
+    let hayMensajesSinLeer = false;
+    let totalMensajes = 0;
 
     tarjetas.forEach((tarjeta) => {
-      // Ignorar la tarjeta de "Mi Estado"
       if (tarjeta.id === "tarjeta-mi-estado-propio") return;
 
-      // Leer el número real de mensajes guardado en la tarjeta
-      const cantidadNoLeida = parseInt(tarjeta.dataset.mensajesNoLeidos || "0", 10);
       const badge = tarjeta.querySelector(".badge-chat-no-leido");
-      const tieneBadgeVisible = badge && !badge.classList.contains("oculto") && badge.textContent !== "0";
+      const tieneBadgeActivo = badge && !badge.classList.contains("oculto") && parseInt(badge.textContent, 10) > 0;
 
-      if (cantidadNoLeida > 0 || tieneBadgeVisible) {
-        tarjeta.style.display = ""; // Mostrar esta tarjeta
-        hayPendientes = true;
-        totalMensajesSinLeer += cantidadNoLeida > 0 ? cantidadNoLeida : 1;
+      if (tieneBadgeActivo) {
+        tarjeta.style.display = ""; // Mostrar el chat con mensajes pendientes
+        hayMensajesSinLeer = true;
+        totalMensajes += parseInt(badge.textContent, 10) || 1;
       } else {
-        tarjeta.style.display = "none"; // Ocultar tarjetas de chats al día
+        tarjeta.style.display = "none"; // Ocultar chats leídos
       }
     });
 
-    // 2. Si NO hay mensajes pendientes, restaurar la vista completa y avisar
-    if (!hayPendientes) {
+    if (!hayMensajesSinLeer) {
       tarjetas.forEach((tarjeta) => (tarjeta.style.display = ""));
 
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Todo está en orden y en calma por aquí. 🌌", "✨", "#00f2fe");
       }
     } else {
-      // 3. Si hay mensajes pendientes, ocultar el badge de la campanita y mostrar aviso
-      if (badgeCampanita) badgeCampanita.classList.add("oculto");
-
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Mostrando chats con ${totalMensajesSinLeer} mensaje(s) sin leer 📩`, "🔔", "#00f2fe");
+        mostrarAvisoPremium(`Mostrando chats con ${totalMensajes} mensaje(s) pendiente(s) 📩`, "🔔", "#00f2fe");
       }
     }
   };
 }
 
-// Evento Clic en la Campanita
-if (btnCampanita) {
-  btnCampanita.addEventListener("click", () => {
-    if (badgeCampanita && !badgeCampanita.classList.contains("oculto")) {
-      badgeCampanita.style.transform = "scale(0)";
-      setTimeout(() => {
-        badgeCampanita.classList.add("oculto");
-        badgeCampanita.style.transform = "scale(1)";
-      }, 200);
-
-      mostrarAvisoPremium("¡Estás al día! No tienes alertas pendientes. 🔔");
-    } else {
-      mostrarAvisoPremium("Todo está en orden y en calma por aquí. 🌌");
-    }
-  });
-}
-
-// Evento Switch de Ajustes
+// ⚙️ EVENTO SWITCH DE AJUSTES EN EL PERFIL
 if (toggleNotificaciones) {
   toggleNotificaciones.addEventListener("change", async () => {
     if (toggleNotificaciones.checked) {
       localStorage.setItem("movachat-notificaciones", "activado");
 
       // Pedimos permiso al sistema operativo/navegador
-      const concedido = await solicitarPermisoNotificaciones();
-      if (!concedido) {
-        mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️");
-      } else {
-        mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀");
+      if (typeof solicitarPermisoNotificaciones === "function") {
+        const concedido = await solicitarPermisoNotificaciones();
+        if (!concedido) {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️", "⚠️", "#ff4b2b");
+          }
+        } else {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀", "🔔", "#00f2fe");
+          }
+        }
       }
 
-      actualizarBadgesNotificaciones();
+      if (typeof window.actualizarBadgesNotificaciones === "function") {
+        window.actualizarBadgesNotificaciones();
+      }
     } else {
       localStorage.setItem("movachat-notificaciones", "desactivado");
       if (badgeCampanita) badgeCampanita.classList.add("oculto");
-      mostrarAvisoPremium("Notificaciones silenciadas por el usuario. 🔕");
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Notificaciones silenciadas por el usuario. 🔕", "🔕", "#ff4b2b");
+      }
     }
   });
 }
