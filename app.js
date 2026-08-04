@@ -2113,7 +2113,7 @@ if (btnGuardarEstado && modalEstado) {
   });
 }
 
-// --- 4. CAMPANITA Y AJUSTES DE NOTIFICACIONES ---
+// --- 4. CAMPANITA Y AJUSTES DE NOTIFICACIONES (VERSIÓN BLINDADA) ---
 const btnCampanita = document.getElementById("btn-campanita-alertas");
 const badgeCampanita = document.getElementById("badge-campanita");
 const toggleNotificaciones = document.getElementById("check-notificaciones");
@@ -2124,12 +2124,11 @@ if (toggleNotificaciones) {
   toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
 }
 
-// 🔔 Función para recalcular y actualizar los badges (Campanita + Filtro)
+// 🔔 Función para recalcular y actualizar los badges
 function actualizarBadgesNotificaciones() {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
 
-  // Sumamos los badges de las tarjetas de chat que no estén ocultos
   const badgesChats = document.querySelectorAll("#lista-chats-principal .badge-chat-no-leido:not(.oculto)");
   let totalNoLeidos = 0;
 
@@ -2138,7 +2137,6 @@ function actualizarBadgesNotificaciones() {
     totalNoLeidos += cantidad;
   });
 
-  // 1️⃣ Actualizar Campanita (si el usuario no las silenció)
   if (badgeCampanita) {
     if (totalNoLeidos > 0 && !estaSilenciado) {
       badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos;
@@ -2148,50 +2146,58 @@ function actualizarBadgesNotificaciones() {
     }
   }
 
-  // 2️⃣ Actualizar filtro 'No leídos'
   if (badgeFiltroNoLeidos) {
     badgeFiltroNoLeidos.textContent = totalNoLeidos;
   }
 }
 
-// 🚀 EVENTO CLIC EN LA CAMPANITA (Filtra automáticamente los chats no leídos)
+// 🚀 EVENTO CLIC EN LA CAMPANITA DIRECTO Y SEGURO
 if (btnCampanita) {
-  btnCampanita.addEventListener("click", () => {
-    // 1. Contar mensajes sin leer activos
-    const badgesChats = document.querySelectorAll("#lista-chats-principal .badge-chat-no-leido:not(.oculto)");
-    let totalPendientes = 0;
+  btnCampanita.onclick = function (e) {
+    e.preventDefault();
+    e.stopPropagation();
 
-    badgesChats.forEach((badge) => {
-      const cantidad = parseInt(badge.textContent, 10) || 0;
-      totalPendientes += cantidad;
+    // 1. Buscar todas las tarjetas de chat
+    const tarjetas = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+    let hayMensajesSinLeer = false;
+    let totalMensajes = 0;
+
+    tarjetas.forEach((tarjeta) => {
+      // Ignoramos la tarjeta de "Mi Estado"
+      if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+
+      const badge = tarjeta.querySelector(".badge-chat-no-leido");
+      const tieneBadgeActivo = badge && !badge.classList.contains("oculto") && parseInt(badge.textContent, 10) > 0;
+
+      if (tieneBadgeActivo) {
+        tarjeta.style.display = ""; // Mostrar la tarjeta
+        hayMensajesSinLeer = true;
+        totalMensajes += parseInt(badge.textContent, 10) || 1;
+      } else {
+        tarjeta.style.display = "none"; // Ocultar si está leída
+      }
     });
 
-    if (totalPendientes > 0) {
-      // 2. Si hay mensajes sin leer, activar el filtro "No leídos" automáticamente
-      const btnFiltroNoLeidos = document.getElementById("filtro-no-leidos");
-      if (btnFiltroNoLeidos) {
-        btnFiltroNoLeidos.click();
-      }
+    // 2. Si NO hay mensajes sin leer, volvemos a mostrar todas las tarjetas
+    if (!hayMensajesSinLeer) {
+      tarjetas.forEach((tarjeta) => (tarjeta.style.display = ""));
 
-      // Animación en el globito de la campanita
-      if (badgeCampanita) {
-        badgeCampanita.style.transform = "scale(0)";
-        setTimeout(() => {
-          badgeCampanita.classList.add("oculto");
-          badgeCampanita.style.transform = "scale(1)";
-        }, 200);
-      }
-
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Filtrando ${totalPendientes} mensaje(s) sin leer 📩`, "🔔", "#00f2fe");
-      }
-    } else {
-      // 3. Si todo está al día
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Todo está en orden y en calma por aquí. 🌌", "✨", "#00f2fe");
+      } else {
+        alert("Todo está en orden y en calma por aquí. 🌌");
+      }
+    } else {
+      // 3. Ocultar el globito de la campanita porque ya se revisó
+      if (badgeCampanita) badgeCampanita.classList.add("oculto");
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(`Mostrando chats con ${totalMensajes} mensaje(s) pendiente(s) 📩`, "🔔", "#00f2fe");
+      } else {
+        alert(`Mostrando chats con ${totalMensajes} mensaje(s) pendiente(s) 📩`);
       }
     }
-  });
+  };
 }
 
 // Evento Clic en la Campanita
