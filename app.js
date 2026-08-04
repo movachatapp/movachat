@@ -360,7 +360,13 @@ const sonidosApp = {
   grabando: new Audio('assets/sounds/grabando.mp3')
 };
 
-// Función global para reproducir sonidos sin interrupciones
+// 🎵 Pre-carga y función global de sonidos para MovaChat
+const sonidosApp = {
+  enviado: new Audio("assets/sounds/enviado.mp3"),   // Ajusta la extensión (.mp3 / .wav) si es diferente
+  grabando: new Audio("assets/sounds/grabando.mp3"),
+  recibido: new Audio("assets/sounds/recibido.mp3")
+};
+
 function reproducirSonido(tipo) {
   if (sonidosApp[tipo]) {
     sonidosApp[tipo].currentTime = 0; // Reinicia el audio para reproducir rápido si se presiona seguido
@@ -618,47 +624,47 @@ async function activarCamaraMovaPro(tipoMedia) {
   if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
 
   // 📸 FOTO (Optimizada para rendimiento y compatibilidad)
-if (tipoMedia === "foto") {
-  const inputCamara = document.createElement("input");
-  inputCamara.type = "file";
-  inputCamara.accept = "image/*";
-  // Opcional: quita capture="user" si prefieres que el usuario elija entre frontal/trasera en el selector nativo
+  if (tipoMedia === "foto") {
+    const inputCamara = document.createElement("input");
+    inputCamara.type = "file";
+    inputCamara.accept = "image/*";
+    // Opcional: quita capture="user" si prefieres que el usuario elija entre frontal/trasera en el selector nativo
 
-  inputCamara.onchange = (evt) => {
-    const archivo = evt.target.files && evt.target.files[0];
-    if (archivo) {
-      tipoAdjuntoActivo = 'foto';
-      
-      if (imgMiniaturaAdjunto) {
-        imgMiniaturaAdjunto.style.display = "block";
-        imgMiniaturaAdjunto.src = URL.createObjectURL(archivo);
-      }
+    inputCamara.onchange = (evt) => {
+      const archivo = evt.target.files && evt.target.files[0];
+      if (archivo) {
+        tipoAdjuntoActivo = 'foto';
 
-      const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
-      if (iconoPrevio) iconoPrevio.remove();
+        if (imgMiniaturaAdjunto) {
+          imgMiniaturaAdjunto.style.display = "block";
+          imgMiniaturaAdjunto.src = URL.createObjectURL(archivo);
+        }
 
-      if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
-      
-      if (inputChat) {
-        inputChat.placeholder = "Añade un comentario a la imagen...";
-        inputChat.focus();
-      }
+        const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
+        if (iconoPrevio) iconoPrevio.remove();
 
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono dentro del botón de acción
-      if (btnAccionChat) {
-        btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-        if (window.lucide) {
-          window.lucide.createIcons({
-            targets: [btnAccionChat]
-          });
+        if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
+
+        if (inputChat) {
+          inputChat.placeholder = "Añade un comentario a la imagen...";
+          inputChat.focus();
+        }
+
+        // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono dentro del botón de acción
+        if (btnAccionChat) {
+          btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+          if (window.lucide) {
+            window.lucide.createIcons({
+              targets: [btnAccionChat]
+            });
+          }
         }
       }
-    }
-  };
-  
-  inputCamara.click();
-  return;
-}
+    };
+
+    inputCamara.click();
+    return;
+  }
 
   // 🎥 VIDEO CIRCULAR: Intento de Modal
   const modalCamara = document.getElementById("modal-camara-circular");
@@ -783,7 +789,7 @@ function recortarVideoA10Segundos(videoElem) {
 
 function asignarPreviewVideoCircular(urlFinal) {
   tipoAdjuntoActivo = 'video';
-  
+
   if (imgMiniaturaAdjunto) {
     imgMiniaturaAdjunto.src = urlFinal;
     imgMiniaturaAdjunto.style.display = "none";
@@ -848,10 +854,10 @@ if (inputRealGaleria) {
   inputRealGaleria.addEventListener("change", (e) => {
     if (e.target.files && e.target.files[0]) {
       const reader = new FileReader();
-      
+
       reader.onload = function (evt) {
         const wrapper = document.querySelector(".wrapper-miniatura");
-        
+
         // Validar wrapper de forma segura antes de buscar hijos
         if (wrapper) {
           const iconoPrevio = wrapper.querySelector(".icono-doc-preview");
@@ -973,6 +979,11 @@ async function iniciarGrabacionVoz(e) {
   e.preventDefault();
 
   try {
+    // 🔊 SONIDO DE INICIO DE GRABACIÓN
+    if (typeof reproducirSonido === "function") {
+      reproducirSonido("grabando");
+    }
+
     streamAudioLive = await navigator.mediaDevices.getUserMedia({ audio: true });
     fragmentosAudio = [];
 
@@ -1061,7 +1072,7 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
   if (historialMensajes) {
     historialMensajes.appendChild(nuevaBurbujaHTML);
     if (typeof aplicarRelojArenaEfecto === "function") aplicarRelojArenaEfecto(nuevaBurbujaHTML);
-    
+
     // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de la nueva burbuja
     if (window.lucide) {
       window.lucide.createIcons({
@@ -1258,6 +1269,11 @@ async function enviarMensajeNuevo() {
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
 
+    // 🔊 SONIDO DE MENSAJE ENVIADO
+    if (typeof reproducirSonido === "function") {
+      reproducirSonido("enviado");
+    }
+
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
   } catch (error) {
     console.error("❌ Error al enviar mensaje a Firebase:", error);
@@ -1366,15 +1382,15 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Texto copiado al portapapeles 📋", "✨", "#00f2fe");
       }
-    } 
+    }
     // 🗑️ OPCIÓN 2: ELIMINAR (De la pantalla y de Firebase)
     else if (accion === "eliminar" && nodoMensaje) {
       nodoMensaje.style.transition = "all 0.2s ease-out";
       nodoMensaje.style.opacity = "0";
       nodoMensaje.style.transform = "scale(0.9)";
-      
-      setTimeout(() => { 
-        if (nodoMensaje) nodoMensaje.remove(); 
+
+      setTimeout(() => {
+        if (nodoMensaje) nodoMensaje.remove();
       }, 200);
 
       // Si existe ID de Firebase y chat activo, borrarlo en la nube
@@ -1383,14 +1399,14 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       const contactoUid = window.contactoActivoUid;
 
       if (msgId && miUid && contactoUid) {
-        const chatId = typeof obtenerChatId === "function" 
-          ? obtenerChatId(miUid, contactoUid) 
+        const chatId = typeof obtenerChatId === "function"
+          ? obtenerChatId(miUid, contactoUid)
           : [miUid, contactoUid].sort().join("_");
 
         const mensajeRef = ref(db, `chats/${chatId}/mensajes/${msgId}`);
         set(mensajeRef, null).catch(err => console.error("Error al eliminar de Firebase:", err));
       }
-    } 
+    }
     // ✏️ OPCIÓN 3: EDITAR
     else if (accion === "editar" && textoMensaje && typeof inputChat !== "undefined") {
       inputChat.value = textoMensaje;
@@ -1401,7 +1417,7 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
 
       if (btnAccionChat) {
         btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-        
+
         // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono del botón de enviar
         if (window.lucide) {
           window.lucide.createIcons({
@@ -2154,7 +2170,7 @@ if (toggleNotificaciones) {
   toggleNotificaciones.addEventListener("change", async () => {
     if (toggleNotificaciones.checked) {
       localStorage.setItem("movachat-notificaciones", "activado");
-      
+
       // Pedimos permiso al sistema operativo/navegador
       const concedido = await solicitarPermisoNotificaciones();
       if (!concedido) {
@@ -2162,7 +2178,7 @@ if (toggleNotificaciones) {
       } else {
         mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀");
       }
-      
+
       actualizarBadgesNotificaciones();
     } else {
       localStorage.setItem("movachat-notificaciones", "desactivado");
@@ -2911,7 +2927,7 @@ function abrirMenuContextualMova(x, y, tarjeta) {
 
   if (btnCtxFijar) {
     btnCtxFijar.innerHTML = `<i data-lucide="pin"></i> <span>${esFijado ? 'Desfijar chat' : 'Fijar chat arriba'}</span>`;
-    
+
     // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxFijar
     if (window.lucide) {
       window.lucide.createIcons({
@@ -3512,7 +3528,7 @@ function mostrarToast(mensaje) {
   if (!toast) return;
 
   if (texto) texto.textContent = mensaje;
-  
+
   toast.classList.remove("oculto");
 
   // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro del elemento Toast
@@ -3853,7 +3869,7 @@ function escucharMensajesChat(chatId) {
   listenerChatActivo = onValue(mensajesRef, (snapshot) => {
     if (!historialMensajes) return;
     historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
-    
+
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
     if (snapshot.exists()) {
@@ -3866,13 +3882,17 @@ function escucharMensajesChat(chatId) {
         const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
         const esMio = idEmisorReal === miUid;
 
-        // 🔔 NOTIFICACIÓN: Lanzar si el mensaje NO lo envié yo
+        // 🔔 NOTIFICACIÓN Y SONIDO: Lanzar si el mensaje NO lo envié yo
         if (!esMio) {
           const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
           const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
           const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
 
+          // 1. Lanza la notificación flotante / actualiza badges
           notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+
+          // 2. Reproduce el efecto de sonido de mensaje recibido
+          reproducirSonido("recibido");
         }
 
         // 🚀 B) Formateador de hora seguro
@@ -3993,7 +4013,7 @@ function escucharMensajesChat(chatId) {
       historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
   }); // Cierre de onValue
-} 
+}
 
 // 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
 function actualizarEstadoPantallaInicio() {
@@ -4049,7 +4069,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (tarjeta.id === "tarjeta-mi-estado-propio") return;
 
         const contenidoTarjeta = tarjeta.textContent.toLowerCase();
-        
+
         if (contenidoTarjeta.includes(textoBusqueda)) {
           tarjeta.style.display = "";
         } else {
@@ -4069,7 +4089,7 @@ document.addEventListener("DOMContentLoaded", () => {
       btnFiltroNoLeidos.classList.add("activo");
 
       const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
-      
+
       tarjetasChat.forEach((tarjeta) => {
         if (tarjeta.id === "tarjeta-mi-estado-propio") return;
 
@@ -4098,7 +4118,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // 🔔 5. NOTIFICACIONES PUSH NATIVAS (Global para que Firebase la encuentre)
-window.notificarNuevoMensaje = function(nombreRemitente, textoMensaje, avatarUrl) {
+window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
