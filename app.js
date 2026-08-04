@@ -4099,6 +4099,25 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // 5️⃣ Conectar el interruptor de notificaciones con el permiso del navegador
+  const toggleNotificaciones = document.getElementById("check-notificaciones");
+  if (toggleNotificaciones) {
+    toggleNotificaciones.addEventListener("change", async () => {
+      if (toggleNotificaciones.checked) {
+        const concedido = await solicitarPermisoNotificaciones();
+        if (concedido) {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀", "🔔", "#00f2fe");
+          }
+        } else {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️", "⚠️", "#ff4b2b");
+          }
+        }
+      }
+    });
+  }
+
 });
 
 // 🔔 5. NOTIFICACIONES PUSH NATIVAS (Global para que Firebase la encuentre)
@@ -4173,3 +4192,4 @@ if ('serviceWorker' in navigator) {
       });
   });
 }
+
