@@ -87,27 +87,6 @@ window.togglePasswordVisibility = function () {
   if (btn) btn.click();
 };
 
-// --- MOSTRAR / OCULTAR CONTRASEÑA (ÚNICO LISTENER UNIFICADO) ---
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest("#btn-toggle-password");
-  if (!btn) return;
-
-  e.preventDefault();
-  const inputPass = document.getElementById("auth-password");
-  if (!inputPass) return;
-
-  const esPassword = inputPass.type === "password";
-  inputPass.type = esPassword ? "text" : "password";
-
-  const icono = btn.querySelector("[data-lucide]") || btn.querySelector("svg");
-  if (icono) {
-    icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
-    if (window.lucide) {
-      window.lucide.createIcons({ targets: [btn] });
-    }
-  }
-});
-
 // --- MOSTRAR / OCULTAR CONTRASEÑA ---
 window.togglePasswordVisibility = function () {
   const inputPass = document.getElementById("auth-password");
@@ -2928,11 +2907,12 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ========================================================
-// 🚀 SOLUCIÓN DEFINITIVA: ENVÍO, RECEPCIÓN Y BOTÓN FLOTANTE
+// 🚀 SOLUCIÓN DEFINITIVA: CONTROL DE MODAL (+), CERRAR (X) Y BUSCADOR
 // ========================================================
 
-// 1. Conectar el Botón Flotante (+) para abrir el Modal de Contactos
+// 1. Manejo unificado de Abrir y Cerrar Modal de Contactos (+)
 document.addEventListener("click", (e) => {
+  // 🟢 ABRIR MODAL
   const btnPlus = e.target.closest("#btn-abrir-contactos") || e.target.closest(".btn-flotante-contacto");
   if (btnPlus) {
     e.preventDefault();
@@ -2940,12 +2920,43 @@ document.addEventListener("click", (e) => {
     const modalCont = document.getElementById("modal-contactos");
     if (modalCont) {
       modalCont.classList.remove("oculto");
+      modalCont.style.display = "flex"; // Forzamos visibilidad para evitar congelamiento
       if (typeof renderizarListaContactosModal === "function") {
         renderizarListaContactosModal();
       }
     }
   }
+
+  // 🔴 CERRAR MODAL CON LA (X) O BOTÓN CERRAR
+  const btnCerrar = e.target.closest("#btn-cerrar-contactos") || e.target.closest(".btn-cerrar-modal");
+  if (btnCerrar) {
+    e.preventDefault();
+    e.stopPropagation();
+    const modalCont = document.getElementById("modal-contactos");
+    if (modalCont) {
+      modalCont.classList.add("oculto");
+      modalCont.style.display = "none"; // Ocultamos limpiamente
+    }
+  }
 });
+
+// 2. Buscador en tiempo real dentro del modal de contactos
+const inputBuscarContactoModal = document.getElementById("input-buscar-contacto");
+if (inputBuscarContactoModal) {
+  inputBuscarContactoModal.addEventListener("input", (e) => {
+    const texto = e.target.value.toLowerCase().trim();
+    
+    if (typeof renderizarListaContactosModal === "function") {
+      renderizarListaContactosModal(texto);
+    } else {
+      const filas = document.querySelectorAll("#contenedor-lista-contactos .item-contacto-fila, .contacto-item");
+      filas.forEach(fila => {
+        const nombre = fila.textContent.toLowerCase();
+        fila.style.display = nombre.includes(texto) ? "flex" : "none";
+      });
+    }
+  });
+}
 
 // 2. Escuchar Mensajes de Firebase en Tiempo Real
 window.escucharMensajesChat = function(chatId) {
