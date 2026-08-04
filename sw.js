@@ -1,5 +1,8 @@
-// Nombre de la versión del caché
-const CACHE_NAME = 'movachat-v2.8';
+// ========================================================
+// 📱 SERVICE WORKER MOVACHAT (Versión con Notificaciones Push)
+// ========================================================
+
+const CACHE_NAME = 'movachat-v3.0';
 
 // Archivos básicos para guardar en memoria del dispositivo
 const ASSETS_TO_CACHE = [
@@ -14,7 +17,7 @@ const ASSETS_TO_CACHE = [
 
 // 1. Instalar el Service Worker
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Se activa inmediatamente sin esperar a cerrar la ventana
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE);
@@ -37,15 +40,13 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Estrategia inteligente de carga (Red primero, si falla usa Caché)
+// 3. Carga inteligente (Usa internet y guarda en caché si falla la red)
 self.addEventListener('fetch', (event) => {
-  // Ignorar peticiones a Firebase u otros dominios externos
   if (!event.request.url.startsWith(self.location.origin)) return;
 
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        // Guarda la copia actualizada en segundo plano
         if (event.request.method === 'GET') {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -55,13 +56,39 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       })
       .catch(() => {
-        // Si no hay conexión a internet, entrega la versión guardada
         return caches.match(event.request);
       })
   );
 });
 
-// 4. Evento al tocar una notificación Push
+// 🚀 4. RECEPTOR DE NOTIFICACIONES PUSH (Muestra la alerta en la pantalla con app cerrada)
+self.addEventListener('push', (event) => {
+  let data = { titulo: 'MovaChat 💬', cuerpo: 'Tienes un nuevo mensaje recibido 📩', icono: './assets/logo/icon-192.png' };
+
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data.cuerpo = event.data.text();
+    }
+  }
+
+  const opciones = {
+    body: data.cuerpo || data.texto || 'Tienes un nuevo mensaje recibido 📩',
+    icon: data.icono || data.avatarUrl || './assets/logo/icon-192.png',
+    badge: './assets/logo/icon-192.png',
+    vibrate: [200, 100, 200],
+    data: {
+      url: self.registration.scope
+    }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.titulo || data.nombreRemitente || 'MovaChat', opciones)
+  );
+});
+
+// 5. Evento al tocar la notificación en el teléfono
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
