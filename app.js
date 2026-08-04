@@ -60,34 +60,9 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// --- MOSTRAR / OCULTAR CONTRASEÑA (ÚNICO LISTENER UNIFICADO) ---
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest("#btn-toggle-password");
-  if (!btn) return;
-
-  e.preventDefault();
-  const inputPass = document.getElementById("auth-password");
-  if (!inputPass) return;
-
-  const esPassword = inputPass.type === "password";
-  inputPass.type = esPassword ? "text" : "password";
-
-  const icono = btn.querySelector("[data-lucide]") || btn.querySelector("svg");
-  if (icono) {
-    icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
-    if (window.lucide) {
-      window.lucide.createIcons({ targets: [btn] });
-    }
-  }
-});
-
-// 👁️ Función global para compatibilidad con el onclick del HTML
-window.togglePasswordVisibility = function () {
-  const btn = document.getElementById("btn-toggle-password");
-  if (btn) btn.click();
-};
-
-// --- MOSTRAR / OCULTAR CONTRASEÑA ---
+// ========================================================
+// 👁️ MOSTRAR / OCULTAR CONTRASEÑA (VERSIÓN UNIFICADA DEFINITIVA)
+// ========================================================
 window.togglePasswordVisibility = function () {
   const inputPass = document.getElementById("auth-password");
   const btn = document.getElementById("btn-toggle-password");
@@ -108,7 +83,7 @@ window.togglePasswordVisibility = function () {
   }
 };
 
-// Listener alternativo por si el usuario hace clic directo
+// Listener para capturar el clic directo en el botón de contraseña
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("#btn-toggle-password");
   if (!btn) return;
@@ -913,15 +888,25 @@ if (btnBorrarVistaPrevia) {
 let mediaRecorderAudio = null;
 let fragmentosAudio = [];
 let streamAudioLive = null;
+let timerGrabacionAudio = null;
+let segundosGrabados = 0;
+let estaGrabandoAudio = false;
 
 function arrancarCronometroAudio() {
   segundosGrabados = 0;
-  if (contadorAudio) contadorAudio.textContent = "00:00";
+  if (typeof contadorAudio !== "undefined" && contadorAudio) {
+    contadorAudio.textContent = "00:00";
+  }
+  
+  if (timerGrabacionAudio) clearInterval(timerGrabacionAudio);
+
   timerGrabacionAudio = setInterval(() => {
     segundosGrabados++;
     let mins = Math.floor(segundosGrabados / 60).toString().padStart(2, '0');
     let secs = (segundosGrabados % 60).toString().padStart(2, '0');
-    if (contadorAudio) contadorAudio.textContent = `${mins}:${secs}`;
+    if (typeof contadorAudio !== "undefined" && contadorAudio) {
+      contadorAudio.textContent = `${mins}:${secs}`;
+    }
   }, 1000);
 }
 
@@ -933,8 +918,15 @@ function frenarCronometroAudio() {
 // 4. SISTEMA DE AUDIOS Y NOTAS DE VOZ (CONTINUACIÓN)
 // ========================================================
 async function iniciarGrabacionVoz(e) {
-  const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
-  if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0) || (cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))) {
+  const tieneIconoSend = (typeof btnAccionChat !== "undefined" && btnAccionChat) 
+    ? btnAccionChat.querySelector("[data-lucide='send']") 
+    : null;
+
+  if (
+    tieneIconoSend || 
+    (typeof inputChat !== "undefined" && inputChat && inputChat.value.trim().length > 0) || 
+    (typeof cajaVistaPrevia !== "undefined" && cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))
+  ) {
     return;
   }
 
@@ -962,22 +954,25 @@ async function iniciarGrabacionVoz(e) {
     mediaRecorderAudio.onstop = () => {
       if (streamAudioLive) streamAudioLive.getTracks().forEach(track => track.stop());
 
-      if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
+      if (segundosGrabados >= 1 && fragmentosAudio.length > 0) {
         const blobAudio = new Blob(fragmentosAudio, { type: mimeAudio });
         const urlAudioReal = URL.createObjectURL(blobAudio);
 
         if (typeof inyectarNotaDeVozBurbuja === "function") {
-          inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlAudioReal);
+          const tiempoTxt = (typeof contadorAudio !== "undefined" && contadorAudio) ? contadorAudio.textContent : "0:01";
+          inyectarNotaDeVozBurbuja(tiempoTxt, urlAudioReal);
         }
       }
     };
 
     mediaRecorderAudio.start();
     estaGrabandoAudio = true;
-    if (btnAccionChat) btnAccionChat.classList.add("grabando-activo");
-    if (cajaInputNormal) cajaInputNormal.classList.add("oculto");
-    if (panelGrabacion) panelGrabacion.classList.remove("oculto");
-    if (typeof arrancarCronometroAudio === "function") arrancarCronometroAudio();
+
+    if (typeof btnAccionChat !== "undefined" && btnAccionChat) btnAccionChat.classList.add("grabando-activo");
+    if (typeof cajaInputNormal !== "undefined" && cajaInputNormal) cajaInputNormal.classList.add("oculto");
+    if (typeof panelGrabacion !== "undefined" && panelGrabacion) panelGrabacion.classList.remove("oculto");
+
+    arrancarCronometroAudio();
 
   } catch (err) {
     console.error("Error al acceder al micrófono:", err);
