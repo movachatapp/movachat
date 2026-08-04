@@ -353,28 +353,22 @@ let chatsFalsosData = [];
 
 let filtroActual = "todos";
 
-// --- SISTEMA DE EFECTOS DE SONIDO NATIVOS ---
-const sonidosApp = {
-  enviado: new Audio('assets/sounds/enviado.mp3'),
-  recibido: new Audio('assets/sounds/recibido.mp3'),
-  grabando: new Audio('assets/sounds/grabando.mp3')
+// --- SISTEMA DE EFECTOS DE SONIDO NATIVOS (MOVACHAT) ---
+window.sonidosApp = window.sonidosApp || {
+  enviado: new Audio("assets/sounds/enviado.mp3"),
+  recibido: new Audio("assets/sounds/recibido.mp3"),
+  grabando: new Audio("assets/sounds/grabando.mp3")
 };
 
-// 🎵 Pre-carga y función global de sonidos para MovaChat
-const sonidosApp = {
-  enviado: new Audio("assets/sounds/enviado.mp3"),   // Ajusta la extensión (.mp3 / .wav) si es diferente
-  grabando: new Audio("assets/sounds/grabando.mp3"),
-  recibido: new Audio("assets/sounds/recibido.mp3")
-};
-
-function reproducirSonido(tipo) {
-  if (sonidosApp[tipo]) {
-    sonidosApp[tipo].currentTime = 0; // Reinicia el audio para reproducir rápido si se presiona seguido
-    sonidosApp[tipo].play().catch(() => {
-      // Los navegadores bloquean audio automático si el usuario no ha interactuado aún
+// 🔊 Función global para reproducir sonidos sin interrupciones ni duplicados
+window.reproducirSonido = function(tipo) {
+  if (window.sonidosApp && window.sonidosApp[tipo]) {
+    window.sonidosApp[tipo].currentTime = 0; // Reinicia el audio si entra rápido uno tras otro
+    window.sonidosApp[tipo].play().catch(() => {
+      // Evita bloqueos por políticas de autoplay del navegador
     });
   }
-}
+};
 
 // ========================================================
 // 2. PERSISTENCIA LOCALSTORAGE Y BANDEJA DE ENTRADA
@@ -971,12 +965,12 @@ function frenarCronometroAudio() {
 }
 
 async function iniciarGrabacionVoz(e) {
-  const tieneIconoSend = btnAccionChat.querySelector("[data-lucide='send']");
-  if (tieneIconoSend || inputChat.value.trim().length > 0 || !cajaVistaPrevia.classList.contains("oculto")) {
+  const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
+  if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0) || (cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))) {
     return;
   }
 
-  e.preventDefault();
+  if (e && e.preventDefault) e.preventDefault();
 
   try {
     // 🔊 SONIDO DE INICIO DE GRABACIÓN
@@ -1000,20 +994,22 @@ async function iniciarGrabacionVoz(e) {
     mediaRecorderAudio.onstop = () => {
       if (streamAudioLive) streamAudioLive.getTracks().forEach(track => track.stop());
 
-      if (segundosGrabados >= 1 && fragmentosAudio.length > 0) {
+      if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
         const blobAudio = new Blob(fragmentosAudio, { type: mimeAudio });
         const urlAudioReal = URL.createObjectURL(blobAudio);
 
-        inyectarNotaDeVozBurbuja(contadorAudio.textContent, urlAudioReal);
+        if (typeof inyectarNotaDeVozBurbuja === "function") {
+          inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlAudioReal);
+        }
       }
     };
 
     mediaRecorderAudio.start();
     estaGrabandoAudio = true;
-    btnAccionChat.classList.add("grabando-activo");
-    cajaInputNormal.classList.add("oculto");
-    panelGrabacion.classList.remove("oculto");
-    arrancarCronometroAudio();
+    if (btnAccionChat) btnAccionChat.classList.add("grabando-activo");
+    if (cajaInputNormal) cajaInputNormal.classList.add("oculto");
+    if (panelGrabacion) panelGrabacion.classList.remove("oculto");
+    if (typeof arrancarCronometroAudio === "function") arrancarCronometroAudio();
 
   } catch (err) {
     console.error("Error al acceder al micrófono:", err);
