@@ -60,9 +60,8 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// --- MOSTRAR / OCULTAR CONTRASEÑA ---
+// --- MOSTRAR / OCULTAR CONTRASEÑA (ÚNICO LISTENER UNIFICADO) ---
 document.addEventListener("click", (e) => {
-  // Encuentra el botón sin importar si se hizo clic en el SVG o en sus rutas internas
   const btn = e.target.closest("#btn-toggle-password");
   if (!btn) return;
 
@@ -70,24 +69,14 @@ document.addEventListener("click", (e) => {
   const inputPass = document.getElementById("auth-password");
   if (!inputPass) return;
 
-  // 1. Alternar tipo de input entre password y text
   const esPassword = inputPass.type === "password";
   inputPass.type = esPassword ? "text" : "password";
 
-  // 2. Buscar el elemento del icono (sea <i> o <svg> que genera Lucide)
   const icono = btn.querySelector("[data-lucide]") || btn.querySelector("svg");
-
   if (icono) {
-    const nuevoIcono = esPassword ? "eye-off" : "eye";
-
-    // Si ya se convirtió en SVG, actualizamos la propiedad interna de Lucide y data-lucide
-    icono.setAttribute("data-lucide", nuevoIcono);
-
-    // Si Lucide está activo, reconstruimos los iconos del botón
+    icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
     if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [btn] // Re-renderiza únicamente el botón del ojito
-      });
+      window.lucide.createIcons({ targets: [btn] });
     }
   }
 });
@@ -106,21 +95,17 @@ if (authForm) {
 
     try {
       if (modoRegistro) {
-        // Generar username limpio a partir del nombre (ej. "Juan Perez" -> "juanperez")
         const usernameGenerado = nombre.toLowerCase().replace(/\s+/g, "").replace(/[^a-z0-9]/g, "");
 
-        // 1. Crear usuario en Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, correo, password);
         const user = userCredential.user;
 
-        // 2. Guardar nombre en Auth
         await updateProfile(user, { displayName: nombre });
 
-        // 3. Guardar datos completos con @username en Database
         await set(ref(db, 'usuarios/' + user.uid), {
           uid: user.uid,
           nombre: nombre,
-          username: usernameGenerado, // 🚀 ¡Campo de Username agregado!
+          username: usernameGenerado,
           correo: correo,
           estado: "🚀 Nuevo en MovaChat",
           fotoUrl: "",
@@ -129,10 +114,8 @@ if (authForm) {
           fechaRegistro: Date.now()
         });
 
-        // 4. CERRAR SESIÓN DE INMEDIATO
         await signOut(auth);
 
-        // 5. Aviso de revisión
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium(
             "⏳ Cuenta registrada con éxito. Un administrador debe aprobar tu acceso.",
@@ -144,7 +127,6 @@ if (authForm) {
         }
 
       } else {
-        // Iniciar sesión
         await signInWithEmailAndPassword(auth, correo, password);
       }
     } catch (error) {
@@ -178,11 +160,8 @@ if (authForm) {
 
 // Listener de Estado de Autenticación con Guardián de Acceso
 onAuthStateChanged(auth, async (user) => {
-  const chatPantalla = document.querySelector(".contenedor-chat") || document.body;
-
   if (user) {
     try {
-      // 1. Obtener datos del usuario logueado en Realtime Database
       const snapshot = await get(ref(db, 'usuarios/' + user.uid));
 
       if (snapshot.exists()) {
@@ -190,11 +169,9 @@ onAuthStateChanged(auth, async (user) => {
         const estadoAcceso = datosUsuario.estadoAcceso || "pendiente";
 
         if (estadoAcceso === "aprobado") {
-          // 🟢 ACCESO AUTORIZADO -> Entra a MovaChat
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
-          // 🚀 2. LE DARÁ VIDA AL PERFIL EN PANTALLA
           const elemNombrePerfil = document.getElementById("perfil-nombre") || document.querySelector(".nombre-usuario");
           const elemUsernamePerfil = document.getElementById("perfil-username") || document.querySelector(".username-usuario");
           const elemEmailPerfil = document.getElementById("perfil-email") || document.querySelector(".email-usuario");
@@ -205,12 +182,10 @@ onAuthStateChanged(auth, async (user) => {
           if (elemEmailPerfil) elemEmailPerfil.textContent = datosUsuario.correo || user.email;
           if (elemFotoPerfil && datosUsuario.fotoUrl) elemFotoPerfil.src = datosUsuario.fotoUrl;
 
-          // 🚀 3. CARGAR LISTA DE CONTACTOS EN TIEMPO REAL
           if (typeof cargarContactosAprobados === "function") {
             cargarContactosAprobados(user.uid);
           }
 
-          // 🚀 4. Lógica de Panel Admin
           const btnAdmin = document.getElementById("btn-abrir-admin");
           const modalAdmin = document.getElementById("modal-admin");
           const btnCerrarAdmin = document.getElementById("btn-cerrar-admin");
@@ -237,7 +212,6 @@ onAuthStateChanged(auth, async (user) => {
           }
 
         } else {
-          // 🔴 SI NO ESTÁ APROBADO ("pendiente" o "baneado") -> EXPULSAR
           await signOut(auth);
           if (authPantalla) authPantalla.style.display = "flex";
 
@@ -252,7 +226,6 @@ onAuthStateChanged(auth, async (user) => {
           }
         }
       } else {
-        // Si no existe el registro en la BD, expulsar
         await signOut(auth);
         if (authPantalla) authPantalla.style.display = "flex";
       }
@@ -262,31 +235,7 @@ onAuthStateChanged(auth, async (user) => {
       if (authPantalla) authPantalla.style.display = "flex";
     }
   } else {
-    // Usuario no autenticado -> Mostrar login
     if (authPantalla) authPantalla.style.display = "flex";
-  }
-});
-
-// --- MOSTRAR / OCULTAR CONTRASEÑA ---
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest("#btn-toggle-password");
-  if (!btn) return;
-
-  e.preventDefault();
-  const inputPass = document.getElementById("auth-password");
-  if (!inputPass) return;
-
-  // Alternar entre password y text
-  const esPassword = inputPass.type === "password";
-  inputPass.type = esPassword ? "text" : "password";
-
-  // Cambiar el icono en Lucide
-  const icono = btn.querySelector("[data-lucide]");
-  if (icono) {
-    icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
-    if (window.lucide) {
-      window.lucide.createIcons();
-    }
   }
 });
 
@@ -350,7 +299,6 @@ let estaGrabandoAudio = false;
 
 // --- MOCK DATA ---
 let chatsFalsosData = [];
-
 let filtroActual = "todos";
 
 // --- SISTEMA DE EFECTOS DE SONIDO NATIVOS (MOVACHAT) ---
@@ -360,13 +308,10 @@ window.sonidosApp = window.sonidosApp || {
   grabando: new Audio("assets/sounds/grabando.mp3")
 };
 
-// 🔊 Función global para reproducir sonidos sin interrupciones ni duplicados
 window.reproducirSonido = function(tipo) {
   if (window.sonidosApp && window.sonidosApp[tipo]) {
-    window.sonidosApp[tipo].currentTime = 0; // Reinicia el audio si entra rápido uno tras otro
-    window.sonidosApp[tipo].play().catch(() => {
-      // Evita bloqueos por políticas de autoplay del navegador
-    });
+    window.sonidosApp[tipo].currentTime = 0;
+    window.sonidosApp[tipo].play().catch(() => {});
   }
 };
 
@@ -392,26 +337,21 @@ function filtrarYRenderizar() {
   const textoBusqueda = inputBuscador ? inputBuscador.value.toLowerCase().trim() : "";
   contenedorChats.innerHTML = "";
 
-  // 1. Calcular total real de mensajes no leídos
   let totalNoLeidos = 0;
 
-  // Contar no leídos de los chats dinámicos
   chatsFalsosData.forEach(chat => {
     if (chat.unread) totalNoLeidos++;
   });
 
-  // Contar no leídos de los HTML originales si tienen badge
   chatsOriginalesHTML.forEach(tarjeta => {
     if (tarjeta.querySelector(".badge-mensaje")) totalNoLeidos++;
   });
 
-  // Actualizar el número en el botón de filtro
   const badgeFiltro = document.querySelector(".caja-filtros .badge-filtro");
   if (badgeFiltro) {
     badgeFiltro.textContent = totalNoLeidos;
   }
 
-  // 2. Renderizar tarjetas HTML originales
   chatsOriginalesHTML.forEach((tarjeta) => {
     const nombreElem = tarjeta.querySelector(".chat-nombre");
     const nombre = nombreElem ? nombreElem.textContent.toLowerCase() : "";
@@ -426,7 +366,6 @@ function filtrarYRenderizar() {
     }
   });
 
-  // 3. Renderizar chats de la base de datos (chatsFalsosData)
   chatsFalsosData.forEach((chat) => {
     let pasaFiltro = false;
     if (filtroActual === "todos") pasaFiltro = true;
@@ -440,7 +379,6 @@ function filtrarYRenderizar() {
         ? `<div class="avatar-grupo"><i data-lucide="users"></i></div>`
         : `<img src="https://i.pravatar.cc/150?img=${chat.img}" alt="${chat.nombre}">`;
 
-      // 🚀 Agregamos data-uid para que al hacer clic sepa a quién abrir en Firebase
       const tarjetaFalsa = `
         <div class="tarjeta-chat" data-uid="${chat.uid || ''}">
           <div class="chat-avatar-caja">
@@ -462,11 +400,8 @@ function filtrarYRenderizar() {
     }
   });
 
-  // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de 'contenedorChats'
   if (window.lucide) {
-    window.lucide.createIcons({
-      targets: [contenedorChats]
-    });
+    window.lucide.createIcons({ targets: [contenedorChats] });
   }
 }
 
@@ -475,9 +410,8 @@ if (contenedorChats) {
     const tarjeta = e.target.closest(".tarjeta-chat");
     if (!tarjeta) return;
 
-    // 🛑 FRENO DE MANO: Si el menú contextual está visible o activado el bloqueo fantasma, no abrimos chat
     const menuTarjetas = document.getElementById("menu-tarjetas-chat");
-    if (bloquarClickFantasma || (menuTarjetas && !menuTarjetas.classList.contains("oculto"))) {
+    if (typeof bloquarClickFantasma !== "undefined" && bloquarClickFantasma || (menuTarjetas && !menuTarjetas.classList.contains("oculto"))) {
       return;
     }
 
@@ -487,36 +421,37 @@ if (contenedorChats) {
       return;
     }
 
-    // Abrir estado al hacer clic en la foto de avatar si tiene historia
     if (e.target.closest(".chat-avatar-caja")) {
       e.stopPropagation();
-
-      // Buscar si la tarjeta tiene la clase o indicador de historia/estado activo
       const tieneEstado = tarjeta.dataset.estadoUrl;
-      if (tieneEstado) {
+      if (tieneEstado && typeof abrirEstadoAmigo === "function") {
         abrirEstadoAmigo(tarjeta.dataset.estadoUrl, tarjeta.dataset.estadoTexto || "");
       }
       return;
     }
 
-    // Clic en la tarjeta para abrir el chat privado
     const nombreSeleccionado = tarjeta.querySelector(".chat-nombre").textContent;
     const textoEstadoCabecera = document.querySelector(".amigo-datos .amigo-estado-texto");
     const ledSuperiorEnfoque = document.getElementById("led-enfoque-app");
 
     document.querySelector(".amigo-nombre-chat").textContent = nombreSeleccionado;
 
-    cargarMensajesDeAmigo(nombreSeleccionado, historialMensajes);
+    if (typeof cargarMensajesDeAmigo === "function") {
+      cargarMensajesDeAmigo(nombreSeleccionado, historialMensajes);
+    }
 
     const srcImg = tarjeta.querySelector("img") ? tarjeta.querySelector("img").src : "";
     if (srcImg) document.querySelector(".avatar-mini-caja img").src = srcImg;
 
-    encabezadoGlobal.style.display = "none";
-    menuFlotanteGlobal.style.display = "none";
-    pantallaChatPrivado.classList.add("pantalla-completa");
-    switchPantalla(pantallaChatPrivado, pantallaChats, pantallaPerfil, pantallaBienvenida);
+    if (encabezadoGlobal) encabezadoGlobal.style.display = "none";
+    if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
+    if (pantallaChatPrivado) pantallaChatPrivado.classList.add("pantalla-completa");
 
-    historialMensajes.scrollTop = historialMensajes.scrollHeight;
+    if (typeof switchPantalla === "function") {
+      switchPantalla(pantallaChatPrivado, pantallaChats, pantallaPerfil, pantallaBienvenida);
+    }
+
+    if (historialMensajes) historialMensajes.scrollTop = historialMensajes.scrollHeight;
 
     if (window.timerSimuladorLectura) clearTimeout(window.timerSimuladorLectura);
     if (window.timerSimuladorEscribiendo) clearTimeout(window.timerSimuladorEscribiendo);
@@ -539,74 +474,83 @@ if (contenedorChats) {
 if (btnOpcionesChat) {
   btnOpcionesChat.addEventListener("click", (e) => {
     e.stopPropagation();
-    menuCabecera.classList.toggle("oculto");
-    menuAdjuntar.classList.add("oculto");
-    menuCamaraPro.classList.add("oculto");
+    if (menuCabecera) menuCabecera.classList.toggle("oculto");
+    if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
+    if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
 
     const rect = btnOpcionesChat.getBoundingClientRect();
-    const marcoRect = document.querySelector(".contenedor-chat").getBoundingClientRect();
-    menuCabecera.style.right = "20px";
-    menuCabecera.style.left = "auto";
-    menuCabecera.style.top = `${rect.bottom - marcoRect.top + 10}px`;
+    const marco = document.querySelector(".contenedor-chat");
+    if (marco && menuCabecera) {
+      const marcoRect = marco.getBoundingClientRect();
+      menuCabecera.style.right = "20px";
+      menuCabecera.style.left = "auto";
+      menuCabecera.style.top = `${rect.bottom - marcoRect.top + 10}px`;
+    }
   });
 }
 
 if (btnAdjuntarTodo) {
   btnAdjuntarTodo.addEventListener("click", (e) => {
     e.stopPropagation();
-    menuAdjuntar.classList.toggle("oculto");
-    menuCabecera.classList.add("oculto");
-    menuCamaraPro.classList.add("oculto");
+    if (menuAdjuntar) menuAdjuntar.classList.toggle("oculto");
+    if (menuCabecera) menuCabecera.classList.add("oculto");
+    if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
 
-    if (!menuAdjuntar.classList.contains("oculto")) {
+    if (menuAdjuntar && !menuAdjuntar.classList.contains("oculto")) {
       btnAdjuntarTodo.classList.add("caiman-abierto");
     } else {
       btnAdjuntarTodo.classList.remove("caiman-abierto");
     }
 
     const rect = btnAdjuntarTodo.getBoundingClientRect();
-    const marcoRect = document.querySelector(".contenedor-chat").getBoundingClientRect();
-    menuAdjuntar.style.left = "20px";
-    menuAdjuntar.style.right = "auto";
-    menuAdjuntar.style.top = `${rect.top - marcoRect.top - 170}px`;
+    const marco = document.querySelector(".contenedor-chat");
+    if (marco && menuAdjuntar) {
+      const marcoRect = marco.getBoundingClientRect();
+      menuAdjuntar.style.left = "20px";
+      menuAdjuntar.style.right = "auto";
+      menuAdjuntar.style.top = `${rect.top - marcoRect.top - 170}px`;
+    }
   });
 }
 
 if (btnCamaraMovaPro) {
   btnCamaraMovaPro.addEventListener("click", (e) => {
     e.stopPropagation();
-    menuAdjuntar.classList.add("oculto");
-    menuCamaraPro.classList.remove("oculto");
+    if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
+    if (menuCamaraPro) menuCamaraPro.classList.remove("oculto");
 
     const rect = btnAdjuntarTodo.getBoundingClientRect();
-    const marcoRect = document.querySelector(".contenedor-chat").getBoundingClientRect();
-    menuCamaraPro.style.left = "20px";
-    menuCamaraPro.style.right = "auto";
-    menuCamaraPro.style.top = `${rect.top - marcoRect.top - 165}px`;
+    const marco = document.querySelector(".contenedor-chat");
+    if (marco && menuCamaraPro) {
+      const marcoRect = marco.getBoundingClientRect();
+      menuCamaraPro.style.left = "20px";
+      menuCamaraPro.style.right = "auto";
+      menuCamaraPro.style.top = `${rect.top - marcoRect.top - 165}px`;
+    }
   });
 }
 
 if (btnCancelarCamara) {
   btnCancelarCamara.addEventListener("click", (e) => {
     e.stopPropagation();
-    menuCamaraPro.classList.add("oculto");
-    menuAdjuntar.classList.remove("oculto");
+    if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
+    if (menuAdjuntar) menuAdjuntar.classList.remove("oculto");
   });
 }
 
 const btnGaleriaMenu = document.querySelector("#menu-adjuntar-files button:nth-of-type(1)");
 if (btnGaleriaMenu) {
   btnGaleriaMenu.addEventListener("click", () => {
-    inputRealGaleria.click();
-    menuAdjuntar.classList.add("oculto");
+    if (inputRealGaleria) inputRealGaleria.click();
+    if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
   });
 }
 
 const btnDocMenu = document.querySelector("#menu-adjuntar-files button:nth-of-type(2)");
 if (btnDocMenu) {
   btnDocMenu.addEventListener("click", () => {
-    inputRealDocumento.click();
-    menuAdjuntar.classList.add("oculto");
+    if (inputRealDocumento) inputRealDocumento.click();
+    if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
   });
 }
 
@@ -617,12 +561,10 @@ async function activarCamaraMovaPro(tipoMedia) {
   const menuCamaraPro = document.getElementById("menu-camara-pro");
   if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
 
-  // 📸 FOTO (Optimizada para rendimiento y compatibilidad)
   if (tipoMedia === "foto") {
     const inputCamara = document.createElement("input");
     inputCamara.type = "file";
     inputCamara.accept = "image/*";
-    // Opcional: quita capture="user" si prefieres que el usuario elija entre frontal/trasera en el selector nativo
 
     inputCamara.onchange = (evt) => {
       const archivo = evt.target.files && evt.target.files[0];
@@ -644,13 +586,10 @@ async function activarCamaraMovaPro(tipoMedia) {
           inputChat.focus();
         }
 
-        // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono dentro del botón de acción
         if (btnAccionChat) {
           btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
           if (window.lucide) {
-            window.lucide.createIcons({
-              targets: [btnAccionChat]
-            });
+            window.lucide.createIcons({ targets: [btnAccionChat] });
           }
         }
       }
@@ -660,51 +599,49 @@ async function activarCamaraMovaPro(tipoMedia) {
     return;
   }
 
-  // 🎥 VIDEO CIRCULAR: Intento de Modal
   const modalCamara = document.getElementById("modal-camara-circular");
   const videoVisor = document.getElementById("video-visor-camara");
   const btnGrabar = document.getElementById("btn-iniciar-grabar-live");
   const txtContador = document.getElementById("contador-camara-10s");
 
   if (modalCamara && videoVisor) {
-    txtContador.textContent = "00:10";
-    segundosRestantes = 10;
-    btnGrabar.textContent = "● Grabar";
-    btnGrabar.disabled = false;
+    if (txtContador) txtContador.textContent = "00:10";
+    if (btnGrabar) {
+      btnGrabar.textContent = "● Grabar";
+      btnGrabar.disabled = false;
+    }
     modalCamara.classList.remove("oculto");
   }
 
   try {
-    if (streamCamaraLive) {
+    if (typeof streamCamaraLive !== "undefined" && streamCamaraLive) {
       streamCamaraLive.getTracks().forEach(track => track.stop());
     }
 
-    streamCamaraLive = await navigator.mediaDevices.getUserMedia({
+    window.streamCamaraLive = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "user" },
       audio: true
     });
 
-    if (videoVisor) videoVisor.srcObject = streamCamaraLive;
+    if (videoVisor) videoVisor.srcObject = window.streamCamaraLive;
 
   } catch (e) {
-    console.warn("Entorno sin cámara directa o permisos. Usando captura con recorte físico:", e);
+    console.warn("Entorno sin cámara directa. Usando captura nativa:", e);
     if (modalCamara) modalCamara.classList.add("oculto");
 
-    // ⚡ CAPTURA DEL TELÉFONO + RECORTADOR FÍSICO AUTOMÁTICO
     const inputVideoDirecto = document.createElement("input");
     inputVideoDirecto.type = "file";
     inputVideoDirecto.accept = "video/*";
     inputVideoDirecto.capture = "user";
 
     inputVideoDirecto.onchange = async (evt) => {
-      const archivo = evt.target.files[0];
+      const archivo = evt.target.files && evt.target.files[0];
       if (!archivo) return;
 
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Optimizando y recortando video a 10s... ⚡", "✂️", "#00f2fe");
       }
 
-      // 1. Cargamos el video capturado en memoria
       const videoTemp = document.createElement("video");
       videoTemp.src = URL.createObjectURL(archivo);
       videoTemp.muted = true;
@@ -720,10 +657,10 @@ async function activarCamaraMovaPro(tipoMedia) {
           const urlCortada = await recortarVideoA10Segundos(videoTemp);
           asignarPreviewVideoCircular(urlCortada);
           if (typeof mostrarAvisoPremium === "function") {
-            mostrarAvisoPremium("Video recortado a 10s para ahorrar datos en la nube 🛡️", "🎬", "#00f2fe");
+            mostrarAvisoPremium("Video recortado a 10s 🛡️", "🎬", "#00f2fe");
           }
         } catch (err) {
-          console.warn("No se pudo re-codificar, asignando original con tope:", err);
+          console.warn("Asignando original con tope:", err);
           asignarPreviewVideoCircular(videoTemp.src);
         }
       };
@@ -800,11 +737,8 @@ function asignarPreviewVideoCircular(urlFinal) {
       </div>
     `);
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono recién inyectado
     if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [wrapper]
-      });
+      window.lucide.createIcons({ targets: [wrapper] });
     }
   }
 
@@ -815,13 +749,10 @@ function asignarPreviewVideoCircular(urlFinal) {
     inputChat.focus();
   }
 
-  // ⚡ OPTIMIZACIÓN CPU: Cambiar icono del botón y renderizar solo ese botón
   if (btnAccionChat) {
     btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
     if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [btnAccionChat]
-      });
+      window.lucide.createIcons({ targets: [btnAccionChat] });
     }
   }
 }
@@ -852,7 +783,6 @@ if (inputRealGaleria) {
       reader.onload = function (evt) {
         const wrapper = document.querySelector(".wrapper-miniatura");
 
-        // Validar wrapper de forma segura antes de buscar hijos
         if (wrapper) {
           const iconoPrevio = wrapper.querySelector(".icono-doc-preview");
           if (iconoPrevio) iconoPrevio.remove();
@@ -872,13 +802,10 @@ if (inputRealGaleria) {
           inputChat.focus();
         }
 
-        // ⚡ OPTIMIZACIÓN CPU: Dibujar solo el icono dentro de btnAccionChat
         if (btnAccionChat) {
           btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
           if (window.lucide) {
-            window.lucide.createIcons({
-              targets: [btnAccionChat]
-            });
+            window.lucide.createIcons({ targets: [btnAccionChat] });
           }
         }
       };
@@ -893,25 +820,31 @@ if (inputRealDocumento) {
     if (e.target.files && e.target.files[0]) {
       nombreDocumentoSimulado = e.target.files[0].name;
       tipoAdjuntoActivo = 'documento';
-      imgMiniaturaAdjunto.style.display = "none";
+      if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.style.display = "none";
       const wrapper = document.querySelector(".wrapper-miniatura");
 
-      const iconoPrevio = wrapper.querySelector(".icono-doc-preview");
-      if (iconoPrevio) iconoPrevio.remove();
+      if (wrapper) {
+        const iconoPrevio = wrapper.querySelector(".icono-doc-preview");
+        if (iconoPrevio) iconoPrevio.remove();
 
-      wrapper.insertAdjacentHTML("beforeend", `
-        <div class="icono-doc-preview">
-          <i data-lucide="file-text" style="width: 30px; height: 30px;"></i>
-        </div>
-      `);
-      if (window.lucide) window.lucide.createIcons();
+        wrapper.insertAdjacentHTML("beforeend", `
+          <div class="icono-doc-preview">
+            <i data-lucide="file-text" style="width: 30px; height: 30px;"></i>
+          </div>
+        `);
+        if (window.lucide) window.lucide.createIcons({ targets: [wrapper] });
+      }
 
-      cajaVistaPrevia.classList.remove("oculto");
-      inputChat.placeholder = `Comentar documento: ${nombreDocumentoSimulado.substring(0, 15)}...`;
-      inputChat.focus();
+      if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
+      if (inputChat) {
+        inputChat.placeholder = `Comentar documento: ${nombreDocumentoSimulado.substring(0, 15)}...`;
+        inputChat.focus();
+      }
 
-      btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-      if (window.lucide) window.lucide.createIcons();
+      if (btnAccionChat) {
+        btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+        if (window.lucide) window.lucide.createIcons({ targets: [btnAccionChat] });
+      }
     }
   });
 }
@@ -930,13 +863,10 @@ if (btnBorrarVistaPrevia) {
 
     if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
 
-    // ⚡ OPTIMIZACIÓN CPU: Restaurar solo el icono del micrófono en el botón
     if (btnAccionChat) {
       btnAccionChat.innerHTML = `<i data-lucide="mic"></i>`;
       if (window.lucide) {
-        window.lucide.createIcons({
-          targets: [btnAccionChat]
-        });
+        window.lucide.createIcons({ targets: [btnAccionChat] });
       }
     }
   });
@@ -951,12 +881,12 @@ let streamAudioLive = null;
 
 function arrancarCronometroAudio() {
   segundosGrabados = 0;
-  contadorAudio.textContent = "00:00";
+  if (contadorAudio) contadorAudio.textContent = "00:00";
   timerGrabacionAudio = setInterval(() => {
     segundosGrabados++;
     let mins = Math.floor(segundosGrabados / 60).toString().padStart(2, '0');
     let secs = (segundosGrabados % 60).toString().padStart(2, '0');
-    contadorAudio.textContent = `${mins}:${secs}`;
+    if (contadorAudio) contadorAudio.textContent = `${mins}:${secs}`;
   }, 1000);
 }
 
@@ -964,6 +894,9 @@ function frenarCronometroAudio() {
   if (timerGrabacionAudio) clearInterval(timerGrabacionAudio);
 }
 
+// ========================================================
+// 4. SISTEMA DE AUDIOS Y NOTAS DE VOZ (CONTINUACIÓN)
+// ========================================================
 async function iniciarGrabacionVoz(e) {
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
   if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0) || (cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))) {
@@ -1026,9 +959,9 @@ function finalizarGrabacionVoz() {
   estaGrabandoAudio = false;
   frenarCronometroAudio();
 
-  btnAccionChat.classList.remove("grabando-activo");
-  panelGrabacion.classList.add("oculto");
-  cajaInputNormal.classList.remove("oculto");
+  if (btnAccionChat) btnAccionChat.classList.remove("grabando-activo");
+  if (panelGrabacion) panelGrabacion.classList.add("oculto");
+  if (cajaInputNormal) cajaInputNormal.classList.remove("oculto");
 
   if (mediaRecorderAudio && mediaRecorderAudio.state === "recording") {
     mediaRecorderAudio.stop();
@@ -1069,7 +1002,6 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
     historialMensajes.appendChild(nuevaBurbujaHTML);
     if (typeof aplicarRelojArenaEfecto === "function") aplicarRelojArenaEfecto(nuevaBurbujaHTML);
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de la nueva burbuja
     if (window.lucide) {
       window.lucide.createIcons({
         targets: [nuevaBurbujaHTML]
@@ -1104,7 +1036,6 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
         barras.forEach(b => b.style.backgroundColor = "rgba(255,255,255,0.2)");
       }
 
-      // ⚡ OPTIMIZACIÓN CPU: Redibujar solo el botón de Play/Pause
       if (window.lucide) {
         window.lucide.createIcons({
           targets: [btnPlay]
@@ -1130,7 +1061,6 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
       if (agujaRoja) agujaRoja.style.left = "0%";
       if (nodoTextoTiempo) nodoTextoTiempo.textContent = duracion;
 
-      // ⚡ OPTIMIZACIÓN CPU: Redibujar solo el botón al terminar
       if (window.lucide) {
         window.lucide.createIcons({
           targets: [btnPlay]
@@ -1169,7 +1099,6 @@ let estaEnviandoMensaje = false;
 // 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS)
 // ========================================================
 async function enviarMensajeNuevo() {
-  // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
   if (estaEnviandoMensaje) return;
 
   const texto = inputChat ? inputChat.value.trim() : "";
@@ -1188,7 +1117,6 @@ async function enviarMensajeNuevo() {
     return;
   }
 
-  // Activar candado
   estaEnviandoMensaje = true;
 
   const chatId = typeof obtenerChatId === "function"
@@ -1215,7 +1143,6 @@ async function enviarMensajeNuevo() {
     if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
 
-    // Liberar candado
     estaEnviandoMensaje = false;
     return;
   }
@@ -1247,7 +1174,6 @@ async function enviarMensajeNuevo() {
       objetoMensaje.urlAdjunto = urlVideoCapturado;
     }
 
-    // Limpiar caja de vista previa
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
     if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
@@ -1256,7 +1182,6 @@ async function enviarMensajeNuevo() {
     if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
   }
 
-  // Limpiar el campo de texto INMEDIATAMENTE
   if (inputChat) inputChat.value = "";
 
   // 🚀 SUBIR A FIREBASE
@@ -1265,7 +1190,7 @@ async function enviarMensajeNuevo() {
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
 
-    // 🔊 SONIDO DE MENSAJE ENVIADO
+    // 🔊 SONIDO UNIFICADO DE MENSAJE ENVIADO
     if (typeof reproducirSonido === "function") {
       reproducirSonido("enviado");
     }
@@ -1277,7 +1202,6 @@ async function enviarMensajeNuevo() {
       mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
     }
   } finally {
-    // Liberar el candado tras 300ms para permitir el siguiente mensaje
     setTimeout(() => {
       estaEnviandoMensaje = false;
     }, 300);
@@ -1338,16 +1262,18 @@ function desplegarMenuContextual(x, y, burbuja) {
   if (menuMensajes) {
     menuMensajes.classList.remove("oculto");
 
-    const marcoRect = document.querySelector(".contenedor-chat").getBoundingClientRect();
-    const posX = x - marcoRect.left;
-    const posY = y - marcoRect.top;
+    const marco = document.querySelector(".contenedor-chat");
+    if (marco) {
+      const marcoRect = marco.getBoundingClientRect();
+      const posX = x - marcoRect.left;
+      const posY = y - marcoRect.top;
 
-    menuMensajes.style.left = `${Math.min(posX, marcoRect.width - 190)}px`;
-    menuMensajes.style.top = `${Math.min(posY, marcoRect.height - 200)}px`;
+      menuMensajes.style.left = `${Math.min(posX, marcoRect.width - 190)}px`;
+      menuMensajes.style.top = `${Math.min(posY, marcoRect.height - 200)}px`;
+    }
   }
 }
 
-// Cierre de menús flotantes al hacer clic fuera
 document.addEventListener("click", (e) => {
   if (isLongPress) return;
 
@@ -1372,14 +1298,12 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
     const textoMensaje = nodoTexto ? nodoTexto.textContent : "";
     const msgId = nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null;
 
-    // 📋 OPCIÓN 1: COPIAR
     if (accion === "copiar" && textoMensaje) {
       navigator.clipboard.writeText(textoMensaje);
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Texto copiado al portapapeles 📋", "✨", "#00f2fe");
       }
     }
-    // 🗑️ OPCIÓN 2: ELIMINAR (De la pantalla y de Firebase)
     else if (accion === "eliminar" && nodoMensaje) {
       nodoMensaje.style.transition = "all 0.2s ease-out";
       nodoMensaje.style.opacity = "0";
@@ -1389,7 +1313,6 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
         if (nodoMensaje) nodoMensaje.remove();
       }, 200);
 
-      // Si existe ID de Firebase y chat activo, borrarlo en la nube
       const usuarioActual = auth.currentUser;
       const miUid = usuarioActual ? usuarioActual.uid : null;
       const contactoUid = window.contactoActivoUid;
@@ -1403,22 +1326,17 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
         set(mensajeRef, null).catch(err => console.error("Error al eliminar de Firebase:", err));
       }
     }
-    // ✏️ OPCIÓN 3: EDITAR
     else if (accion === "editar" && textoMensaje && typeof inputChat !== "undefined") {
       inputChat.value = textoMensaje;
       inputChat.focus();
 
       window.burbujaEnEdicion = nodoMensaje;
-      window.mensajeEnEdicionId = msgId; // 🚀 Guardamos el ID de Firebase para editarlo
+      window.mensajeEnEdicionId = msgId;
 
       if (btnAccionChat) {
         btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-
-        // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono del botón de enviar
         if (window.lucide) {
-          window.lucide.createIcons({
-            targets: [btnAccionChat]
-          });
+          window.lucide.createIcons({ targets: [btnAccionChat] });
         }
       }
     }
@@ -1437,7 +1355,7 @@ function actualizarIconoBotonAccion() {
 
   if (!tieneTexto && window.burbujaEnEdicion) {
     window.burbujaEnEdicion = null;
-    window.mensajeEnEdicionId = null; // Limpiamos también el ID de edición en Firebase
+    window.mensajeEnEdicionId = null;
   }
 
   if (tieneTexto || tieneAdjunto) {
@@ -1446,11 +1364,8 @@ function actualizarIconoBotonAccion() {
     btnAccionChat.innerHTML = `<i data-lucide="mic"></i>`;
   }
 
-  // ⚡ OPTIMIZACIÓN CPU: Redibujar ÚNICAMENTE el botón de acción
   if (window.lucide) {
-    window.lucide.createIcons({
-      targets: [btnAccionChat]
-    });
+    window.lucide.createIcons({ targets: [btnAccionChat] });
   }
 }
 
@@ -1467,7 +1382,7 @@ if (inputChat) {
 if (btnAccionChat) {
   btnAccionChat.addEventListener("click", (e) => {
     const tieneTexto = inputChat.value.trim().length > 0;
-    const tieneAdjunto = !cajaVistaPrevia.classList.contains("oculto");
+    const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
 
     if (tieneTexto || tieneAdjunto) {
       e.preventDefault();
@@ -1476,23 +1391,19 @@ if (btnAccionChat) {
   });
 }
 
-// Evento para filtrar contactos con el buscador en tiempo real (Soporta @tags)
 const inputBuscadorModal = document.getElementById("input-buscar-contacto");
 
 if (inputBuscadorModal) {
   inputBuscadorModal.addEventListener("input", (e) => {
-    // 1. Limpiamos el texto: quitamos el '@' si lo escriben y pasamos a minúsculas
     const textoBusqueda = e.target.value.replace("@", "").trim().toLowerCase();
     const items = document.querySelectorAll(".contacto-item");
 
-    // 2. Filtramos cada tarjeta de la lista
     items.forEach((item) => {
       const elementoNombre = item.querySelector(".nombre-contacto");
 
       if (elementoNombre) {
         const nombre = elementoNombre.textContent.toLowerCase();
 
-        // Si la caja de texto está vacía o el nombre coincide, se muestra
         if (!textoBusqueda || nombre.includes(textoBusqueda)) {
           item.style.display = "flex";
         } else {
@@ -1518,14 +1429,13 @@ botonesFiltros.forEach((boton, index) => {
 filtrarYRenderizar();
 
 function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
-  // 1. APAGADO EN SEGUNDO PLANO (Corta timers y medios activos)
   if (typeof cerrarEstadoMova === "function") {
     cerrarEstadoMova();
   }
 
   if (typeof streamCamaraLive !== "undefined" && streamCamaraLive) {
     streamCamaraLive.getTracks().forEach(track => track.stop());
-    streamCamaraLive = null;
+    window.streamCamaraLive = null;
   }
 
   if (typeof estaGrabandoAudio !== "undefined" && estaGrabandoAudio) {
@@ -1538,18 +1448,18 @@ function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
     }
   });
 
-  // 2. OCULTAR Y MOSTRAR PANTALLAS (CSS)
-  ocultar1.style.display = "none";
-  ocultar2.style.display = "none";
-  ocultar3.style.display = "none";
+  if (ocultar1) ocultar1.style.display = "none";
+  if (ocultar2) ocultar2.style.display = "none";
+  if (ocultar3) ocultar3.style.display = "none";
 
-  mostrar.style.display = "flex";
-  if (mostrar === pantallaChats || mostrar === pantallaPerfil) {
-    mostrar.style.flexDirection = "column";
-    mostrar.style.alignItems = "stretch";
+  if (mostrar) {
+    mostrar.style.display = "flex";
+    if (mostrar === pantallaChats || mostrar === pantallaPerfil) {
+      mostrar.style.flexDirection = "column";
+      mostrar.style.alignItems = "stretch";
+    }
   }
 
-  // 3. CONTROL DE BOTÓN FLOTANTE
   const btnFlotante = document.getElementById("btn-abrir-contactos");
   if (btnFlotante) {
     if (mostrar === pantallaChats) {
@@ -1589,7 +1499,6 @@ if (btnPerfilMenu) {
   });
 }
 
-// --- MENÚ DINÁMICO DE 3 PUNTOS PARA LA CABECERA ---
 const btnOpcionesCabecera = document.getElementById("btn-opciones-cabecera");
 const menuCabeceraFlotante = document.getElementById("menu-desplegable-cabecera");
 const listaOpcionesCabecera = document.getElementById("lista-opciones-cabecera");
@@ -1601,10 +1510,8 @@ if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
     const estaOculto = menuCabeceraFlotante.classList.contains("oculto");
 
     if (estaOculto) {
-      // Detección directa de si el perfil está visible
       const estaEnPerfil = pantallaPerfil && (pantallaPerfil.style.display === "flex" || pantallaPerfil.classList.contains("activa"));
 
-      // Inyección dinámica de las opciones
       if (estaEnPerfil) {
         listaOpcionesCabecera.innerHTML = `
           <li id="opcion-cambiar-password"><i data-lucide="key"></i> Cambiar Contraseña</li>
@@ -1616,15 +1523,11 @@ if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
         `;
       }
 
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro de 'listaOpcionesCabecera'
       if (window.lucide) {
-        window.lucide.createIcons({
-          targets: [listaOpcionesCabecera]
-        });
+        window.lucide.createIcons({ targets: [listaOpcionesCabecera] });
       }
 
       asignarEventosMenuCabecera();
-
       menuCabeceraFlotante.classList.remove("oculto");
     } else {
       menuCabeceraFlotante.classList.add("oculto");
@@ -1633,11 +1536,10 @@ if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
 }
 
 function asignarEventosMenuCabecera() {
-  // --- 1. OPCIÓN: MI PERFIL ---
   const opcionMiPerfil = document.getElementById("opcion-mi-perfil");
   if (opcionMiPerfil) {
     opcionMiPerfil.addEventListener("click", () => {
-      menuCabeceraFlotante.classList.add("oculto");
+      if (menuCabeceraFlotante) menuCabeceraFlotante.classList.add("oculto");
       if (btnPerfilMenu) btnPerfilMenu.click();
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Abriendo tu Perfil... 👤", "✨", "#00f2fe");
@@ -1645,19 +1547,16 @@ function asignarEventosMenuCabecera() {
     });
   }
 
-  // --- 2. OPCIÓN: CAMBIAR CONTRASEÑA (Envía correo de recuperación) ---
   const opcionCambiarPassword = document.getElementById("opcion-cambiar-password");
   if (opcionCambiarPassword) {
     opcionCambiarPassword.addEventListener("click", async () => {
-      menuCabeceraFlotante.classList.add("oculto");
+      if (menuCabeceraFlotante) menuCabeceraFlotante.classList.add("oculto");
 
       const usuarioActual = auth.currentUser;
       if (usuarioActual && usuarioActual.email) {
         try {
-          // Importar dinámicamente o usar sendPasswordResetEmail de Firebase
           const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
           await sendPasswordResetEmail(auth, usuarioActual.email);
-
           mostrarAvisoPremium(`Enlace enviado a <b>${usuarioActual.email}</b> 🔑`, "✉️", "#00f2fe");
         } catch (error) {
           console.error("Error al enviar correo:", error);
@@ -1667,17 +1566,14 @@ function asignarEventosMenuCabecera() {
     });
   }
 
-  // --- 3. OPCIÓN: CERRAR SESIÓN (Desconexión Real) ---
   const opcionCerrarSesion = document.getElementById("opcion-cerrar-sesion");
   if (opcionCerrarSesion) {
     opcionCerrarSesion.addEventListener("click", async () => {
-      menuCabeceraFlotante.classList.add("oculto");
+      if (menuCabeceraFlotante) menuCabeceraFlotante.classList.add("oculto");
       try {
         const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-        await signOut(auth); // Cierra sesión en Firebase
-
+        await signOut(auth);
         mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
-        // El listener onAuthStateChanged que ya tienes mostrará pantalla-auth automáticamente
       } catch (error) {
         console.error("Error al cerrar sesión:", error);
       }
@@ -1685,7 +1581,6 @@ function asignarEventosMenuCabecera() {
   }
 }
 
-// Cierre automático al tocar fuera
 document.addEventListener("click", () => {
   if (menuCabeceraFlotante) menuCabeceraFlotante.classList.add("oculto");
 });
@@ -1701,14 +1596,14 @@ if (btnVolver) {
     if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "flex";
     if (btnFlotanteContacto) btnFlotanteContacto.style.display = "flex";
 
-    pantallaChatPrivado.classList.remove("pantalla-completa");
+    if (pantallaChatPrivado) pantallaChatPrivado.classList.remove("pantalla-completa");
     switchPantalla(pantallaChats, pantallaBienvenida, pantallaPerfil, pantallaChatPrivado);
   });
 }
 
 const entrarALosChats = () => {
   botonesMenu.forEach(b => b.classList.remove("activo"));
-  btnInicioMenu.classList.add("activo");
+  if (btnInicioMenu) btnInicioMenu.classList.add("activo");
   switchPantalla(pantallaChats, pantallaBienvenida, pantallaPerfil, pantallaChatPrivado);
 };
 
@@ -1868,8 +1763,8 @@ let likesSimulados = 0;
 
 function abrirEstadoAmigo(urlFoto, fraseInicial) {
   if (!visorEstados) return;
-  imgEstadoRender.src = urlFoto;
-  textoEstadoRender.textContent = fraseInicial;
+  if (imgEstadoRender) imgEstadoRender.src = urlFoto;
+  if (textoEstadoRender) textoEstadoRender.textContent = fraseInicial;
 
   likesSimulados = 0;
   if (contadorLikesEstado) contadorLikesEstado.textContent = likesSimulados;
@@ -1913,11 +1808,11 @@ if (btnCorazonEstado) {
     if (!btnCorazonEstado.classList.contains("activo")) {
       btnCorazonEstado.classList.add("activo");
       likesSimulados++;
-      contadorLikesEstado.textContent = likesSimulados;
+      if (contadorLikesEstado) contadorLikesEstado.textContent = likesSimulados;
     } else {
       btnCorazonEstado.classList.remove("activo");
       likesSimulados--;
-      contadorLikesEstado.textContent = likesSimulados;
+      if (contadorLikesEstado) contadorLikesEstado.textContent = likesSimulados;
     }
   });
 }
@@ -1976,8 +1871,6 @@ function mostrarAvisoPremium(mensaje, icono = "🔔", colorNeon = "#00f2fe") {
 // ========================================================
 // 9. QR, COMPARTIR Y MODALES DE CONFIGURACIÓN
 // ========================================================
-
-// Puerta de enlace por si no existe 'mostrarAvisoPremium' usar el Toast flotante
 if (typeof mostrarAvisoPremium === "undefined") {
   window.mostrarAvisoPremium = function (mensaje) {
     if (typeof mostrarToast === "function") {
@@ -1986,7 +1879,6 @@ if (typeof mostrarAvisoPremium === "undefined") {
   };
 }
 
-// --- 1. COMPARTIR MOVACHAT ---
 const btnCompartirMova = document.querySelector(".btn-compartir");
 
 if (btnCompartirMova) {
@@ -1996,7 +1888,6 @@ if (btnCompartirMova) {
   nuevoBtnCompartir.addEventListener("click", async function () {
     const urlCompartir = window.location.href;
 
-    // Si tiene HTTPS y el móvil/navegador lo soporta, abre el menú nativo
     if (navigator.share) {
       try {
         await navigator.share({
@@ -2011,12 +1902,10 @@ if (btnCompartirMova) {
         }
       }
     } else {
-      // Fallback seguro usando API de Portapapeles moderna
       try {
         await navigator.clipboard.writeText(urlCompartir);
         mostrarAvisoPremium("¡Enlace copiado al portapapeles! Listo para enviar. 🚀");
       } catch (err) {
-        // Fallback antiguo por si el navegador es legacy
         const cajaTemporal = document.createElement("textarea");
         cajaTemporal.value = urlCompartir;
         document.body.appendChild(cajaTemporal);
@@ -2029,7 +1918,6 @@ if (btnCompartirMova) {
   });
 }
 
-// --- 2. CÓDIGO QR PRO ---
 const btnQrMova = document.querySelector(".btn-qr");
 const modalQr = document.getElementById("modal-qr-mova");
 const btnCerrarQr = document.getElementById("btn-cerrar-qr");
@@ -2052,7 +1940,6 @@ if (btnCerrarQr && modalQr) {
   });
 }
 
-// --- 3. EDITAR ESTADO DE PERFIL Y LED ---
 const btnEditarEstado = document.getElementById("btn-editar-estado");
 const modalEstado = document.getElementById("modal-estado");
 const btnCerrarModal = document.getElementById("btn-cerrar-modal");
@@ -2119,8 +2006,7 @@ function actualizarBadgesNotificaciones() {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
 
-  // Sumamos los badges de las tarjetas
-  const badgesChats = document.querySelectorAll(".badge-chat-no-leido");
+  const badgesChats = document.querySelectorAll(".badge-chat-no-leido, .badge-mensaje");
   let totalNoLeidos = 0;
 
   badgesChats.forEach((badge) => {
@@ -2128,7 +2014,7 @@ function actualizarBadgesNotificaciones() {
     totalNoLeidos += cantidad;
   });
 
-  // 1️⃣ Actualizar Campanita (si el usuario no las silenció)
+  // 1️⃣ Actualizar Campanita
   if (badgeCampanita) {
     if (totalNoLeidos > 0 && !estaSilenciado) {
       badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos;
@@ -2138,7 +2024,7 @@ function actualizarBadgesNotificaciones() {
     }
   }
 
-  // 2️⃣ Actualizar filtro 'No leídos (0)'
+  // 2️⃣ Actualizar filtro 'No leídos'
   if (badgeFiltroNoLeidos) {
     badgeFiltroNoLeidos.textContent = totalNoLeidos;
   }
@@ -2167,7 +2053,6 @@ if (toggleNotificaciones) {
     if (toggleNotificaciones.checked) {
       localStorage.setItem("movachat-notificaciones", "activado");
 
-      // Pedimos permiso al sistema operativo/navegador
       const concedido = await solicitarPermisoNotificaciones();
       if (!concedido) {
         mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️");
@@ -2184,9 +2069,8 @@ if (toggleNotificaciones) {
   });
 }
 
-// --- 6. NOTIFICACIONES PUSH NATIVAS ---
+// --- 6. NOTIFICACIONES PUSH NATIVAS Y DISPARADOR ---
 
-// Solicitar permiso de notificaciones al navegador/móvil
 async function solicitarPermisoNotificaciones() {
   if (!("Notification" in window)) {
     console.warn("Este navegador no soporta notificaciones nativas.");
@@ -2207,12 +2091,45 @@ async function solicitarPermisoNotificaciones() {
   return false;
 }
 
+// 🔔 FUNCIÓN GLOBAL PARA NOTIFICAR MENSAJES NUEVOS EN MÓVIL Y ESCRITORIO
+window.notificarNuevoMensaje = function(nombreRemitente, textoMensaje, avatarUrl) {
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  if (estaSilenciado) return;
+
+  // 🔊 Reproducir sonido de recibido
+  if (typeof reproducirSonido === "function") {
+    reproducirSonido("recibido");
+  }
+
+  // Actualizar indicadores visuales
+  actualizarBadgesNotificaciones();
+
+  // 🔔 Lógica para pantalla bloqueada / minimizada
+  if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+    const opciones = {
+      body: textoMensaje || "Te ha enviado un mensaje.",
+      icon: avatarUrl || "assets/logo.png",
+      badge: "assets/logo.png",
+      vibrate: [200, 100, 200],
+      tag: "movachat-mensaje",
+      renotify: true
+    };
+
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
+      });
+    } else {
+      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
+    }
+  }
+};
+
 // --- 5. MODO SIGILO (INVISIBLE) ---
 const toggleSigilo = document.getElementById("check-sigilo");
 const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
 const textoEstadoIdentidad = document.querySelector(".texto-estado");
 
-// Cargar estado inicial guardado de Sigilo
 const estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
 if (estadoSigiloGuardado === "activo" && toggleSigilo) {
   toggleSigilo.checked = true;
@@ -2281,11 +2198,11 @@ if (inputSubirEstadoReal) {
       const lector = new FileReader();
       lector.onload = function (evento) {
         imagenEstadoGuardada = evento.target.result;
-        if (modalEstado) modalEstado.classList.remove("oculto");
-        if (inputNuevoEstado) inputNuevoEstado.focus();
+        if (typeof modalEstado !== "undefined" && modalEstado) modalEstado.classList.remove("oculto");
+        if (typeof inputNuevoEstado !== "undefined" && inputNuevoEstado) inputNuevoEstado.focus();
 
         const interceptarGuardado = () => {
-          if (inputNuevoEstado) fraseEstadoGuardada = inputNuevoEstado.value.trim();
+          if (typeof inputNuevoEstado !== "undefined" && inputNuevoEstado) fraseEstadoGuardada = inputNuevoEstado.value.trim();
           if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
           if (textoSubtituloMiEstado) {
             textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
@@ -2299,9 +2216,9 @@ if (inputSubirEstadoReal) {
             miniBotonMas.style.boxShadow = "0 0 10px #00f2fe";
           }
           mostrarAvisoPremium("¡Tu nueva historia ha sido publicada con éxito! 🪐", "🛸", "#00f2fe");
-          if (btnGuardarEstado) btnGuardarEstado.removeEventListener("click", interceptarGuardado);
+          if (typeof btnGuardarEstado !== "undefined" && btnGuardarEstado) btnGuardarEstado.removeEventListener("click", interceptarGuardado);
         };
-        if (btnGuardarEstado) btnGuardarEstado.addEventListener("click", interceptarGuardado);
+        if (typeof btnGuardarEstado !== "undefined" && btnGuardarEstado) btnGuardarEstado.addEventListener("click", interceptarGuardado);
       };
       lector.readAsDataURL(e.target.files[0]);
     }
@@ -2320,9 +2237,9 @@ if (imagenPerfilElena) {
 
     const urlFotoPropia = imagenPerfilElena.src;
 
-    if (visorEstados && imgEstadoRender && textoEstadoRender) {
+    if (typeof visorEstados !== "undefined" && visorEstados && imgEstadoRender && textoEstadoRender) {
       imgEstadoRender.src = urlFotoPropia;
-      textoEstadoRender.textContent = "Tu foto de perfil (Elena Rostova)";
+      textoEstadoRender.textContent = "Tu foto de perfil";
 
       likesSimulados = 0;
       if (contadorLikesEstado) contadorLikesEstado.textContent = likesSimulados;
@@ -2380,15 +2297,17 @@ const configuracionRedes = {
 
 function abrirEditorRedSocial(redKey) {
   if (!modalRedes) return;
-  tituloModalRed.innerHTML = `Editar ${configuracionRedes[redKey].titulo}`;
-  prefijoRed.textContent = configuracionRedes[redKey].prefijo;
+  if (tituloModalRed) tituloModalRed.innerHTML = `Editar ${configuracionRedes[redKey].titulo}`;
+  if (prefijoRed) prefijoRed.textContent = configuracionRedes[redKey].prefijo;
 
   const actual = localStorage.getItem(`movachat-red-${redKey}`) || "";
-  inputUsuarioRed.value = actual;
-  inputUsuarioRed.placeholder = "ej: elena_rostova";
+  if (inputUsuarioRed) {
+    inputUsuarioRed.value = actual;
+    inputUsuarioRed.placeholder = "ej: tu_usuario";
+  }
 
   modalRedes.classList.remove("oculto");
-  setTimeout(() => inputUsuarioRed.focus(), 50);
+  setTimeout(() => { if (inputUsuarioRed) inputUsuarioRed.focus(); }, 50);
 }
 
 enlacesRedesBento.forEach(enlace => {
@@ -2442,24 +2361,24 @@ enlacesRedesBento.forEach(enlace => {
 
 if (btnGuardarRed) {
   btnGuardarRed.addEventListener("click", () => {
-    const nombreUsuario = inputUsuarioRed.value.trim().replace(/[@/]/g, "");
+    const nombreUsuario = inputUsuarioRed ? inputUsuarioRed.value.trim().replace(/[@/]/g, "") : "";
 
     if (nombreUsuario === "") {
       localStorage.removeItem(`movachat-red-${redActivaSeleccionada}`);
-      modalRedes.classList.add("oculto");
+      if (modalRedes) modalRedes.classList.add("oculto");
       mostrarAvisoPremium("Enlace removido. El botón volverá a pedir configuración.", "🗑️", "#ff4b2b");
       return;
     }
 
     localStorage.setItem(`movachat-red-${redActivaSeleccionada}`, nombreUsuario);
-    modalRedes.classList.add("oculto");
+    if (modalRedes) modalRedes.classList.add("oculto");
     mostrarAvisoPremium(`Portal de ${redActivaSeleccionada.toUpperCase()} guardado correctamente. 🛡️`, "💎", "#00f2fe");
   });
 }
 
 if (btnCerrarRedes) {
   btnCerrarRedes.addEventListener("click", () => {
-    modalRedes.classList.add("oculto");
+    if (modalRedes) modalRedes.classList.add("oculto");
   });
 }
 
@@ -2475,7 +2394,7 @@ if (btnCtxBuscar && cajaBuscadorInterno && inputBuscadorInterno) {
   btnCtxBuscar.addEventListener("click", (e) => {
     e.stopPropagation();
 
-    if (menuCabecera) menuCabecera.classList.add("oculto");
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
 
     cajaBuscadorInterno.classList.remove("oculto");
     inputBuscadorInterno.focus();
@@ -2541,7 +2460,7 @@ if (btnCtxSilenciar) {
 
     if (!nombreAmigoActual) return;
 
-    if (menuCabecera) menuCabecera.classList.add("oculto");
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
 
     let tarjetaAmigoNodo = null;
     document.querySelectorAll(".lista-chats .tarjeta-chat").forEach(tarjeta => {
@@ -2582,7 +2501,6 @@ if (btnCtxSilenciar) {
       mostrarAvisoPremium(`Alertas reactivadas para <b>${nombreAmigoActual}</b>.`, "🔔", "#00f2fe");
     }
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el botón y la tarjeta modificada
     if (window.lucide) {
       const objetivos = [btnCtxSilenciar];
       if (tarjetaAmigoNodo) objetivos.push(tarjetaAmigoNodo);
@@ -2606,7 +2524,7 @@ if (btnCtxTemporales) {
 
     if (!nombreAmigoActual) return;
 
-    if (menuCabecera) menuCabecera.classList.add("oculto");
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
 
     if (!chatsTemporalesBD[nombreAmigoActual]) {
       chatsTemporalesBD[nombreAmigoActual] = true;
@@ -2618,7 +2536,6 @@ if (btnCtxTemporales) {
       mostrarAvisoPremium(`Modo permanente restaurado con <b>${nombreAmigoActual}</b>.`, "📡", "#00f2fe");
     }
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxTemporales
     if (window.lucide) {
       window.lucide.createIcons({
         targets: [btnCtxTemporales]
@@ -2628,7 +2545,8 @@ if (btnCtxTemporales) {
 }
 
 function aplicarRelojArenaEfecto(burbujaNodo) {
-  const nombreAmigoActual = document.querySelector(".amigo-nombre-chat")?.textContent;
+  const elemNombre = document.querySelector(".amigo-nombre-chat");
+  const nombreAmigoActual = elemNombre ? elemNombre.textContent : null;
 
   if (nombreAmigoActual && chatsTemporalesBD[nombreAmigoActual]) {
     burbujaNodo.classList.add("mensaje-efimero");
@@ -2637,7 +2555,6 @@ function aplicarRelojArenaEfecto(burbujaNodo) {
     if (horaNodo && !horaNodo.querySelector("[data-lucide='hourglass']")) {
       horaNodo.insertAdjacentHTML("afterbegin", `<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>`);
 
-      // 🚀 OPTIMIZACIÓN CPU: Renderizar solo el icono dentro de 'horaNodo'
       if (window.lucide) {
         window.lucide.createIcons({
           targets: [horaNodo]
@@ -2649,7 +2566,9 @@ function aplicarRelojArenaEfecto(burbujaNodo) {
       burbujaNodo.classList.add("burbuja-evaporar-anim");
       setTimeout(() => {
         burbujaNodo.remove();
-        guardarMensajesEnMemoria(nombreAmigoActual, historialMensajes);
+        if (typeof guardarMensajesEnMemoria === "function" && typeof historialMensajes !== "undefined") {
+          guardarMensajesEnMemoria(nombreAmigoActual, historialMensajes);
+        }
       }, 400);
     }, 10000);
   }
@@ -2664,47 +2583,8 @@ function guardarMensajesEnMemoria(nombreAmigo, historialNodo) {
   localStorage.setItem(`movachat_msgs_${nombreAmigo}`, historialLimpio.innerHTML);
 }
 
-// Función para generar un ID único entre dos usuarios
 function obtenerChatId(uid1, uid2) {
   return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
-}
-
-// 🟢 FUNCIÓN REAL QUE REEMPLAZARÁ A LA ANTERIOR:
-function cargarMensajesChat(contactoUid) {
-  const usuarioActual = auth.currentUser;
-  if (!usuarioActual) return;
-
-  const chatId = obtenerChatId(usuarioActual.uid, contactoUid);
-  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
-
-  // Escuchar mensajes en tiempo real
-  onValue(mensajesRef, (snapshot) => {
-    const contenedorMensajes = document.getElementById("historial-mensajes"); // Ajusta según tu HTML
-    if (!contenedorMensajes) return;
-
-    contenedorMensajes.innerHTML = "";
-
-    if (snapshot.exists()) {
-      const mensajes = snapshot.val();
-      Object.keys(mensajes).forEach((key) => {
-        const msg = mensajes[key];
-        const esMio = msg.emisorUid === usuarioActual.uid;
-
-        const burbuja = document.createElement("div");
-        burbuja.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
-        burbuja.innerHTML = `
-          <p class="mensaje-texto">${msg.texto}</p>
-          <span class="mensaje-hora">${new Date(msg.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-        `;
-        contenedorMensajes.appendChild(burbuja);
-      });
-
-      // Auto-scroll al final del chat
-      contenedorMensajes.scrollTop = contenedorMensajes.scrollHeight;
-    } else {
-      contenedorMensajes.innerHTML = `<div style="text-align:center; color:#888; padding:20px;">Inicia la conversación 👋</div>`;
-    }
-  });
 }
 
 const chatsBloqueadosBD = {};
@@ -2719,7 +2599,7 @@ if (btnCtxBloquear) {
 
     if (!nombreAmigoActual) return;
 
-    if (menuCabecera) menuCabecera.classList.add("oculto");
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
 
     let tarjetaAmigoNodo = null;
     document.querySelectorAll(".lista-chats .tarjeta-chat").forEach(tarjeta => {
@@ -2736,12 +2616,12 @@ if (btnCtxBloquear) {
       btnCtxBloquear.classList.remove("texto-rojo");
       btnCtxBloquear.style.color = "#00f2fe";
 
-      if (inputChat) {
+      if (typeof inputChat !== "undefined" && inputChat) {
         inputChat.disabled = true;
         inputChat.placeholder = "Has bloqueado a este usuario.";
         inputChat.style.opacity = "0.5";
       }
-      if (btnAccionChat) {
+      if (typeof btnAccionChat !== "undefined" && btnAccionChat) {
         btnAccionChat.style.pointerEvents = "none";
         btnAccionChat.style.opacity = "0.3";
       }
@@ -2759,12 +2639,12 @@ if (btnCtxBloquear) {
       btnCtxBloquear.classList.add("texto-rojo");
       btnCtxBloquear.style.color = "";
 
-      if (inputChat) {
+      if (typeof inputChat !== "undefined" && inputChat) {
         inputChat.disabled = false;
         inputChat.placeholder = "Escribe un mensaje privado...";
         inputChat.style.opacity = "1";
       }
-      if (btnAccionChat) {
+      if (typeof btnAccionChat !== "undefined" && btnAccionChat) {
         btnAccionChat.style.pointerEvents = "auto";
         btnAccionChat.style.opacity = "1";
       }
@@ -2777,7 +2657,6 @@ if (btnCtxBloquear) {
       mostrarAvisoPremium(`Has desbloqueado a <b>${nombreAmigoActual}</b>. Conexión restaurada.`, "📡", "#00f2fe");
     }
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxBloquear
     if (window.lucide) {
       window.lucide.createIcons({
         targets: [btnCtxBloquear]
@@ -2791,8 +2670,9 @@ if (btnCtxVaciar) {
   btnCtxVaciar.addEventListener("click", (e) => {
     e.stopPropagation();
 
-    const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
-    if (menuCabecera) menuCabecera.classList.add("oculto");
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent : "Chat";
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
 
     const contenedorMensajesActivo = document.querySelector("#pantalla-chat-privado .historial-mensajes");
     if (!contenedorMensajesActivo) return;
@@ -2855,7 +2735,6 @@ const btnCtxFijar = document.getElementById("btn-ctx-fijar");
 const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
-// 1️⃣ EVENTO Clic Derecho en PC (Directo a nivel de document)
 document.addEventListener("contextmenu", (e) => {
   const tarjeta = e.target.closest(".tarjeta-chat");
   if (tarjeta) {
@@ -2865,7 +2744,6 @@ document.addEventListener("contextmenu", (e) => {
   }
 });
 
-// 2️⃣ EVENTO Long Press para Móviles y Emulador F12
 document.addEventListener("touchstart", (e) => {
   const tarjeta = e.target.closest(".tarjeta-chat");
   if (tarjeta) {
@@ -2885,22 +2763,18 @@ document.addEventListener("touchstart", (e) => {
 document.addEventListener("touchend", () => clearTimeout(temporizadorLongPress));
 document.addEventListener("touchmove", () => clearTimeout(temporizadorLongPress));
 
-// 3️⃣ Abrir y Posicionar Menú (Cálculo Relativo + Límites de Seguridad)
 function abrirMenuContextualMova(x, y, tarjeta) {
   if (!menuTarjetas) return;
 
   tarjetaChatSeleccionada = tarjeta;
   const esFijado = tarjeta.classList.contains("tarjeta-fijada");
 
-  // 📐 Referencia del contenedor principal de forma segura
   const elContenedor = document.querySelector(".contenedor-chat") || document.body;
   const marcoApp = elContenedor.getBoundingClientRect();
 
-  // 🧮 Coordenadas relativas dentro de la tarjeta / app
   let posX = x - marcoApp.left;
   let posY = y - marcoApp.top;
 
-  // 🛡️ MÁRGENES DE SEGURIDAD (Evita que el menú se dibuje fuera del marco)
   const anchoMenu = 190;
   const altoMenu = 150;
 
@@ -2912,19 +2786,17 @@ function abrirMenuContextualMova(x, y, tarjeta) {
   if (posY + altoMenu > marcoApp.height) {
     posY = marcoApp.height - altoMenu - 10;
   }
-  if (posY < 10) posY = 10; // 🚀 Control de seguridad para el borde superior
+  if (posY < 10) posY = 10;
 
-  // 📍 Posicionamiento absoluto seguro
   menuTarjetas.style.position = "absolute";
   menuTarjetas.style.top = `${posY}px`;
   menuTarjetas.style.left = `${posX}px`;
   menuTarjetas.style.zIndex = "99999";
-  menuTarjetas.style.display = "block"; // Rompe el bloqueo de pantalla
+  menuTarjetas.style.display = "block";
 
   if (btnCtxFijar) {
     btnCtxFijar.innerHTML = `<i data-lucide="pin"></i> <span>${esFijado ? 'Desfijar chat' : 'Fijar chat arriba'}</span>`;
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxFijar
     if (window.lucide) {
       window.lucide.createIcons({
         targets: [btnCtxFijar]
@@ -2938,11 +2810,10 @@ function abrirMenuContextualMova(x, y, tarjeta) {
 function cerrarMenuContextualMova() {
   if (menuTarjetas) {
     menuTarjetas.classList.add("oculto");
-    menuTarjetas.style.display = ""; // Limpia el estilo en línea para que mande el CSS
+    menuTarjetas.style.display = "";
   }
 }
 
-// 4️⃣ Opciones del Menú (Fijar, Eliminar, Cancelar)
 if (btnCtxFijar) {
   btnCtxFijar.onclick = (e) => {
     e.preventDefault();
@@ -2969,7 +2840,6 @@ if (btnCtxCerrar) {
   };
 }
 
-// 📌 Lógica para Fijar / Desfijar Chat
 function alternarFijarChat(tarjeta) {
   if (!tarjeta) return;
 
@@ -2990,7 +2860,6 @@ function alternarFijarChat(tarjeta) {
         `<span class="indicador-pin-neon"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>`
       );
 
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el pin recién insertado dentro de cabecera
       if (window.lucide) {
         window.lucide.createIcons({
           targets: [cabecera]
@@ -3000,7 +2869,6 @@ function alternarFijarChat(tarjeta) {
   }
 }
 
-// 🗑️ Lógica para Eliminar Chat con Animación
 function eliminarChatAnimado(tarjeta) {
   tarjeta.classList.add("tarjeta-eliminar-anim");
   setTimeout(() => {
@@ -3008,1167 +2876,888 @@ function eliminarChatAnimado(tarjeta) {
   }, 300);
 }
 
-// ========================================================
-// 13. GESTIÓN DE CONTACTOS Y MODALES
-// ========================================================
-const btnAbrirContactos = document.getElementById("btn-abrir-contactos");
-const modalContactos = document.getElementById("modal-contactos");
-const btnCerrarContactos = document.getElementById("btn-cerrar-contactos");
-const inputNuevoContacto = document.getElementById("input-nuevo-contacto");
-const btnGuardarContacto = document.getElementById("btn-guardar-contacto");
-const inputBuscarContacto = document.getElementById("input-buscar-contacto");
-const contenedorListaContactos = document.getElementById("contenedor-lista-contactos");
+// --- 4. CAMPANITA Y AJUSTES DE NOTIFICACIONES ---
+const btnCampanita = document.getElementById("btn-campanita-alertas");
+const badgeCampanita = document.getElementById("badge-campanita");
+const toggleNotificaciones = document.getElementById("check-notificaciones");
 
-const capaConfirmarEliminar = document.getElementById("capa-confirmar-eliminar");
-const textoConfirmarEliminar = document.getElementById("texto-confirmar-eliminar");
-const btnCancelarEliminar = document.getElementById("btn-cancelar-eliminar");
-const btnConfirmarEliminar = document.getElementById("btn-confirmar-eliminar");
+// Cargar estado inicial guardado de Notificaciones
+const notifGuardada = localStorage.getItem("movachat-notificaciones");
+if (toggleNotificaciones) {
+  toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
+}
 
-let contactoParaEliminarNodo = null;
+// 🔔 Función para recalcular y actualizar los badges (Campanita + Filtro)
+function actualizarBadgesNotificaciones() {
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
 
-const listaContactosBD = [];
+  const badgesChats = document.querySelectorAll(".badge-chat-no-leido, .badge-mensaje");
+  let totalNoLeidos = 0;
 
-// 🟢 LÓGICA CONECTADA A FIREBASE (Contactos reales + Apertura de chat directa)
-async function renderizarListaContactosModal(filtro = "") {
-  if (!contenedorListaContactos) return;
-  contenedorListaContactos.innerHTML = "";
+  badgesChats.forEach((badge) => {
+    const cantidad = parseInt(badge.textContent, 10) || 0;
+    totalNoLeidos += cantidad;
+  });
 
-  const textoFiltro = filtro.toLowerCase().trim();
-  const miUid = auth.currentUser ? auth.currentUser.uid : null;
-
-  if (!miUid) return;
-
-  try {
-    // 1. Obtener los contactos del usuario desde Firebase Realtime Database
-    const misContactosRef = ref(db, `mis_contactos/${miUid}`);
-    const snapshotContactos = await get(misContactosRef);
-
-    if (snapshotContactos.exists()) {
-      const contactosUids = Object.keys(snapshotContactos.val());
-
-      // 2. Traer los datos reales de la colección 'usuarios' en PARALELO (Mucho más rápido)
-      const promesasUsuarios = contactosUids.map(uid => get(ref(db, `usuarios/${uid}`)));
-      const snapshotsUsuarios = await Promise.all(promesasUsuarios);
-
-      snapshotsUsuarios.forEach((snapUsuario, index) => {
-        if (snapUsuario.exists()) {
-          const usuario = snapUsuario.val();
-          const targetUid = contactosUids[index];
-          const nombreContacto = usuario.nombre || "Usuario";
-
-          // Filtro por texto de búsqueda
-          if (nombreContacto.toLowerCase().includes(textoFiltro)) {
-            const filaHTML = document.createElement("div");
-            filaHTML.className = "item-contacto-fila";
-
-            // Foto real subida a Firebase o avatar con la inicial del nombre
-            const primerLetra = nombreContacto.charAt(0).toUpperCase();
-            const fotoHTML = usuario.fotoUrl
-              ? `<img src="${usuario.fotoUrl}" alt="${nombreContacto}" class="avatar-contacto-mini">`
-              : `<div class="avatar-contacto-mini" style="background:#00f2fe; color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; border-radius:50%; width:32px; height:32px;">${primerLetra}</div>`;
-
-            filaHTML.innerHTML = `
-              <div class="info-contacto-izq" style="cursor: pointer; display: flex; align-items: center; gap: 10px; flex-grow: 1;">
-                ${fotoHTML}
-                <span class="nombre-contacto-texto">${nombreContacto}</span>
-              </div>
-              <button class="btn-eliminar-contacto-item" aria-label="Eliminar contacto" title="Eliminar">
-                <i data-lucide="trash-2"></i>
-              </button>
-            `;
-
-            // 🚀 CORREGIDO: Usamos filaHTML en lugar de itemContacto
-            filaHTML.addEventListener("click", (e) => {
-              e.stopPropagation();
-
-              // 1. Destacar contacto seleccionado visualmente
-              document.querySelectorAll(".item-contacto-fila").forEach(el => el.classList.remove("activo"));
-              filaHTML.classList.add("activo");
-
-              contactoSeleccionado = usuario;
-
-              // 2. Extraer datos del usuario
-              const uidContacto = usuario.uid || targetUid;
-              const nomContacto = usuario.nombre || "Usuario";
-              const fotoContacto = usuario.fotoUrl || "";
-
-              // 3. Abrir chat privado
-              if (typeof abrirChatConUsuario === "function") {
-                abrirChatConUsuario(uidContacto, nomContacto, fotoContacto);
-              } else if (window.abrirChatConUsuario) {
-                window.abrirChatConUsuario(uidContacto, nomContacto, fotoContacto);
-              }
-
-              // 4. Cerrar el modal de contactos si está abierto
-              if (modalContactos) modalContactos.classList.add("oculto");
-            });
-
-            // 🔴 EVENTO PARA ELIMINAR CONTACTO
-            const btnZafacon = filaHTML.querySelector(".btn-eliminar-contacto-item");
-            if (btnZafacon) {
-              btnZafacon.addEventListener("click", (e) => {
-                e.stopPropagation(); // Impide que abra el chat al tocar la papelera
-                contactoParaEliminarNodo = { nodo: filaHTML, uid: targetUid, nombre: nombreContacto };
-                if (textoConfirmarEliminar) {
-                  textoConfirmarEliminar.innerHTML = `¿Seguro que deseas eliminar a <b>${nombreContacto}</b>?`;
-                }
-                if (capaConfirmarEliminar) capaConfirmarEliminar.classList.remove("oculto");
-              });
-            }
-
-            contenedorListaContactos.appendChild(filaHTML);
-          }
-        }
-      });
-
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de contenedorListaContactos
-      if (window.lucide) {
-        window.lucide.createIcons({
-          targets: [contenedorListaContactos]
-        });
-      }
+  // 1️⃣ Actualizar Campanita
+  if (badgeCampanita) {
+    if (totalNoLeidos > 0 && !estaSilenciado) {
+      badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos;
+      badgeCampanita.classList.remove("oculto");
     } else {
-      contenedorListaContactos.innerHTML = `<p style="color:rgba(255,255,255,0.5); font-size:12px; text-align:center; padding:10px;">No tienes contactos agregados aún.</p>`;
+      badgeCampanita.classList.add("oculto");
     }
-  } catch (error) {
-    console.error("Error al cargar la lista de contactos:", error);
+  }
+
+  // 2️⃣ Actualizar filtro 'No leídos'
+  if (badgeFiltroNoLeidos) {
+    badgeFiltroNoLeidos.textContent = totalNoLeidos;
   }
 }
 
-if (btnAbrirContactos && modalContactos) {
-  btnAbrirContactos.addEventListener("click", () => {
-    renderizarListaContactosModal();
-    modalContactos.classList.remove("oculto");
-    if (capaConfirmarEliminar) capaConfirmarEliminar.classList.add("oculto");
-  });
-}
-
-if (btnCerrarContactos && modalContactos) {
-  btnCerrarContactos.addEventListener("click", () => {
-    modalContactos.classList.add("oculto");
-  });
-}
-
-if (btnGuardarContacto && inputNuevoContacto) {
-  btnGuardarContacto.addEventListener("click", async () => {
-    const nombreNuevo = inputNuevoContacto.value.trim().toLowerCase();
-
-    if (nombreNuevo === "") return;
-
-    try {
-      // 1. Consultar usuarios reales en Firebase
-      const usuariosRef = ref(db, 'usuarios');
-      const snapshot = await get(usuariosRef);
-
-      if (snapshot.exists()) {
-        const usuarios = snapshot.val();
-        let usuarioEncontrado = null;
-        let uidEncontrado = null;
-
-        // 2. Buscar si coincide por correo o por nombre real
-        Object.keys(usuarios).forEach((uid) => {
-          const u = usuarios[uid];
-          if (
-            (u.email && u.email.toLowerCase() === nombreNuevo) ||
-            (u.nombre && u.nombre.toLowerCase() === nombreNuevo)
-          ) {
-            usuarioEncontrado = u;
-            uidEncontrado = uid;
-          }
-        });
-
-        // 3. Si existe, lo agregamos; si no, mostramos aviso
-        if (usuarioEncontrado) {
-          const miUid = auth.currentUser ? auth.currentUser.uid : null;
-
-          if (miUid) {
-            // Guardar la relación en la base de datos
-            await set(ref(db, `mis_contactos/${miUid}/${uidEncontrado}`), true);
-          }
-
-          inputNuevoContacto.value = "";
-
-          if (typeof renderizarListaContactosModal === "function") {
-            renderizarListaContactosModal(inputBuscarContacto ? inputBuscarContacto.value : "");
-          }
-
-          mostrarAvisoPremium(`Contacto <b>${usuarioEncontrado.nombre}</b> añadido con éxito.`, "👤", "#00f2fe");
-        } else {
-          mostrarAvisoPremium(`El usuario <b>${nombreNuevo}</b> no existe en la plataforma.`, "⚠️", "#ff4b2b");
-        }
-      } else {
-        mostrarAvisoPremium("No hay usuarios registrados.", "⚠️", "#ff4b2b");
-      }
-    } catch (error) {
-      console.error("Error al añadir contacto:", error);
-      mostrarAvisoPremium("Error al buscar el usuario.", "❌", "#ff4b2b");
-    }
-  });
-}
-
-if (inputBuscarContacto) {
-  inputBuscarContacto.addEventListener("input", () => {
-    renderizarListaContactosModal(inputBuscarContacto.value);
-  });
-}
-
-if (btnCancelarEliminar && capaConfirmarEliminar) {
-  btnCancelarEliminar.addEventListener("click", () => {
-    capaConfirmarEliminar.classList.add("oculto");
-    contactoParaEliminarNodo = null;
-  });
-}
-
-if (btnConfirmarEliminar && capaConfirmarEliminar) {
-  btnConfirmarEliminar.addEventListener("click", () => {
-    if (contactoParaEliminarNodo) {
-      const idx = listaContactosBD.findIndex(c => c.nombre === contactoParaEliminarNodo.nombre);
-      if (idx !== -1) listaContactosBD.splice(idx, 1);
-
-      contactoParaEliminarNodo.nodo.style.transition = "all 0.25s ease";
-      contactoParaEliminarNodo.nodo.style.opacity = "0";
-      contactoParaEliminarNodo.nodo.style.transform = "scale(0.9)";
-
+// Evento Clic en la Campanita
+if (btnCampanita) {
+  btnCampanita.addEventListener("click", () => {
+    if (badgeCampanita && !badgeCampanita.classList.contains("oculto")) {
+      badgeCampanita.style.transform = "scale(0)";
       setTimeout(() => {
-        contactoParaEliminarNodo.nodo.remove();
-        capaConfirmarEliminar.classList.add("oculto");
-        mostrarAvisoPremium(`Contacto <b>${contactoParaEliminarNodo.nombre}</b> eliminado.`, "🗑️", "#ff4b2b");
-        contactoParaEliminarNodo = null;
-      }, 250);
+        badgeCampanita.classList.add("oculto");
+        badgeCampanita.style.transform = "scale(1)";
+      }, 200);
+
+      mostrarAvisoPremium("¡Estás al día! No tienes alertas pendientes. 🔔");
+    } else {
+      mostrarAvisoPremium("Todo está en orden y en calma por aquí. 🌌");
     }
   });
 }
 
-const btnAdjuntarContacto = document.getElementById("btn-adjuntar-contacto");
+// Evento Switch de Ajustes
+if (toggleNotificaciones) {
+  toggleNotificaciones.addEventListener("change", async () => {
+    if (toggleNotificaciones.checked) {
+      localStorage.setItem("movachat-notificaciones", "activado");
 
-if (btnAdjuntarContacto && modalContactos) {
-  btnAdjuntarContacto.addEventListener("click", (e) => {
+      const concedido = await solicitarPermisoNotificaciones();
+      if (!concedido) {
+        mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️");
+      } else {
+        mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀");
+      }
+
+      actualizarBadgesNotificaciones();
+    } else {
+      localStorage.setItem("movachat-notificaciones", "desactivado");
+      if (badgeCampanita) badgeCampanita.classList.add("oculto");
+      mostrarAvisoPremium("Notificaciones silenciadas por el usuario. 🔕");
+    }
+  });
+}
+
+// --- 6. NOTIFICACIONES PUSH NATIVAS Y DISPARADOR ---
+
+async function solicitarPermisoNotificaciones() {
+  if (!("Notification" in window)) {
+    console.warn("Este navegador no soporta notificaciones nativas.");
+    return false;
+  }
+
+  if (Notification.permission === "granted") {
+    return true;
+  }
+
+  if (Notification.permission !== "denied") {
+    const permiso = await Notification.requestPermission();
+    if (permiso === "granted") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// 🔔 FUNCIÓN GLOBAL PARA NOTIFICAR MENSAJES NUEVOS EN MÓVIL Y ESCRITORIO
+window.notificarNuevoMensaje = function(nombreRemitente, textoMensaje, avatarUrl) {
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  if (estaSilenciado) return;
+
+  // 🔊 Reproducir sonido de recibido
+  if (typeof reproducirSonido === "function") {
+    reproducirSonido("recibido");
+  }
+
+  // Actualizar indicadores visuales
+  actualizarBadgesNotificaciones();
+
+  // 🔔 Lógica para pantalla bloqueada / minimizada
+  if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+    const opciones = {
+      body: textoMensaje || "Te ha enviado un mensaje.",
+      icon: avatarUrl || "assets/logo.png",
+      badge: "assets/logo.png",
+      vibrate: [200, 100, 200],
+      tag: "movachat-mensaje",
+      renotify: true
+    };
+
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
+      });
+    } else {
+      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
+    }
+  }
+};
+
+// --- 5. MODO SIGILO (INVISIBLE) ---
+const toggleSigilo = document.getElementById("check-sigilo");
+const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
+const textoEstadoIdentidad = document.querySelector(".texto-estado");
+
+const estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
+if (estadoSigiloGuardado === "activo" && toggleSigilo) {
+  toggleSigilo.checked = true;
+  if (ledPerfilIdentidad) {
+    ledPerfilIdentidad.style.backgroundColor = "#888888";
+    ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
+  }
+  if (textoEstadoIdentidad) {
+    textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
+  }
+}
+
+if (toggleSigilo) {
+  toggleSigilo.addEventListener("change", () => {
+    if (toggleSigilo.checked) {
+      localStorage.setItem("movachat-sigilo", "activo");
+      if (ledPerfilIdentidad) {
+        ledPerfilIdentidad.style.backgroundColor = "#888888";
+        ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
+      }
+      if (textoEstadoIdentidad) {
+        textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
+      }
+      mostrarAvisoPremium("Has entrado en Modo Sigilo. Presencia oculta. 🌌");
+    } else {
+      localStorage.setItem("movachat-sigilo", "inactivo");
+      if (ledPerfilIdentidad) {
+        ledPerfilIdentidad.style.backgroundColor = "#00f2fe";
+        ledPerfilIdentidad.style.boxShadow = "0 0 10px #00f2fe";
+      }
+      if (textoEstadoIdentidad) {
+        textoEstadoIdentidad.textContent = "Disponible. Toca para añadir estado...";
+      }
+      mostrarAvisoPremium("Modo Sigilo desactivado. Estás visible de nuevo. 📡");
+    }
+  });
+}
+
+// ========================================================
+// 10. ESTADO PROPIO, REDES BENTO Y CONTACTOS
+// ========================================================
+const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+const avatarMiEstadoClick = document.getElementById("avatar-mi-estado-click");
+const textoSubtituloMiEstado = document.getElementById("texto-subtulo-mi-estado");
+const tiempoMiEstado = document.getElementById("tiempo-mi-estado");
+const inputSubirEstadoReal = document.getElementById("input-subir-estado");
+
+let imagenEstadoGuardada = null;
+let fraseEstadoGuardada = "";
+
+if (tarjetaMiEstado) {
+  tarjetaMiEstado.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (imagenEstadoGuardada) {
+      const textoFinal = fraseEstadoGuardada || "¡Compartiendo mi día en MovaChat! 🌌🔥";
+      if (typeof abrirEstadoAmigo === "function") abrirEstadoAmigo(imagenEstadoGuardada, textoFinal);
+    } else {
+      if (inputSubirEstadoReal) inputSubirEstadoReal.click();
+    }
+  });
+}
+
+if (inputSubirEstadoReal) {
+  inputSubirEstadoReal.addEventListener("change", (e) => {
+    if (!imagenEstadoGuardada && e.target.files && e.target.files[0]) {
+      const lector = new FileReader();
+      lector.onload = function (evento) {
+        imagenEstadoGuardada = evento.target.result;
+        if (typeof modalEstado !== "undefined" && modalEstado) modalEstado.classList.remove("oculto");
+        if (typeof inputNuevoEstado !== "undefined" && inputNuevoEstado) inputNuevoEstado.focus();
+
+        const interceptarGuardado = () => {
+          if (typeof inputNuevoEstado !== "undefined" && inputNuevoEstado) fraseEstadoGuardada = inputNuevoEstado.value.trim();
+          if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
+          if (textoSubtituloMiEstado) {
+            textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
+            textoSubtituloMiEstado.classList.add("texto-cyan");
+          }
+          if (tiempoMiEstado) tiempoMiEstado.textContent = "Hace un momento";
+
+          const miniBotonMas = avatarMiEstadoClick ? avatarMiEstadoClick.querySelector(".punto-online-chat") : null;
+          if (miniBotonMas) {
+            miniBotonMas.textContent = "";
+            miniBotonMas.style.boxShadow = "0 0 10px #00f2fe";
+          }
+          mostrarAvisoPremium("¡Tu nueva historia ha sido publicada con éxito! 🪐", "🛸", "#00f2fe");
+          if (typeof btnGuardarEstado !== "undefined" && btnGuardarEstado) btnGuardarEstado.removeEventListener("click", interceptarGuardado);
+        };
+        if (typeof btnGuardarEstado !== "undefined" && btnGuardarEstado) btnGuardarEstado.addEventListener("click", interceptarGuardado);
+      };
+      lector.readAsDataURL(e.target.files[0]);
+    }
+  });
+}
+
+const imagenPerfilElena = document.querySelector(".avatar-perfil-img");
+const iconoCamaraElena = document.querySelector(".overlay-camara");
+const inputCambiarFotoPerfil = document.getElementById("input-foto-perfil");
+
+if (imagenPerfilElena) {
+  imagenPerfilElena.style.cursor = "pointer";
+  imagenPerfilElena.addEventListener("click", (e) => {
+    e.preventDefault();
     e.stopPropagation();
 
-    if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
-    if (btnAdjuntarTodo) btnAdjuntarTodo.classList.remove("caiman-abierto");
+    const urlFotoPropia = imagenPerfilElena.src;
 
-    renderizarListaContactosModal();
+    if (typeof visorEstados !== "undefined" && visorEstados && imgEstadoRender && textoEstadoRender) {
+      imgEstadoRender.src = urlFotoPropia;
+      textoEstadoRender.textContent = "Tu foto de perfil";
 
-    setTimeout(() => {
-      document.querySelectorAll(".item-contacto-fila").forEach(fila => {
-        fila.style.cursor = "pointer";
+      likesSimulados = 0;
+      if (contadorLikesEstado) contadorLikesEstado.textContent = likesSimulados;
+      if (btnCorazonEstado) btnCorazonEstado.classList.remove("activo");
 
-        fila.addEventListener("click", (evt) => {
-          if (evt.target.closest(".btn-eliminar-contacto-item")) return;
+      if (lineaProgreso && lineaProgreso.parentNode) {
+        lineaProgreso.parentNode.style.visibility = "hidden";
+      }
 
-          const nombreContacto = fila.querySelector(".nombre-contacto-texto").textContent;
-          const srcAvatar = fila.querySelector(".avatar-contacto-mini").src;
-
-          modalContactos.classList.add("oculto");
-          inyectarContactoCompartidoBurbuja(nombreContacto, srcAvatar);
-        });
-      });
-    }, 100);
-
-    modalContactos.classList.remove("oculto");
-    mostrarAvisoPremium("Selecciona un contacto para compartirlo en la conversación.", "📇", "#00f2fe");
+      visorEstados.classList.remove("oculto");
+      mostrarAvisoPremium("Visualizando tu foto de perfil en pantalla completa 🌌", "📸", "#00f2fe");
+    }
   });
 }
 
-function inyectarContactoCompartidoBurbuja(nombre, avatar) {
-  const ahora = new Date();
-  const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+if (iconoCamaraElena && inputCambiarFotoPerfil) {
+  iconoCamaraElena.style.cursor = "pointer";
+  iconoCamaraElena.addEventListener("click", (e) => {
+    e.stopPropagation();
+    inputCambiarFotoPerfil.click();
+  });
 
-  const nuevaBurbujaHTML = document.createElement("div");
-  nuevaBurbujaHTML.className = "mensaje-burbuja enviado";
-  nuevaBurbujaHTML.style.padding = "8px";
+  inputCambiarFotoPerfil.addEventListener("change", (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const lectorPerfil = new FileReader();
 
-  // Foto por defecto o la url provista
-  const avatarUrl = avatar || "https://i.pravatar.cc/150";
+      lectorPerfil.onload = function (eventoCarga) {
+        const nuevaImagenUrl = eventoCarga.target.result;
+        if (imagenPerfilElena) imagenPerfilElena.src = nuevaImagenUrl;
+        mostrarAvisoPremium("Identidad de perfil actualizada y vinculada. 🛡️", "📸", "#00f2fe");
+      };
 
-  nuevaBurbujaHTML.innerHTML = `
-    <div class="tarjeta-contacto-compartido">
-      <div class="cabecera-contacto-card">
-        <img src="${avatarUrl}" alt="${nombre}" class="avatar-contacto-card">
-        <div class="info-contacto-card">
-          <span class="nombre-contacto-card">${nombre}</span>
-          <span class="subtexto-contacto-card">
-            <i data-lucide="shield-check" style="width:12px; height:12px;"></i> Contacto MovaChat
-          </span>
-        </div>
-      </div>
-      <button class="btn-accion-contacto-card">
-        <i data-lucide="message-square" style="width:14px; height:14px;"></i> Chatear
-      </button>
-    </div>
-    <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}</span>
-  `;
-
-  // 🛡️ Asignar el evento al botón desde JS para evitar fallos de sintaxis con nombres complejos
-  const btnChatear = nuevaBurbujaHTML.querySelector(".btn-accion-contacto-card");
-  if (btnChatear) {
-    btnChatear.addEventListener("click", () => {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Iniciando conversación con ${nombre}...`, '💬', '#00f2fe');
-      }
-    });
-  }
-
-  if (historialMensajes) {
-    historialMensajes.appendChild(nuevaBurbujaHTML);
-
-    if (typeof aplicarRelojArenaEfecto === "function") {
-      aplicarRelojArenaEfecto(nuevaBurbujaHTML);
+      lectorPerfil.readAsDataURL(e.target.files[0]);
     }
-
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro de la nueva tarjeta de contacto
-    if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [nuevaBurbujaHTML]
-      });
-    }
-
-    historialMensajes.scrollTop = historialMensajes.scrollHeight;
-
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Contacto <b>${nombre}</b> compartido con éxito.`, "📇", "#00f2fe");
-    }
-  }
+  });
 }
 
-// ========================================================
-// 14. INICIALIZACIÓN GLOBAL (DOM CONTENT LOADED)
-// ========================================================
-function conectarBotonEmoji() {
-  const btnEmoji = document.querySelector(".btn-emoji");
-  const inputTexto = document.getElementById("input-chat-privado") || document.querySelector(".caja-input-chat input");
+const modalRedes = document.getElementById("modal-redes-bento");
+const btnCerrarRedes = document.getElementById("btn-cerrar-redes");
+const btnGuardarRed = document.getElementById("btn-guardar-red-bento");
+const inputUsuarioRed = document.getElementById("input-usuario-red");
+const tituloModalRed = document.getElementById("titulo-modal-red");
+const prefijoRed = document.getElementById("prefijo-red-social");
 
-  if (btnEmoji && inputTexto) {
-    btnEmoji.onclick = function (e) {
+const enlacesRedesBento = document.querySelectorAll(".iconos-redes .red-enlace");
+let redActivaSeleccionada = null;
+let temporizadorRedLongPress = null;
+let fuePresionLargaRed = false;
+
+const configuracionRedes = {
+  instagram: { titulo: "Instagram Pro", prefijo: "@", base: "https://instagram.com/" },
+  tiktok: { titulo: "TikTok Core", prefijo: "@", base: "https://tiktok.com/@" },
+  facebook: { titulo: "Facebook Network", prefijo: "fb/", base: "https://facebook.com/" }
+};
+
+function abrirEditorRedSocial(redKey) {
+  if (!modalRedes) return;
+  if (tituloModalRed) tituloModalRed.innerHTML = `Editar ${configuracionRedes[redKey].titulo}`;
+  if (prefijoRed) prefijoRed.textContent = configuracionRedes[redKey].prefijo;
+
+  const actual = localStorage.getItem(`movachat-red-${redKey}`) || "";
+  if (inputUsuarioRed) {
+    inputUsuarioRed.value = actual;
+    inputUsuarioRed.placeholder = "ej: tu_usuario";
+  }
+
+  modalRedes.classList.remove("oculto");
+  setTimeout(() => { if (inputUsuarioRed) inputUsuarioRed.focus(); }, 50);
+}
+
+enlacesRedesBento.forEach(enlace => {
+  let miRedKey = "";
+  if (enlace.classList.contains("red-instagram")) miRedKey = "instagram";
+  if (enlace.classList.contains("red-tiktok")) miRedKey = "tiktok";
+  if (enlace.classList.contains("red-facebook")) miRedKey = "facebook";
+
+  const iniciarPresionLargaRed = () => {
+    redActivaSeleccionada = miRedKey;
+    fuePresionLargaRed = false;
+
+    temporizadorRedLongPress = setTimeout(() => {
+      fuePresionLargaRed = true;
+      enlace.style.transform = "scale(0.85)";
+      setTimeout(() => { enlace.style.transform = ""; }, 150);
+
+      mostrarAvisoPremium(`Modificando enlace de ${miRedKey.toUpperCase()}... ⚙️`, "✏️", "#00f2fe");
+      abrirEditorRedSocial(miRedKey);
+    }, 800);
+  };
+
+  const finalizarPresionLargaRed = (e) => {
+    if (temporizadorRedLongPress) clearTimeout(temporizadorRedLongPress);
+
+    if (fuePresionLargaRed) {
       e.preventDefault();
       e.stopPropagation();
-
-      inputTexto.focus();
-
-      if ('showPicker' in HTMLInputElement.prototype) {
-        try {
-          inputTexto.showPicker();
-        } catch (err) {
-        }
-      }
-    };
-  }
-}
-
-// ==========================================================
-// 📇 CONECTOR DE CONTACTOS A CHAT PRIVADO
-// ==========================================================
-document.addEventListener("click", (e) => {
-  // 1. Verificar si hiciste clic en una fila de contacto
-  const filaContacto = e.target.closest(".item-contacto-fila");
-
-  // Si no es un contacto o diste clic en eliminar, no hacemos nada
-  if (!filaContacto || e.target.closest(".btn-eliminar-contacto-item")) return;
-
-  // 2. Extraer nombre y foto del contacto
-  const nombre = filaContacto.querySelector(".nombre-contacto-texto")?.textContent || "Contacto";
-  const avatar = filaContacto.querySelector(".avatar-contacto-mini")?.src;
-
-  // 3. Cerrar el modal de contactos
-  const modal = filaContacto.closest(".modal-overlay");
-  if (modal) modal.classList.add("oculto");
-
-  // 4. Ocultar la pantalla principal de chats
-  const pantallaChats = document.getElementById("pantalla-chats");
-  if (pantallaChats) pantallaChats.style.display = "none";
-
-  // 5. 🙈 OCULTAR ELEMENTOS GLOBALES DE INICIO (Encabezado + Menú Inferior + Botón +)
-  const encabezadoInicio = document.querySelector(".encabezado-inicio");
-  const menuFlotante = document.querySelector(".menu-flotante");
-  const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
-
-  if (encabezadoInicio) encabezadoInicio.style.display = "none";
-  if (menuFlotante) menuFlotante.style.display = "none";
-  if (btnFlotanteContacto) btnFlotanteContacto.style.display = "none";
-
-  // 6. Cargar los datos en la pantalla de chat privado
-  const nombreCabecera = document.querySelector("#pantalla-chat-privado .amigo-nombre-chat");
-  const avatarCabecera = document.querySelector("#pantalla-chat-privado .avatar-mini-caja img");
-
-  if (nombreCabecera) nombreCabecera.textContent = nombre;
-  if (avatarCabecera && avatar) avatarCabecera.src = avatar;
-
-  // 7. Abrir la pantalla de chat privado
-  const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
-  if (pantallaChatPrivado) {
-    pantallaChatPrivado.style.display = "flex";
-    pantallaChatPrivado.classList.add("pantalla-completa");
-  }
-});
-
-// ==========================================================
-// 🔙 RESTAURAR ELEMENTOS AL REGRESAR A LA LISTA DE CHATS
-// ==========================================================
-document.addEventListener("click", (e) => {
-  // Si presiona el botón de flecha atrás en el chat privado
-  if (e.target.closest("#pantalla-chat-privado .btn-volver")) {
-    const encabezadoInicio = document.querySelector(".encabezado-inicio");
-    const menuFlotante = document.querySelector(".menu-flotante");
-    const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
-
-    // Restaurar encabezado y menús flotantes
-    if (encabezadoInicio) encabezadoInicio.style.display = "flex";
-    if (menuFlotante) menuFlotante.style.display = "flex";
-    if (btnFlotanteContacto) btnFlotanteContacto.style.display = "flex";
-  }
-});
-
-// ==========================================================
-// ✏️ MODAL GLASSMORPHISM EDITAR NOMBRE
-// ==========================================================
-const modalNombre = document.getElementById("modal-editar-nombre");
-const inputNombre = document.getElementById("input-nuevo-nombre");
-const btnGuardarNombre = document.getElementById("btn-guardar-nombre");
-const btnCerrarModalNombre = document.getElementById("btn-cerrar-modal-nombre");
-
-// 1. Abrir Modal al hacer clic en el nombre
-document.addEventListener("click", (e) => {
-  const btnNombre = e.target.closest("#texto-perfil-nombre");
-  if (btnNombre && modalNombre) {
-    const spanNombre = btnNombre.querySelector("span");
-    const nombreActual = spanNombre ? spanNombre.textContent.trim() : "";
-
-    if (inputNombre) inputNombre.value = nombreActual;
-    modalNombre.classList.remove("oculto");
-    setTimeout(() => inputNombre?.focus(), 100);
-  }
-});
-
-// 2. Guardar Nombre
-if (btnGuardarNombre) {
-  btnGuardarNombre.onclick = () => {
-    const valor = inputNombre ? inputNombre.value.trim() : "";
-    if (valor !== "") {
-      const spanNombre = document.querySelector("#texto-perfil-nombre span");
-      if (spanNombre) spanNombre.textContent = valor;
-      if (modalNombre) modalNombre.classList.add("oculto");
-    }
-  };
-}
-
-// 3. Cerrar con la X o dando clic afuera
-if (btnCerrarModalNombre) {
-  btnCerrarModalNombre.onclick = () => modalNombre?.classList.add("oculto");
-}
-
-if (modalNombre) {
-  modalNombre.onclick = (e) => {
-    if (e.target === modalNombre) modalNombre.classList.add("oculto");
-  };
-}
-
-// ==========================================================
-// 🎨 ANIMAR EL DESLIZADOR DE AURA AL CLIC
-// ==========================================================
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".opcion-aura");
-  if (!btn) return;
-
-  const botones = Array.from(document.querySelectorAll(".opcion-aura"));
-  const indicador = document.getElementById("indicador-aura");
-  const index = botones.indexOf(btn);
-
-  if (indicador && index !== -1) {
-    indicador.style.transform = `translateX(${index * 100}%)`;
-  }
-
-  botones.forEach(b => b.classList.remove("activa"));
-  btn.classList.add("activa");
-});
-
-// ==========================================================
-// 🗑️ BOTÓN LIMPIAR: BORRAR CHATS CON ALERTA VISUAL (TOAST)
-// ==========================================================
-document.addEventListener("click", (e) => {
-  // Atrapamos el botón exacto mediante su ID
-  const btnLimpiar = e.target.closest("#btn-limpiar-historial-global");
-  if (!btnLimpiar) return;
-
-  const tarjetasChat = document.querySelectorAll(".lista-chats .tarjeta-chat");
-
-  if (tarjetasChat.length === 0) {
-    mostrarToast("La lista ya está vacía");
-    return;
-  }
-
-  // Animación de salida fluida
-  tarjetasChat.forEach((tarjeta) => {
-    tarjeta.style.transition = "all 0.3s ease";
-    tarjeta.style.opacity = "0";
-    tarjeta.style.transform = "scale(0.95)";
-  });
-
-  // Limpiar el DOM y mostrar la notificación
-  setTimeout(() => {
-    tarjetasChat.forEach(t => t.remove());
-    mostrarToast("¡Lista de chats limpiada!");
-  }, 300);
-});
-
-// Variable para controlar el temporizador activo del toast
-let toastTimeoutId = null;
-
-function mostrarToast(mensaje) {
-  // Comprobar si el usuario desactivó las notificaciones
-  const notifEstado = localStorage.getItem("movachat-notificaciones");
-  if (notifEstado === "desactivado") return; // No muestra la alerta flotante
-
-  const toast = document.getElementById("toast-notificacion");
-  const texto = document.getElementById("toast-texto");
-  if (!toast) return;
-
-  if (texto) texto.textContent = mensaje;
-
-  toast.classList.remove("oculto");
-
-  // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro del elemento Toast
-  if (window.lucide) {
-    window.lucide.createIcons({
-      targets: [toast]
-    });
-  }
-
-  // ⏱️ Reiniciar el temporizador si ya había una alerta mostrándose
-  if (toastTimeoutId) clearTimeout(toastTimeoutId);
-
-  toastTimeoutId = setTimeout(() => {
-    toast.classList.add("oculto");
-    toastTimeoutId = null;
-  }, 2500);
-}
-
-// --- SERVICE WORKER DESACTIVADO PARA EVITAR BUCLES Y TIMEOUTS ---
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (let registration of registrations) {
-      registration.unregister(); // Elimina cualquier Service Worker atascado en el teléfono
-      console.log('🧹 Service Worker atascado eliminado con éxito.');
-    }
-  });
-}
-
-// Función global para alternar visibilidad de contraseña
-window.togglePasswordVisibility = function () {
-  const inputPass = document.getElementById("auth-password");
-  const iconoOjito = document.getElementById("icono-ojito");
-
-  if (inputPass) {
-    const esPassword = inputPass.type === "password";
-    inputPass.type = esPassword ? "text" : "password";
-
-    if (iconoOjito) {
-      iconoOjito.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
-      if (window.lucide) {
-        window.lucide.createIcons();
-      }
-    }
-  }
-};
-
-// --- 2. OPCIÓN: CAMBIAR CONTRASEÑA (Envío de correo real) ---
-const opcionCambiarPassword = document.getElementById("opcion-cambiar-password");
-if (opcionCambiarPassword) {
-  opcionCambiarPassword.addEventListener("click", async () => {
-    menuCabeceraFlotante.classList.add("oculto");
-
-    const usuarioActual = auth.currentUser;
-
-    if (usuarioActual && usuarioActual.email) {
-      try {
-        const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-
-        await sendPasswordResetEmail(auth, usuarioActual.email);
-
-        // Notificación explícita para que revise su correo
-        mostrarAvisoPremium(`Te enviamos un enlace de cambio a <b>${usuarioActual.email}</b>. Revisa tu correo 🔑`, "✉️", "#00f2fe");
-      } catch (error) {
-        console.error("❌ Error al solicitar cambio de clave:", error);
-        mostrarAvisoPremium("No se pudo enviar el correo de recuperación ⚠️", "❌", "#ff4b2b");
-      }
-    } else {
-      mostrarAvisoPremium("No se detectó un correo asociado activo ⚠️", "❌", "#ff4b2b");
-    }
-  });
-}
-
-// --- PANEL DE ADMINISTRACIÓN: ESCUCHAR Y APROBAR USUARIOS ---
-function cargarUsuariosPendientes() {
-  const contenedorPendientes = document.getElementById("lista-pendientes");
-  if (!contenedorPendientes) return;
-
-  // Consultar en tiempo real a los usuarios en la base de datos
-  const usuariosRef = ref(db, 'usuarios');
-
-  onValue(usuariosRef, (snapshot) => {
-    contenedorPendientes.innerHTML = ""; // Limpiar lista anterior
-    let hayPendientes = false;
-
-    if (snapshot.exists()) {
-      const usuarios = snapshot.val();
-
-      Object.keys(usuarios).forEach((uid) => {
-        const u = usuarios[uid];
-
-        // Filtrar solo los que están pendientes
-        if (u.estadoAcceso === "pendiente") {
-          hayPendientes = true;
-
-          const tarjeta = document.createElement("div");
-          tarjeta.className = "tarjeta-usuario-pendiente";
-          tarjeta.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 12px 16px;
-            margin-bottom: 10px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-          `;
-
-          tarjeta.innerHTML = `
-            <div>
-              <p style="margin: 0; font-weight: bold; color: #fff;">${u.nombre || 'Sin nombre'}</p>
-              <p style="margin: 0; font-size: 0.8rem; color: #aaa;">${u.correo}</p>
-            </div>
-            <div style="display: flex; gap: 8px;">
-              <button onclick="cambiarEstadoAcceso('${uid}', 'aprobado')" style="background: #2ec4b6; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Aprobar 🟢</button>
-              <button onclick="cambiarEstadoAcceso('${uid}', 'baneado')" style="background: #e71d36; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Rechazar 🔴</button>
-            </div>
-          `;
-
-          contenedorPendientes.appendChild(tarjeta);
-        }
-      });
+      return;
     }
 
-    if (!hayPendientes) {
-      contenedorPendientes.innerHTML = `<p style="color: #aaa; font-size: 0.9rem; text-align: center;">No hay solicitudes pendientes ✨</p>`;
-    }
-  });
-}
+    redActivaSeleccionada = miRedKey;
+    const usuarioGuardado = localStorage.getItem(`movachat-red-${miRedKey}`);
 
-// Función global para cambiar el estado de acceso desde los botones
-window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
-  try {
-    await update(ref(db, 'usuarios/' + uid), {
-      estadoAcceso: nuevoEstado
-    });
-
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Usuario ${nuevoEstado === 'aprobado' ? 'aprobado' : 'rechazado'} con éxito`, "✅", "#2ec4b6");
-    }
-  } catch (error) {
-    console.error("Error al actualizar acceso:", error);
-    alert("Error al actualizar el estado del usuario.");
-  }
-};
-
-// Variable global para guardar el contacto seleccionado actualmente
-let contactoSeleccionado = null;
-
-// Función para cargar los contactos aprobados en tiempo real
-function cargarContactosAprobados(usuarioActualUid) {
-  const contenedorContactos = document.getElementById("lista-chats-principal");
-  if (!contenedorContactos) return;
-
-  const usuariosRef = ref(db, 'usuarios');
-
-  onValue(usuariosRef, (snapshot) => {
-    try {
-      const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
-
-      // Limpiar lista anterior
-      contenedorContactos.innerHTML = "";
-
-      // Preservar la tarjeta de "Mi Estado" arriba del todo
-      if (tarjetaMiEstado) {
-        contenedorContactos.appendChild(tarjetaMiEstado);
-      }
-
-      if (snapshot.exists()) {
-        const usuarios = snapshot.val();
-
-        Object.keys(usuarios).forEach((uid) => {
-          const usuario = usuarios[uid];
-
-          if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
-            const itemContacto = document.createElement("div");
-            itemContacto.className = "tarjeta-chat contacto-item";
-            itemContacto.dataset.uid = uid;
-
-            const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
-
-            const foto = usuario.fotoUrl
-              ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
-              : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
-
-            itemContacto.innerHTML = `
-              <div class="chat-avatar-caja">
-                ${foto}
-              </div>
-              <div class="chat-info">
-                <div class="chat-cabecera">
-                  <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
-                </div>
-                <div class="chat-mensaje-caja">
-                  <p class="chat-texto">${usuario.estado || "¡Disponible en MovaChat!"}</p>
-                </div>
-              </div>
-            `;
-
-            // Evento de clic en tarjeta de chat (Corregido)
-            itemContacto.addEventListener("click", (e) => {
-              e.stopPropagation();
-
-              // 1. Destacar contacto seleccionado visualmente
-              document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
-              itemContacto.classList.add("activo");
-
-              contactoSeleccionado = usuario;
-
-              // 2. Extraer los datos limpios del usuario
-              const uidContacto = usuario.uid || usuario.id;
-              const nombreContacto = usuario.nombre || usuario.displayName || "Usuario";
-              const fotoContacto = usuario.fotoUrl || usuario.photoURL || "";
-
-              // 3. Abrir chat pasando los 3 parámetros correctos
-              if (typeof abrirChatConUsuario === "function") {
-                abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
-              } else if (window.abrirChatConUsuario) {
-                window.abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
-              }
-            });
-
-            contenedorContactos.appendChild(itemContacto);
-          }
-        });
-      }
-    } catch (e) {
-      console.error("Error al cargar la lista de contactos:", e);
-    }
-  });
-}
-
-// 🟢 Función unificada adaptada a tus selectores y limpia de duplicados
-function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
-  let uidTarget, nombreTarget, fotoTarget;
-
-  if (typeof contactoUid === 'object' && contactoUid !== null) {
-    uidTarget = contactoUid.uid || contactoUid.id;
-    nombreTarget = contactoUid.nombre || contactoUid.displayName || "Contacto";
-    fotoTarget = contactoUid.fotoUrl || contactoUid.photoURL || "";
-  } else {
-    uidTarget = contactoUid;
-    nombreTarget = nombreContacto || "Contacto";
-    fotoTarget = fotoContacto || "";
-  }
-
-  if (!uidTarget) return;
-
-  window.contactoActivoUid = uidTarget;
-
-  // 1. Limpiar pantalla de mensajes previa para evitar "parpadeo" de la conversación anterior
-  if (historialMensajes) {
-    historialMensajes.innerHTML = "";
-  }
-
-  // 2. Actualizar datos en la cabecera del chat privado
-  const elemNombre = document.querySelector(".amigo-nombre-chat");
-  const elemFoto = document.getElementById("avatar-cabecera-privada");
-
-  if (elemNombre) elemNombre.textContent = nombreTarget;
-  if (elemFoto) {
-    if (fotoTarget) {
-      elemFoto.src = fotoTarget;
-      elemFoto.style.display = "block";
-    } else {
-      // Avatar genérico por defecto si no tiene foto
-      elemFoto.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(nombreTarget)}`;
-    }
-  }
-
-  // 3. Ocultar menús flotantes abiertos
-  const menuTarjetas = document.getElementById("menu-tarjetas-chat");
-  if (menuTarjetas) menuTarjetas.classList.add("oculto");
-
-  // 4. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
-  if (encabezadoGlobal) encabezadoGlobal.style.display = "none";
-  if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
-
-  const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
-  if (btnFlotanteContacto) btnFlotanteContacto.style.display = "none";
-
-  if (pantallaChatPrivado) {
-    pantallaChatPrivado.classList.add("pantalla-completa");
-    if (typeof switchPantalla === "function") {
-      switchPantalla(pantallaChatPrivado, pantallaChats, pantallaBienvenida, pantallaPerfil);
-    } else {
-      if (pantallaChats) pantallaChats.style.display = "none";
-      pantallaChatPrivado.style.display = "flex";
-    }
-  }
-
-  // 5. Conectar Firebase de forma limpia
-  const miUid = auth.currentUser ? auth.currentUser.uid : null;
-  if (miUid && uidTarget && typeof escucharMensajesChat === "function") {
-    const chatId = obtenerChatId(miUid, uidTarget);
-    escucharMensajesChat(chatId);
-  }
-}
-
-// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES
-const inputChatPrivado = document.getElementById("input-chat-privado");
-
-if (btnAccionChat) {
-  btnAccionChat.onclick = (e) => {
-    e.preventDefault();
-    const tieneTexto = inputChatPrivado && inputChatPrivado.value.trim().length > 0;
-    const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
-
-    if (tieneTexto || tieneAdjunto) {
-      enviarMensajeNuevo();
-    }
-  };
-}
-
-if (inputChatPrivado) {
-  inputChatPrivado.onkeydown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (!usuarioGuardado) {
       e.preventDefault();
-      enviarMensajeNuevo();
+      e.stopPropagation();
+      abrirEditorRedSocial(miRedKey);
+    } else {
+      enlace.href = configuracionRedes[miRedKey].base + usuarioGuardado;
+      mostrarAvisoPremium(`Viajando al portal de ${miRedKey}... 🛸`, "🌐", "#00f2fe");
     }
   };
+
+  enlace.addEventListener("mousedown", iniciarPresionLargaRed);
+  enlace.addEventListener("touchstart", iniciarPresionLargaRed, { passive: true });
+  enlace.addEventListener("click", finalizarPresionLargaRed);
+  enlace.addEventListener("mouseleave", () => { if (temporizadorRedLongPress) clearTimeout(temporizadorRedLongPress); });
+  enlace.addEventListener("touchmove", () => { if (temporizadorRedLongPress) clearTimeout(temporizadorRedLongPress); });
+});
+
+if (btnGuardarRed) {
+  btnGuardarRed.addEventListener("click", () => {
+    const nombreUsuario = inputUsuarioRed ? inputUsuarioRed.value.trim().replace(/[@/]/g, "") : "";
+
+    if (nombreUsuario === "") {
+      localStorage.removeItem(`movachat-red-${redActivaSeleccionada}`);
+      if (modalRedes) modalRedes.classList.add("oculto");
+      mostrarAvisoPremium("Enlace removido. El botón volverá a pedir configuración.", "🗑️", "#ff4b2b");
+      return;
+    }
+
+    localStorage.setItem(`movachat-red-${redActivaSeleccionada}`, nombreUsuario);
+    if (modalRedes) modalRedes.classList.add("oculto");
+    mostrarAvisoPremium(`Portal de ${redActivaSeleccionada.toUpperCase()} guardado correctamente. 🛡️`, "💎", "#00f2fe");
+  });
 }
 
-// Variable global para controlar el listener activo y no acumular duplicados
-let listenerChatActivo = null;
+if (btnCerrarRedes) {
+  btnCerrarRedes.addEventListener("click", () => {
+    if (modalRedes) modalRedes.classList.add("oculto");
+  });
+}
 
-// 📌 Escuchar mensajes en tiempo real desde Firebase (Versión Definitiva)
-function escucharMensajesChat(chatId) {
-  if (!historialMensajes) return;
+// ========================================================
+// 11. BÚSQUEDA INTERNA Y GESTIÓN AVANZADA DE CHATS
+// ========================================================
+const btnCtxBuscar = document.getElementById("btn-ctx-buscar");
+const cajaBuscadorInterno = document.getElementById("caja-buscador-interno-chat");
+const inputBuscadorInterno = document.getElementById("input-buscador-interno");
+const btnCancelarBusquedaInterna = document.getElementById("btn-cancelar-busqueda-interna");
 
-  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+if (btnCtxBuscar && cajaBuscadorInterno && inputBuscadorInterno) {
+  btnCtxBuscar.addEventListener("click", (e) => {
+    e.stopPropagation();
 
-  // 1. Apagar listener anterior si existía para evitar duplicación de mensajes
-  if (listenerChatActivo) {
-    listenerChatActivo(); // Cancela la suscripción previa
-  }
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
 
-  // 2. Iniciar escucha limpia (Optimizada para CPU + Soporte Total de Adjuntos)
-  listenerChatActivo = onValue(mensajesRef, (snapshot) => {
-    if (!historialMensajes) return;
-    historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
+    cajaBuscadorInterno.classList.remove("oculto");
+    inputBuscadorInterno.focus();
 
-    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    mostrarAvisoPremium("Filtro de conversación activo. Escribe para buscar.", "🔍", "#00f2fe");
+  });
+}
 
-    if (snapshot.exists()) {
-      const mensajes = snapshot.val();
+if (inputBuscadorInterno) {
+  inputBuscadorInterno.addEventListener("input", () => {
+    const query = inputBuscadorInterno.value.toLowerCase().trim();
+    const burbujasMensajes = document.querySelectorAll(".historial-mensajes .mensaje-burbuja");
 
-      Object.keys(mensajes).forEach((msgId) => {
-        const msg = mensajes[msgId];
+    burbujasMensajes.forEach(burbuja => {
+      const nodoTexto = burbuja.querySelector(".mensaje-texto");
+      if (!nodoTexto) return;
 
-        // 🚀 A) Detección de emisor flexible
-        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
-        const esMio = idEmisorReal === miUid;
+      if (!burbuja.hasAttribute("data-texto-original")) {
+        burbuja.setAttribute("data-texto-original", nodoTexto.textContent);
+      }
 
-        // 🔔 NOTIFICACIÓN Y SONIDO: Lanzar si el mensaje NO lo envié yo
-        if (!esMio) {
-          const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
-          const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
-          const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
+      const textoOriginal = burbuja.getAttribute("data-texto-original");
 
-          // 1. Lanza la notificación flotante / actualiza badges
-          notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+      if (query === "") {
+        burbuja.style.display = "block";
+        burbuja.style.opacity = "1";
+        nodoTexto.textContent = textoOriginal;
+      } else if (textoOriginal.toLowerCase().includes(query)) {
+        burbuja.style.display = "block";
+        burbuja.style.opacity = "1";
 
-          // 2. Reproduce el efecto de sonido de mensaje recibido
-          reproducirSonido("recibido");
+        const expresionRegular = new RegExp(`(${query})`, "gi");
+        nodoTexto.innerHTML = textoOriginal.replace(expresionRegular, `<span class="texto-resaltado-busqueda">$1</span>`);
+      } else {
+        burbuja.style.display = "none";
+        burbuja.style.opacity = "0";
+      }
+    });
+  });
+}
+
+if (btnCancelarBusquedaInterna) {
+  btnCancelarBusquedaInterna.addEventListener("click", () => {
+    if (cajaBuscadorInterno && inputBuscadorInterno) {
+      cajaBuscadorInterno.classList.add("oculto");
+      inputBuscadorInterno.value = "";
+
+      const eventoReset = new Event("input");
+      inputBuscadorInterno.dispatchEvent(eventoReset);
+    }
+  });
+}
+
+const chatsSilenciadosBD = {};
+const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
+
+if (btnCtxSilenciar) {
+  btnCtxSilenciar.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    const elemNombreCabecera = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombreCabecera ? elemNombreCabecera.textContent.trim() : null;
+
+    if (!nombreAmigoActual) return;
+
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
+
+    let tarjetaAmigoNodo = null;
+    document.querySelectorAll(".lista-chats .tarjeta-chat").forEach(tarjeta => {
+      const elemNombreTarjeta = tarjeta.querySelector(".chat-nombre");
+      if (elemNombreTarjeta && elemNombreTarjeta.textContent.trim() === nombreAmigoActual) {
+        tarjetaAmigoNodo = tarjeta;
+      }
+    });
+
+    if (!chatsSilenciadosBD[nombreAmigoActual]) {
+      chatsSilenciadosBD[nombreAmigoActual] = true;
+      btnCtxSilenciar.innerHTML = `<i data-lucide="bell"></i> Activar notificaciones`;
+
+      if (tarjetaAmigoNodo) {
+        tarjetaAmigoNodo.classList.add("chat-silenciado-zona");
+        const contenedorHora = tarjetaAmigoNodo.querySelector(".chat-cabecera");
+
+        if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
+          contenedorHora.insertAdjacentHTML("beforeend", `
+            <span class="indicador-silencio-neon" title="Chat silenciado">
+              <i data-lucide="bell-off"></i>
+            </span>
+          `);
         }
+      }
 
-        // 🚀 B) Formateador de hora seguro
-        let horaFormateada = "00:00";
-        if (msg.hora) {
-          horaFormateada = msg.hora;
-        } else if (msg.fecha || msg.timestamp) {
-          const fechaObj = new Date(msg.fecha || msg.timestamp);
-          horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
+      mostrarAvisoPremium(`Has silenciado las alertas de <b>${nombreAmigoActual}</b>.`, "🔕", "#ff4b2b");
+    } else {
+      chatsSilenciadosBD[nombreAmigoActual] = false;
+      btnCtxSilenciar.innerHTML = `<i data-lucide="bell-off"></i> Silenciar chat`;
 
-        const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
-        let contenidoBurbuja = "";
-        let estiloEspecialBurbuja = "";
+      if (tarjetaAmigoNodo) {
+        tarjetaAmigoNodo.classList.remove("chat-silenciado-zona");
+        const iconoSilencio = tarjetaAmigoNodo.querySelector(".indicador-silencio-neon");
+        if (iconoSilencio) iconoSilencio.remove();
+      }
 
-        // 📸 Adjunto Imagen
-        if (msg.tipoAdjunto === 'foto') {
-          contenidoBurbuja = `
-            <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
-              <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
-        // 📄 Adjunto Documento
-        else if (msg.tipoAdjunto === 'documento') {
-          contenidoBurbuja = `
-            <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
-              <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
-              <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
-        // 📹 Adjunto Video Circular
-        else if (msg.tipoAdjunto === 'video') {
-          estiloEspecialBurbuja = "padding: 10px;";
-          contenidoBurbuja = `
-            <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-              <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-              </svg>
-              <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-                <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
-              </div>
-              <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-              </div>
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
-        // 🎙️ Adjunto Nota de Voz
-        else if (msg.tipoAdjunto === 'audio') {
-          contenidoBurbuja = `
-            <div class="reproductor-audio-burbuja">
-              <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
-              <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-                <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-              </div>
-              <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-              <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
-            </div>
-            <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
-        // 📇 Adjunto Contacto Compartido
-        else if (msg.tipoAdjunto === 'contacto') {
-          contenidoBurbuja = `
-            <div class="tarjeta-contacto-compartido">
-              <div class="cabecera-contacto-card">
-                <img src="${msg.avatarContacto || 'https://i.pravatar.cc/150'}" alt="${msg.nombreContacto}" class="avatar-contacto-card">
-                <div class="info-contacto-card">
-                  <span class="nombre-contacto-card">${msg.nombreContacto}</span>
-                  <span class="subtexto-contacto-card">
-                    <i data-lucide="shield-check" style="width:12px; height:12px;"></i> Contacto MovaChat
-                  </span>
-                </div>
-              </div>
-              <button class="btn-accion-contacto-card">
-                <i data-lucide="message-square" style="width:14px; height:14px;"></i> Chatear
-              </button>
-            </div>
-            <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
-        // 💬 Mensaje de solo texto
-        else {
-          contenidoBurbuja = `
-            <p class="mensaje-texto">${msg.texto || ''}</p>
-            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
+      mostrarAvisoPremium(`Alertas reactivadas para <b>${nombreAmigoActual}</b>.`, "🔔", "#00f2fe");
+    }
 
-        // Crear contenedor HTML de la burbuja
-        const burbujaHTML = document.createElement("div");
-        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
-        burbujaHTML.setAttribute("data-msg-id", msgId);
-        if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
-        burbujaHTML.innerHTML = contenidoBurbuja;
+    if (window.lucide) {
+      const objetivos = [btnCtxSilenciar];
+      if (tarjetaAmigoNodo) objetivos.push(tarjetaAmigoNodo);
 
-        historialMensajes.appendChild(burbujaHTML);
+      window.lucide.createIcons({
+        targets: objetivos
       });
+    }
+  });
+}
 
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar ÚNICAMENTE los iconos dentro del área de chat
+const chatsTemporalesBD = {};
+const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
+
+if (btnCtxTemporales) {
+  btnCtxTemporales.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : null;
+
+    if (!nombreAmigoActual) return;
+
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
+
+    if (!chatsTemporalesBD[nombreAmigoActual]) {
+      chatsTemporalesBD[nombreAmigoActual] = true;
+      btnCtxTemporales.innerHTML = `<i data-lucide="hourglass"></i> Mensajes normales`;
+      mostrarAvisoPremium(`Modo efímero activo con <b>${nombreAmigoActual}</b>. Los mensajes nuevos durarán 10s.`, "⏳", "#00f2fe");
+    } else {
+      chatsTemporalesBD[nombreAmigoActual] = false;
+      btnCtxTemporales.innerHTML = `<i data-lucide="hourglass"></i> Mensajes temporales`;
+      mostrarAvisoPremium(`Modo permanente restaurado con <b>${nombreAmigoActual}</b>.`, "📡", "#00f2fe");
+    }
+
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btnCtxTemporales]
+      });
+    }
+  });
+}
+
+function aplicarRelojArenaEfecto(burbujaNodo) {
+  const elemNombre = document.querySelector(".amigo-nombre-chat");
+  const nombreAmigoActual = elemNombre ? elemNombre.textContent : null;
+
+  if (nombreAmigoActual && chatsTemporalesBD[nombreAmigoActual]) {
+    burbujaNodo.classList.add("mensaje-efimero");
+
+    const horaNodo = burbujaNodo.querySelector(".mensaje-hora");
+    if (horaNodo && !horaNodo.querySelector("[data-lucide='hourglass']")) {
+      horaNodo.insertAdjacentHTML("afterbegin", `<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>`);
+
       if (window.lucide) {
         window.lucide.createIcons({
-          targets: [historialMensajes]
+          targets: [horaNodo]
         });
       }
-
-      historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
-  }); // Cierre de onValue
-}
 
-// 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
-function actualizarEstadoPantallaInicio() {
-  const contenedorVacio = document.getElementById("pantalla-lista-vacia");
-  const listaChats = document.querySelector(".lista-chats");
-
-  if (!contenedorVacio || !listaChats) return;
-
-  // Contamos cuántas tarjetas de chat reales hay cargadas
-  const tarjetasReales = listaChats.querySelectorAll(".tarjeta-chat");
-
-  if (tarjetasReales.length === 0) {
-    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida orientada a buscar amigos
-    contenedorVacio.classList.remove("oculto");
-  } else {
-    // 💬 CON CHATS: Ocultamos la tarjeta por completo para darle prioridad a la lista
-    contenedorVacio.classList.add("oculto");
+    setTimeout(() => {
+      burbujaNodo.classList.add("burbuja-evaporar-anim");
+      setTimeout(() => {
+        burbujaNodo.remove();
+        if (typeof guardarMensajesEnMemoria === "function" && typeof historialMensajes !== "undefined") {
+          guardarMensajesEnMemoria(nombreAmigoActual, historialMensajes);
+        }
+      }, 400);
+    }, 10000);
   }
 }
 
-// ⚡ Inicialización principal y eventos al cargar el DOM
-document.addEventListener("DOMContentLoaded", () => {
+function guardarMensajesEnMemoria(nombreAmigo, historialNodo) {
+  if (!nombreAmigo || !historialNodo) return;
 
-  // 1️⃣ Ajustes iniciales (Emojis, scroll y Lucide Icons)
-  conectarBotonEmoji();
-  const menuTarjetas = document.getElementById("menu-tarjetas-chat");
-  window.addEventListener("scroll", cerrarMenuContextualMova, true);
+  const historialLimpio = historialNodo.cloneNode(true);
+  historialLimpio.querySelectorAll(".mensaje-efimero, .burbuja-evaporar-anim").forEach(b => b.remove());
 
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
+  localStorage.setItem(`movachat_msgs_${nombreAmigo}`, historialLimpio.innerHTML);
+}
 
-  // 2️⃣ Botón 'Buscar amigo' de la pantalla de bienvenida vacía
-  const btnBuscarVacio = document.getElementById("btn-vacio-buscar-amigo");
-  if (btnBuscarVacio) {
-    btnBuscarVacio.addEventListener("click", () => {
-      if (typeof abrirModalBuscarAmigos === "function") {
-        abrirModalBuscarAmigos();
-      } else if (typeof modalContactos !== "undefined" && modalContactos) {
-        modalContactos.classList.remove("oculto");
+function obtenerChatId(uid1, uid2) {
+  return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
+}
+
+const chatsBloqueadosBD = {};
+const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
+
+if (btnCtxBloquear) {
+  btnCtxBloquear.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : null;
+
+    if (!nombreAmigoActual) return;
+
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
+
+    let tarjetaAmigoNodo = null;
+    document.querySelectorAll(".lista-chats .tarjeta-chat").forEach(tarjeta => {
+      const elemNombreTarjeta = tarjeta.querySelector(".chat-nombre");
+      if (elemNombreTarjeta && elemNombreTarjeta.textContent.trim() === nombreAmigoActual) {
+        tarjetaAmigoNodo = tarjeta;
       }
     });
-  }
 
-  // 3️⃣ Buscador/Filtro en tiempo real por texto
-  const inputBuscador = document.getElementById("input-buscador-chats");
-  if (inputBuscador) {
-    inputBuscador.addEventListener("input", (e) => {
-      const textoBusqueda = e.target.value.toLowerCase().trim();
-      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+    if (!chatsBloqueadosBD[nombreAmigoActual]) {
+      chatsBloqueadosBD[nombreAmigoActual] = true;
 
-      tarjetasChat.forEach((tarjeta) => {
-        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+      btnCtxBloquear.innerHTML = `<i data-lucide="shield-check"></i> Desbloquear usuario`;
+      btnCtxBloquear.classList.remove("texto-rojo");
+      btnCtxBloquear.style.color = "#00f2fe";
 
-        const contenidoTarjeta = tarjeta.textContent.toLowerCase();
+      if (typeof inputChat !== "undefined" && inputChat) {
+        inputChat.disabled = true;
+        inputChat.placeholder = "Has bloqueado a este usuario.";
+        inputChat.style.opacity = "0.5";
+      }
+      if (typeof btnAccionChat !== "undefined" && btnAccionChat) {
+        btnAccionChat.style.pointerEvents = "none";
+        btnAccionChat.style.opacity = "0.3";
+      }
 
-        if (contenidoTarjeta.includes(textoBusqueda)) {
-          tarjeta.style.display = "";
-        } else {
-          tarjeta.style.display = "none";
-        }
+      if (tarjetaAmigoNodo) {
+        tarjetaAmigoNodo.style.opacity = "0.4";
+        tarjetaAmigoNodo.style.filter = "grayscale(100%)";
+      }
+
+      mostrarAvisoPremium(`Usuario <b>${nombreAmigoActual}</b> ha sido bloqueado con éxito.`, "⚠️", "#ff4b2b");
+    } else {
+      chatsBloqueadosBD[nombreAmigoActual] = false;
+
+      btnCtxBloquear.innerHTML = `<i data-lucide="shield-alert"></i> Bloquear usuario`;
+      btnCtxBloquear.classList.add("texto-rojo");
+      btnCtxBloquear.style.color = "";
+
+      if (typeof inputChat !== "undefined" && inputChat) {
+        inputChat.disabled = false;
+        inputChat.placeholder = "Escribe un mensaje privado...";
+        inputChat.style.opacity = "1";
+      }
+      if (typeof btnAccionChat !== "undefined" && btnAccionChat) {
+        btnAccionChat.style.pointerEvents = "auto";
+        btnAccionChat.style.opacity = "1";
+      }
+
+      if (tarjetaAmigoNodo) {
+        tarjetaAmigoNodo.style.opacity = "1";
+        tarjetaAmigoNodo.style.filter = "none";
+      }
+
+      mostrarAvisoPremium(`Has desbloqueado a <b>${nombreAmigoActual}</b>. Conexión restaurada.`, "📡", "#00f2fe");
+    }
+
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btnCtxBloquear]
       });
+    }
+  });
+}
+
+const btnCtxVaciar = document.getElementById("btn-ctx-vaciar");
+if (btnCtxVaciar) {
+  btnCtxVaciar.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent : "Chat";
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
+
+    const contenedorMensajesActivo = document.querySelector("#pantalla-chat-privado .historial-mensajes");
+    if (!contenedorMensajesActivo) return;
+
+    const burbujasDelChatActual = contenedorMensajesActivo.querySelectorAll(".mensaje-burbuja");
+
+    if (burbujasDelChatActual.length === 0) {
+      mostrarAvisoPremium(`El historial con <b>${nombreAmigoActual}</b> ya está vacío.`, "📡", "#00f2fe");
+      return;
+    }
+
+    burbujasDelChatActual.forEach(burbuja => {
+      burbuja.style.transition = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+      burbuja.style.opacity = "0";
+      burbuja.style.transform = "scale(0.8) translateY(-10px)";
+      setTimeout(() => { burbuja.remove(); }, 300);
     });
+
+    localStorage.removeItem(`movachat_msgs_${nombreAmigoActual}`);
+    mostrarAvisoPremium(`Historial efímero con <b>${nombreAmigoActual}</b> eliminado con éxito.`, "🗑️", "#ff4b2b");
+  });
+}
+
+const btnBuscadorEncabezado = document.getElementById("btn-buscador-encabezado");
+const inputBuscadorPrincipal = document.querySelector(".input-buscador");
+
+if (btnBuscadorEncabezado && inputBuscadorPrincipal) {
+  btnBuscadorEncabezado.addEventListener("click", () => {
+    const btnInicioMenu = document.querySelectorAll(".menu-flotante .menu-btn")[0];
+    if (btnInicioMenu && !btnInicioMenu.classList.contains("activo")) {
+      btnInicioMenu.click();
+    }
+
+    inputBuscadorPrincipal.focus();
+
+    const cajaBuscador = document.querySelector(".caja-buscador");
+    if (cajaBuscador) {
+      cajaBuscador.style.borderColor = "#00f2fe";
+      cajaBuscador.style.boxShadow = "0 0 15px rgba(0, 242, 254, 0.3)";
+
+      setTimeout(() => {
+        cajaBuscador.style.borderColor = "";
+        cajaBuscador.style.boxShadow = "";
+      }, 2000);
+    }
+
+    mostrarAvisoPremium("Escribe para buscar conversaciones o amigos... 🔍", "⚡", "#00f2fe");
+  });
+}
+
+// ==========================================================
+// 12. MENÚ CONTEXTUAL UNIFICADO (PC + MÓVIL / F12 SIN CONFLIC)
+// ==========================================================
+let tarjetaChatSeleccionada = null;
+let temporizadorLongPress = null;
+let bloquarClickFantasma = false;
+
+const menuTarjetas = document.getElementById("menu-tarjetas-chat");
+const btnCtxFijar = document.getElementById("btn-ctx-fijar");
+const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
+const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
+
+document.addEventListener("contextmenu", (e) => {
+  const tarjeta = e.target.closest(".tarjeta-chat");
+  if (tarjeta) {
+    e.preventDefault();
+    e.stopPropagation();
+    abrirMenuContextualMova(e.clientX, e.clientY, tarjeta);
   }
-
-  // 4️⃣ Filtros de pestañas: 'Todos' y 'No leídos'
-  const btnFiltroTodos = document.getElementById("filtro-todos");
-  const btnFiltroNoLeidos = document.getElementById("filtro-no-leidos");
-
-  if (btnFiltroNoLeidos) {
-    btnFiltroNoLeidos.addEventListener("click", () => {
-      btnFiltroTodos?.classList.remove("activo");
-      btnFiltroNoLeidos.classList.add("activo");
-
-      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
-
-      tarjetasChat.forEach((tarjeta) => {
-        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
-
-        const badge = tarjeta.querySelector(".badge-chat-no-leido");
-        const tieneNoLeidos = badge && parseInt(badge.textContent, 10) > 0;
-
-        if (tieneNoLeidos) {
-          tarjeta.style.display = "";
-        } else {
-          tarjeta.style.display = "none";
-        }
-      });
-    });
-  }
-
-  if (btnFiltroTodos) {
-    btnFiltroTodos.addEventListener("click", () => {
-      btnFiltroNoLeidos?.classList.remove("activo");
-      btnFiltroTodos.classList.add("activo");
-
-      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
-      tarjetasChat.forEach((tarjeta) => tarjeta.style.display = "");
-    });
-  }
-
 });
 
-// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Global para que Firebase la encuentre)
-window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
-  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
-  if (estaSilenciado) return;
+document.addEventListener("touchstart", (e) => {
+  const tarjeta = e.target.closest(".tarjeta-chat");
+  if (tarjeta) {
+    temporizadorLongPress = setTimeout(() => {
+      const touch = e.touches[0];
+      bloquarClickFantasma = true;
+      abrirMenuContextualMova(touch.clientX, touch.clientY, tarjeta);
 
-  // Si la app está en segundo plano o minimizada
-  if (document.hidden && Notification.permission === "granted") {
-    const opciones = {
-      body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo.png",
-      badge: "assets/logo.png",
-      vibrate: [100, 50, 100],
-      tag: "movachat-mensaje",
-      renotify: true
-    };
+      setTimeout(() => {
+        bloquarClickFantasma = false;
+      }, 400);
 
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
+    }, 450);
+  }
+}, { passive: true });
+
+document.addEventListener("touchend", () => clearTimeout(temporizadorLongPress));
+document.addEventListener("touchmove", () => clearTimeout(temporizadorLongPress));
+
+function abrirMenuContextualMova(x, y, tarjeta) {
+  if (!menuTarjetas) return;
+
+  tarjetaChatSeleccionada = tarjeta;
+  const esFijado = tarjeta.classList.contains("tarjeta-fijada");
+
+  const elContenedor = document.querySelector(".contenedor-chat") || document.body;
+  const marcoApp = elContenedor.getBoundingClientRect();
+
+  let posX = x - marcoApp.left;
+  let posY = y - marcoApp.top;
+
+  const anchoMenu = 190;
+  const altoMenu = 150;
+
+  if (posX + anchoMenu > marcoApp.width) {
+    posX = marcoApp.width - anchoMenu - 10;
+  }
+  if (posX < 10) posX = 10;
+
+  if (posY + altoMenu > marcoApp.height) {
+    posY = marcoApp.height - altoMenu - 10;
+  }
+  if (posY < 10) posY = 10;
+
+  menuTarjetas.style.position = "absolute";
+  menuTarjetas.style.top = `${posY}px`;
+  menuTarjetas.style.left = `${posX}px`;
+  menuTarjetas.style.zIndex = "99999";
+  menuTarjetas.style.display = "block";
+
+  if (btnCtxFijar) {
+    btnCtxFijar.innerHTML = `<i data-lucide="pin"></i> <span>${esFijado ? 'Desfijar chat' : 'Fijar chat arriba'}</span>`;
+
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btnCtxFijar]
       });
-    } else {
-      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
-    }
-  } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
-    if (typeof actualizarBadgesNotificaciones === "function") {
-      actualizarBadgesNotificaciones();
     }
   }
-};
 
-// 🔔 Función global para lanzar notificación de nuevo mensaje
-function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
-  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
-  if (estaSilenciado) return;
+  menuTarjetas.classList.remove("oculto");
+}
 
-  // Si la app está en segundo plano o minimizada
-  if (document.hidden && Notification.permission === "granted") {
-    const opciones = {
-      body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo.png",
-      badge: "assets/logo.png",
-      vibrate: [100, 50, 100],
-      tag: "movachat-mensaje",
-      renotify: true
-    };
-
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
-      });
-    } else {
-      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
-    }
-  } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
-    actualizarBadgesNotificaciones();
+function cerrarMenuContextualMova() {
+  if (menuTarjetas) {
+    menuTarjetas.classList.add("oculto");
+    menuTarjetas.style.display = "";
   }
+}
+
+if (btnCtxFijar) {
+  btnCtxFijar.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (tarjetaChatSeleccionada) alternarFijarChat(tarjetaChatSeleccionada);
+    cerrarMenuContextualMova();
+  };
+}
+
+if (btnCtxEliminar) {
+  btnCtxEliminar.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (tarjetaChatSeleccionada) eliminarChatAnimado(tarjetaChatSeleccionada);
+    cerrarMenuContextualMova();
+  };
+}
+
+if (btnCtxCerrar) {
+  btnCtxCerrar.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    cerrarMenuContextualMova();
+  };
+}
+
+function alternarFijarChat(tarjeta) {
+  if (!tarjeta) return;
+
+  const cabecera = tarjeta.querySelector(".chat-cabecera");
+  let pinIcono = tarjeta.querySelector(".indicador-pin-neon");
+
+  if (tarjeta.classList.contains("tarjeta-fijada")) {
+    tarjeta.classList.remove("tarjeta-fijada");
+    tarjeta.style.order = "";
+    if (pinIcono) pinIcono.remove();
+  } else {
+    tarjeta.classList.add("tarjeta-fijada");
+    tarjeta.style.order = "-1";
+
+    if (!pinIcono && cabecera) {
+      cabecera.insertAdjacentHTML(
+        "beforeend",
+        `<span class="indicador-pin-neon"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>`
+      );
+
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [cabecera]
+        });
+      }
+    }
+  }
+}
+
+function eliminarChatAnimado(tarjeta) {
+  tarjeta.classList.add("tarjeta-eliminar-anim");
+  setTimeout(() => {
+    tarjeta.remove();
+  }, 300);
 }
