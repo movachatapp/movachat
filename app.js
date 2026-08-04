@@ -2129,8 +2129,8 @@ function actualizarBadgesNotificaciones() {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
 
-  // Sumamos los badges de las tarjetas
-  const badgesChats = document.querySelectorAll(".badge-chat-no-leido");
+  // Sumamos los badges de las tarjetas de chat que no estén ocultos
+  const badgesChats = document.querySelectorAll("#lista-chats-principal .badge-chat-no-leido:not(.oculto)");
   let totalNoLeidos = 0;
 
   badgesChats.forEach((badge) => {
@@ -2148,10 +2148,50 @@ function actualizarBadgesNotificaciones() {
     }
   }
 
-  // 2️⃣ Actualizar filtro 'No leídos (0)'
+  // 2️⃣ Actualizar filtro 'No leídos'
   if (badgeFiltroNoLeidos) {
     badgeFiltroNoLeidos.textContent = totalNoLeidos;
   }
+}
+
+// 🚀 EVENTO CLIC EN LA CAMPANITA (Filtra automáticamente los chats no leídos)
+if (btnCampanita) {
+  btnCampanita.addEventListener("click", () => {
+    // 1. Contar mensajes sin leer activos
+    const badgesChats = document.querySelectorAll("#lista-chats-principal .badge-chat-no-leido:not(.oculto)");
+    let totalPendientes = 0;
+
+    badgesChats.forEach((badge) => {
+      const cantidad = parseInt(badge.textContent, 10) || 0;
+      totalPendientes += cantidad;
+    });
+
+    if (totalPendientes > 0) {
+      // 2. Si hay mensajes sin leer, activar el filtro "No leídos" automáticamente
+      const btnFiltroNoLeidos = document.getElementById("filtro-no-leidos");
+      if (btnFiltroNoLeidos) {
+        btnFiltroNoLeidos.click();
+      }
+
+      // Animación en el globito de la campanita
+      if (badgeCampanita) {
+        badgeCampanita.style.transform = "scale(0)";
+        setTimeout(() => {
+          badgeCampanita.classList.add("oculto");
+          badgeCampanita.style.transform = "scale(1)";
+        }, 200);
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(`Filtrando ${totalPendientes} mensaje(s) sin leer 📩`, "🔔", "#00f2fe");
+      }
+    } else {
+      // 3. Si todo está al día
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Todo está en orden y en calma por aquí. 🌌", "✨", "#00f2fe");
+      }
+    }
+  });
 }
 
 // Evento Clic en la Campanita
