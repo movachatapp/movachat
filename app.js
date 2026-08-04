@@ -2787,3 +2787,142 @@ if (btnBuscadorEncabezado && inputBuscadorPrincipal) {
   });
 }
 
+// ========================================================
+// 14. LISTA DE CONTACTOS Y EVENTOS FINALES (SANO Y SIN DUPLICADOS)
+// ========================================================
+
+// 🟢 Cargar contactos aprobados desde Firebase a la lista principal
+function cargarContactosAprobados(usuarioActualUid) {
+  const contenedorContactos = document.getElementById("lista-chats-principal") || document.querySelector(".lista-chats");
+  if (!contenedorContactos) return;
+
+  const usuariosRef = ref(db, 'usuarios');
+
+  onValue(usuariosRef, (snapshot) => {
+    try {
+      const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+      contenedorContactos.innerHTML = "";
+
+      if (tarjetaMiEstado) {
+        contenedorContactos.appendChild(tarjetaMiEstado);
+      }
+
+      if (snapshot.exists()) {
+        const usuarios = snapshot.val();
+
+        Object.keys(usuarios).forEach((uid) => {
+          const usuario = usuarios[uid];
+
+          if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
+            const itemContacto = document.createElement("div");
+            itemContacto.className = "tarjeta-chat contacto-item";
+            itemContacto.dataset.uid = uid;
+
+            const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
+            const foto = usuario.fotoUrl
+              ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
+              : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
+
+            itemContacto.innerHTML = `
+              <div class="chat-avatar-caja">
+                ${foto}
+                <span class="punto-online-chat" style="--led-color: #00f2fe;"></span>
+              </div>
+              <div class="chat-info">
+                <div class="chat-cabecera">
+                  <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
+                </div>
+                <div class="chat-mensaje-caja">
+                  <p class="chat-texto">${usuario.estado || "¡Disponible en MovaChat!"}</p>
+                </div>
+              </div>
+            `;
+
+            // Clic en la tarjeta de chat
+            itemContacto.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const uidContacto = usuario.uid || uid;
+              const nombreContacto = usuario.nombre || "Usuario";
+              const fotoContacto = usuario.fotoUrl || "";
+
+              abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+            });
+
+            contenedorContactos.appendChild(itemContacto);
+          }
+        });
+
+        if (window.lucide) {
+          window.lucide.createIcons({ targets: [contenedorContactos] });
+        }
+      }
+    } catch (e) {
+      console.error("Error al cargar la lista de contactos:", e);
+    }
+  });
+}
+
+// 🟢 Abrir Chat Privado con Datos Reales
+function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
+  if (!contactoUid) return;
+
+  window.contactoActivoUid = contactoUid;
+
+  if (historialMensajes) {
+    historialMensajes.innerHTML = "";
+  }
+
+  const elemNombre = document.querySelector(".amigo-nombre-chat");
+  const elemFoto = document.getElementById("avatar-cabecera-privada");
+
+  if (elemNombre) elemNombre.textContent = nombreContacto;
+  if (elemFoto) {
+    if (fotoContacto) {
+      elemFoto.src = fotoContacto;
+      elemFoto.style.display = "block";
+    } else {
+      elemFoto.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(nombreContacto)}`;
+    }
+  }
+
+  if (encabezadoGlobal) encabezadoGlobal.style.display = "none";
+  if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
+
+  const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto") || document.getElementById("btn-abrir-contactos");
+  if (btnFlotanteContacto) btnFlotanteContacto.style.display = "none";
+
+  if (pantallaChatPrivado) {
+    pantallaChatPrivado.classList.add("pantalla-completa");
+    if (typeof switchPantalla === "function") {
+      switchPantalla(pantallaChatPrivado, pantallaChats, pantallaBienvenida, pantallaPerfil);
+    } else {
+      if (pantallaChats) pantallaChats.style.display = "none";
+      pantallaChatPrivado.style.display = "flex";
+    }
+  }
+
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  if (miUid && contactoUid && typeof escucharMensajesChat === "function") {
+    const chatId = obtenerChatId(miUid, contactoUid);
+    escucharMensajesChat(chatId);
+  }
+}
+
+// 📌 Hacerlas globales para que Firebase pueda ejecutarlas al iniciar sesión
+window.cargarContactosAprobados = cargarContactosAprobados;
+window.abrirChatConUsuario = abrirChatConUsuario;
+
+// ⚡ Inicializaciones finales del DOM
+document.addEventListener("DOMContentLoaded", () => {
+  // Inicializar iconos de Lucide
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+
+  // Activar audio y notificaciones con el primer clic del usuario
+  document.addEventListener("click", () => {
+    if ("Notification" in window && Notification.permission === "default") {
+      solicitarPermisoNotificaciones();
+    }
+  }, { once: true });
+});
