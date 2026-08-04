@@ -3850,18 +3850,21 @@ if (inputChatPrivado) {
 // Variable global para controlar el listener activo y no acumular duplicados
 let listenerChatActivo = null;
 
-// 📌 Escuchar mensajes en tiempo real desde Firebase (Versión Definitiva)
+// 📌 Escuchar mensajes en tiempo real desde Firebase (Sin sonidos cruzados)
 function escucharMensajesChat(chatId) {
   if (!historialMensajes) return;
 
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
 
-  // 1. Apagar listener anterior si existía para evitar duplicación de mensajes
+  // 1. Apagar listener anterior si existía para evitar duplicación de eventos
   if (listenerChatActivo) {
-    listenerChatActivo(); // Cancela la suscripción previa
+    listenerChatActivo();
   }
 
-  // 2. Iniciar escucha limpia (Optimizada para CPU + Soporte Total de Adjuntos)
+  // Variable para ignorar la descarga inicial de mensajes antiguos
+  let esCargaInicial = true;
+
+  // 2. Iniciar escucha limpia en tiempo real
   listenerChatActivo = onValue(mensajesRef, (snapshot) => {
     if (!historialMensajes) return;
     historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
@@ -3874,24 +3877,26 @@ function escucharMensajesChat(chatId) {
       Object.keys(mensajes).forEach((msgId) => {
         const msg = mensajes[msgId];
 
-        // 🚀 A) Detección de emisor flexible
+        // A) Detección de emisor
         const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
         const esMio = idEmisorReal === miUid;
 
-        // 🔔 NOTIFICACIÓN Y SONIDO: Lanzar si el mensaje NO lo envié yo
-        if (!esMio) {
+        // B) Control de tiempo: ¿El mensaje se envió hace menos de 4 segundos?
+        const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
+        const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
+
+        // 🔔 NOTIFICACIÓN Y SONIDO DE RECIBIDO:
+        // Solo suena si NO es la carga inicial de historial, si NO lo envié yo y si acaba de llegar
+        if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo) {
           const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
           const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
           const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
 
-          // 1. Lanza la notificación flotante / actualiza badges
           notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
-
-          // 2. Reproduce el efecto de sonido de mensaje recibido
           reproducirSonido("recibido");
         }
 
-        // 🚀 B) Formateador de hora seguro
+        // C) Formateador de hora seguro
         let horaFormateada = "00:00";
         if (msg.hora) {
           horaFormateada = msg.hora;
@@ -3961,26 +3966,6 @@ function escucharMensajesChat(chatId) {
             <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
           `;
         }
-        // 📇 Adjunto Contacto Compartido
-        else if (msg.tipoAdjunto === 'contacto') {
-          contenidoBurbuja = `
-            <div class="tarjeta-contacto-compartido">
-              <div class="cabecera-contacto-card">
-                <img src="${msg.avatarContacto || 'https://i.pravatar.cc/150'}" alt="${msg.nombreContacto}" class="avatar-contacto-card">
-                <div class="info-contacto-card">
-                  <span class="nombre-contacto-card">${msg.nombreContacto}</span>
-                  <span class="subtexto-contacto-card">
-                    <i data-lucide="shield-check" style="width:12px; height:12px;"></i> Contacto MovaChat
-                  </span>
-                </div>
-              </div>
-              <button class="btn-accion-contacto-card">
-                <i data-lucide="message-square" style="width:14px; height:14px;"></i> Chatear
-              </button>
-            </div>
-            <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
         // 💬 Mensaje de solo texto
         else {
           contenidoBurbuja = `
@@ -3999,7 +3984,7 @@ function escucharMensajesChat(chatId) {
         historialMensajes.appendChild(burbujaHTML);
       });
 
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar ÚNICAMENTE los iconos dentro del área de chat
+      // Renderizar iconos
       if (window.lucide) {
         window.lucide.createIcons({
           targets: [historialMensajes]
@@ -4008,7 +3993,10 @@ function escucharMensajesChat(chatId) {
 
       historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
-  }); // Cierre de onValue
+
+    // Una vez procesado el historial inicial, desactivamos el escudo
+    esCargaInicial = false;
+  });
 }
 
 // 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
