@@ -3025,3 +3025,212 @@ window.abrirChatConUsuario = function(contactoUid, nombreContacto, fotoContacto)
     window.escucharMensajesChat(chatId);
   }
 };
+
+// ========================================================
+// 🛡️ MOTOR INTEGRAL: CONTACTOS, MODAL (+), FIREBASE Y NOTIFICACIONES
+// ========================================================
+
+// 1. RENDERIZAR LISTA DE CONTACTOS DENTRO DEL MODAL (+)
+async function renderizarListaContactosModal(filtro = "") {
+  const contenedor = document.getElementById("contenedor-lista-contactos");
+  if (!contenedor) return;
+  contenedor.innerHTML = "";
+
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  if (!miUid) return;
+
+  try {
+    const misContactosRef = ref(db, `mis_contactos/${miUid}`);
+    const snapshotContactos = await get(misContactosRef);
+
+    if (snapshotContactos.exists()) {
+      const contactosUids = Object.keys(snapshotContactos.val());
+      const promesas = contactosUids.map(uid => get(ref(db, `usuarios/${uid}`)));
+      const snapshotsUsuarios = await Promise.all(promesas);
+
+      snapshotsUsuarios.forEach((snap, idx) => {
+        if (snap.exists()) {
+          const u = snap.val();
+          const targetUid = contactosUids[idx];
+          const nombre = u.nombre || "Usuario";
+
+          if (nombre.toLowerCase().includes(filtro.toLowerCase().trim())) {
+            const fila = document.createElement("div");
+            fila.className = "item-contacto-fila";
+            fila.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 10px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05);";
+
+            const primerLetra = nombre.charAt(0).toUpperCase();
+            const fotoHTML = u.fotoUrl
+              ? `<img src="${u.fotoUrl}" class="avatar-contacto-mini" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">`
+              : `<div class="avatar-contacto-mini" style="background:#00f2fe; color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius:50%; width:36px; height:36px;">${primerLetra}</div>`;
+
+            fila.innerHTML = `
+              <div class="info-contacto-izq" style="display:flex; align-items:center; gap:12px;">
+                ${fotoHTML}
+                <span class="nombre-contacto-texto" style="font-weight:600; color:#fff;">${nombre}</span>
+              </div>
+              <button class="btn-eliminar-contacto-item" style="background:none; border:none; color:#ff4b2b; cursor:pointer;" title="Eliminar">
+                <i data-lucide="trash-2"></i>
+              </button>
+            `;
+
+            // Clic en la fila -> Abrir Chat Privado de una vez
+            fila.onclick = (e) => {
+              if (e.target.closest(".btn-eliminar-contacto-item")) return;
+              const modalCont = document.getElementById("modal-contactos");
+              if (modalCont) {
+                modalCont.classList.add("oculto");
+                modalCont.style.display = "none";
+              }
+              abrirChatConUsuario(targetUid, nombre, u.fotoUrl || "");
+            };
+
+            // Clic en la papelera -> Eliminar de Firebase
+            const btnEliminar = fila.querySelector(".btn-eliminar-contacto-item");
+            if (btnEliminar) {
+              btnEliminar.onclick = async (e) => {
+                e.stopPropagation();
+                if (confirm(`¿Deseas eliminar a ${nombre} de tus contactos?`)) {
+                  await set(ref(db, `mis_contactos/${miUid}/${targetUid}`), null);
+                  renderizarListaContactosModal(filtro);
+                  if (typeof cargarContactosAprobados === "function") cargarContactosAprobados(miUid);
+                  mostrarAvisoPremium(`Contacto ${nombre} eliminado.`, "🗑️", "#ff4b2b");
+                }
+              };
+            }
+
+            contenedor.appendChild(fila);
+          }
+        }
+      });
+
+      if (window.lucide) window.lucide.createIcons({ targets: [contenedor] });
+    } else {
+      contenedor.innerHTML = `<p style="color:rgba(255,255,255,0.4); text-align:center; padding:15px; font-size:0.85rem;">Aún no has agregado contactos. Usa el campo de arriba para buscar y agregar. ✨</p>`;
+    }
+  } catch (err) {
+    console.error("Error al rendirizar modal de contactos:", err);
+  }
+}
+
+// 2. AGREGAR NUEVO CONTACTO POR CORREO O NOMBRE EN FIREBASE
+const btnGuardarContacto = document.getElementById("btn-guardar-contacto");
+const inputNuevoContacto = document.getElementById("input-nuevo-contacto");
+
+if (btnGuardarContacto && inputNuevoContacto) {
+  btnGuardarContacto.onclick = async (e) => {
+    e.preventDefault();
+    const busqueda = inputNuevoContacto.value.trim().toLowerCase();
+    if (!busqueda) return;
+
+    btnGuardarContacto.disabled = true;
+
+    try {
+      const snapUsuarios = await get(ref(db, 'usuarios'));
+      const miUid = auth.currentUser ? auth.currentUser.uid : null;
+
+      if (snapUsuarios.exists() && miUid) {
+        const usuarios = snapUsuarios.val();
+        let encontradoUid = null;
+        let datosEncontrados = null;
+
+        Object.keys(usuarios).forEach((uid) => {
+          const u = usuarios[uid];
+          if (
+            uid !== miUid &&
+            ((u.correo && u.correo.toLowerCase() === busqueda) ||
+             (u.nombre && u.nombre.toLowerCase() === busqueda) ||
+             (u.username && u.username.toLowerCase() === busqueda.replace("@", "")))
+          ) {
+            encontradoUid = uid;
+            datosEncontrados = u;
+          }
+        });
+
+        if (encontradoUid) {
+          // Guardar la relación en Realtime Database
+          await set(ref(db, `mis_contactos/${miUid}/${encontradoUid}`), true);
+          inputNuevoContacto.value = "";
+
+          // 🚀 REFRESCAR AMBAS LISTAS AL INSTANTE
+          renderizarListaContactosModal();
+          if (typeof cargarContactosAprobados === "function") {
+            cargarContactosAprobados(miUid);
+          }
+
+          mostrarAvisoPremium(`¡${datosEncontrados.nombre} agregado con éxito! 🎉`, "✅", "#00f2fe");
+        } else {
+          mostrarAvisoPremium(`No se encontró ningún usuario con "${busqueda}".`, "⚠️", "#ff4b2b");
+        }
+      }
+    } catch (err) {
+      console.error("Error al agregar contacto:", err);
+      mostrarAvisoPremium("Ocurrió un error al guardar el contacto.", "❌", "#ff4b2b");
+    } finally {
+      btnGuardarContacto.disabled = false;
+    }
+  };
+}
+
+// 3. CONTROL DEL MODAL (+), CERRAR (X) Y BUSCADOR INTERNO
+document.addEventListener("click", (e) => {
+  // Abrir Modal
+  const btnPlus = e.target.closest("#btn-abrir-contactos") || e.target.closest(".btn-flotante-contacto");
+  if (btnPlus) {
+    e.preventDefault();
+    e.stopPropagation();
+    const modalCont = document.getElementById("modal-contactos");
+    if (modalCont) {
+      modalCont.classList.remove("oculto");
+      modalCont.style.display = "flex";
+      renderizarListaContactosModal();
+    }
+  }
+
+  // Cerrar Modal (X)
+  const btnCerrar = e.target.closest("#btn-cerrar-contactos") || e.target.closest(".btn-cerrar-modal");
+  if (btnCerrar) {
+    e.preventDefault();
+    e.stopPropagation();
+    const modalCont = document.getElementById("modal-contactos");
+    if (modalCont) {
+      modalCont.classList.add("oculto");
+      modalCont.style.display = "none";
+    }
+  }
+});
+
+// Buscador dentro del Modal (+)
+const inputBuscarContactoModal = document.getElementById("input-buscar-contacto");
+if (inputBuscarContactoModal) {
+  inputBuscarContactoModal.addEventListener("input", (e) => {
+    renderizarListaContactosModal(e.target.value);
+  });
+}
+
+// 4. LANZADOR DE NOTIFICACIONES Y REPRODUCTOR UNIFICADO
+window.notificarNuevoMensaje = function(nombreRemitente, textoMensaje, avatarUrl) {
+  if (localStorage.getItem("movachat-notificaciones") === "desactivado") return;
+
+  // Sonido de mensaje entrante
+  if (typeof reproducirSonido === "function") {
+    reproducirSonido("recibido");
+  }
+
+  // Notificación Nativa Flotante en Móviles / PWA
+  if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+    const opciones = {
+      body: textoMensaje || "Nuevo mensaje recibido",
+      icon: avatarUrl || "assets/logo.png",
+      badge: "assets/logo.png",
+      vibrate: [200, 100, 200],
+      tag: "movachat-msg"
+    };
+
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then(reg => reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones));
+    } else {
+      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
+    }
+  }
+};
