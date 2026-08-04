@@ -2195,35 +2195,6 @@ async function solicitarPermisoNotificaciones() {
   return false;
 }
 
-// 🔔 Función global para lanzar notificación de nuevo mensaje
-function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
-  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
-  if (estaSilenciado) return;
-
-  // Si la app está en segundo plano o minimizada
-  if (document.hidden && Notification.permission === "granted") {
-    const opciones = {
-      body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo.png",
-      badge: "assets/logo.png",
-      vibrate: [100, 50, 100],
-      tag: "movachat-mensaje",
-      renotify: true
-    };
-
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
-      });
-    } else {
-      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
-    }
-  } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
-    actualizarBadgesNotificaciones();
-  }
-}
-
 // --- 5. MODO SIGILO (INVISIBLE) ---
 const toggleSigilo = document.getElementById("check-sigilo");
 const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
@@ -4125,3 +4096,63 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
 });
+
+// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Global para que Firebase la encuentre)
+window.notificarNuevoMensaje = function(nombreRemitente, textoMensaje, avatarUrl) {
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  if (estaSilenciado) return;
+
+  // Si la app está en segundo plano o minimizada
+  if (document.hidden && Notification.permission === "granted") {
+    const opciones = {
+      body: textoMensaje || "Te ha enviado un mensaje.",
+      icon: avatarUrl || "assets/logo.png",
+      badge: "assets/logo.png",
+      vibrate: [100, 50, 100],
+      tag: "movachat-mensaje",
+      renotify: true
+    };
+
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
+      });
+    } else {
+      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
+    }
+  } else {
+    // Si la app está abierta en pantalla, actualizamos la campanita y badges
+    if (typeof actualizarBadgesNotificaciones === "function") {
+      actualizarBadgesNotificaciones();
+    }
+  }
+};
+
+// 🔔 Función global para lanzar notificación de nuevo mensaje
+function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  if (estaSilenciado) return;
+
+  // Si la app está en segundo plano o minimizada
+  if (document.hidden && Notification.permission === "granted") {
+    const opciones = {
+      body: textoMensaje || "Te ha enviado un mensaje.",
+      icon: avatarUrl || "assets/logo.png",
+      badge: "assets/logo.png",
+      vibrate: [100, 50, 100],
+      tag: "movachat-mensaje",
+      renotify: true
+    };
+
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
+      });
+    } else {
+      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
+    }
+  } else {
+    // Si la app está abierta en pantalla, actualizamos la campanita y badges
+    actualizarBadgesNotificaciones();
+  }
+}
