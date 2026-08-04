@@ -3761,14 +3761,16 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// 🚀 Función para marcar los mensajes no leídos en la lista principal
+// 🚀 Función para marcar mensajes no leídos y SUBIR la tarjeta al inicio de la lista
 function escucharUltimoMensajeContacto(miUid, contactoUid) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
 
   onValue(mensajesRef, (snapshot) => {
     const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
-    if (!tarjetaContacto) return;
+    const contenedorLista = document.getElementById("lista-chats-principal");
+
+    if (!tarjetaContacto || !contenedorLista) return;
 
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
@@ -3779,13 +3781,22 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
       const keys = Object.keys(mensajes);
       const ultimoMsg = mensajes[keys[keys.length - 1]];
 
-      // 1. Mostrar el último mensaje y la hora
+      // 1. Mostrar el texto del último mensaje y la hora
       if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
 
-      // 2. Verificar si el último mensaje lo envió el contacto y el chat NO está abierto
+      // 2. Mover la tarjeta al inicio de la lista (debajo de "Mi Estado")
+      const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+      if (tarjetaMiEstado && tarjetaMiEstado.nextSibling) {
+        contenedorLista.insertBefore(tarjetaContacto, tarjetaMiEstado.nextSibling);
+      } else {
+        contenedorLista.prepend(tarjetaContacto);
+      }
+
+      // 3. Verificar si el mensaje lo envió el contacto y el chat NO está abierto
       const esMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
-      const estaChatAbierto = window.contactoActivoUid === contactoUid && document.getElementById("pantalla-chat-privado").style.display === "flex";
+      const pantallaChat = document.getElementById("pantalla-chat-privado");
+      const estaChatAbierto = window.contactoActivoUid === contactoUid && pantallaChat && pantallaChat.style.display === "flex";
 
       if (!esMio && !estaChatAbierto) {
         if (elemBadge) {
