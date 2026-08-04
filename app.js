@@ -2185,11 +2185,12 @@ window.notificarNuevoMensaje = function(nombreRemitente, textoMensaje, avatarUrl
 };
 
 // --- 5. MODO SIGILO (INVISIBLE) ---
-const toggleSigilo = document.getElementById("check-sigilo");
-const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
-const textoEstadoIdentidad = document.querySelector(".texto-estado");
+var toggleSigilo = document.getElementById("check-sigilo");
+var ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
+var textoEstadoIdentidad = document.querySelector(".texto-estado");
 
-const estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
+// Cargar estado inicial guardado de Sigilo
+var estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
 if (estadoSigiloGuardado === "activo" && toggleSigilo) {
   toggleSigilo.checked = true;
   if (ledPerfilIdentidad) {
@@ -2212,7 +2213,9 @@ if (toggleSigilo) {
       if (textoEstadoIdentidad) {
         textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
       }
-      mostrarAvisoPremium("Has entrado en Modo Sigilo. Presencia oculta. 🌌");
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Has entrado en Modo Sigilo. Presencia oculta. 🌌");
+      }
     } else {
       localStorage.setItem("movachat-sigilo", "inactivo");
       if (ledPerfilIdentidad) {
@@ -2222,7 +2225,9 @@ if (toggleSigilo) {
       if (textoEstadoIdentidad) {
         textoEstadoIdentidad.textContent = "Disponible. Toca para añadir estado...";
       }
-      mostrarAvisoPremium("Modo Sigilo desactivado. Estás visible de nuevo. 📡");
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Modo Sigilo desactivado. Estás visible de nuevo. 📡");
+      }
     }
   });
 }
@@ -2985,49 +2990,6 @@ window.notificarNuevoMensaje = function(nombreRemitente, textoMensaje, avatarUrl
     }
   }
 };
-
-// --- 5. MODO SIGILO (INVISIBLE) ---
-const toggleSigilo = document.getElementById("check-sigilo");
-const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
-const textoEstadoIdentidad = document.querySelector(".texto-estado");
-
-const estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
-if (estadoSigiloGuardado === "activo" && toggleSigilo) {
-  toggleSigilo.checked = true;
-  if (ledPerfilIdentidad) {
-    ledPerfilIdentidad.style.backgroundColor = "#888888";
-    ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
-  }
-  if (textoEstadoIdentidad) {
-    textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
-  }
-}
-
-if (toggleSigilo) {
-  toggleSigilo.addEventListener("change", () => {
-    if (toggleSigilo.checked) {
-      localStorage.setItem("movachat-sigilo", "activo");
-      if (ledPerfilIdentidad) {
-        ledPerfilIdentidad.style.backgroundColor = "#888888";
-        ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
-      }
-      if (textoEstadoIdentidad) {
-        textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
-      }
-      mostrarAvisoPremium("Has entrado en Modo Sigilo. Presencia oculta. 🌌");
-    } else {
-      localStorage.setItem("movachat-sigilo", "inactivo");
-      if (ledPerfilIdentidad) {
-        ledPerfilIdentidad.style.backgroundColor = "#00f2fe";
-        ledPerfilIdentidad.style.boxShadow = "0 0 10px #00f2fe";
-      }
-      if (textoEstadoIdentidad) {
-        textoEstadoIdentidad.textContent = "Disponible. Toca para añadir estado...";
-      }
-      mostrarAvisoPremium("Modo Sigilo desactivado. Estás visible de nuevo. 📡");
-    }
-  });
-}
 
 // ========================================================
 // 10. ESTADO PROPIO, REDES BENTO Y CONTACTOS
