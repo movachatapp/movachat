@@ -2102,6 +2102,37 @@ if (toggleNotificaciones) {
   toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
 }
 
+// 🔔 Función para recalcular y actualizar los badges (Campanita + Filtro)
+function actualizarBadgesNotificaciones() {
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
+
+  // Sumamos los badges de las tarjetas
+  const badgesChats = document.querySelectorAll(".badge-chat-no-leido");
+  let totalNoLeidos = 0;
+
+  badgesChats.forEach((badge) => {
+    const cantidad = parseInt(badge.textContent, 10) || 0;
+    totalNoLeidos += cantidad;
+  });
+
+  // 1️⃣ Actualizar Campanita (si el usuario no las silenció)
+  if (badgeCampanita) {
+    if (totalNoLeidos > 0 && !estaSilenciado) {
+      badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos;
+      badgeCampanita.classList.remove("oculto");
+    } else {
+      badgeCampanita.classList.add("oculto");
+    }
+  }
+
+  // 2️⃣ Actualizar filtro 'No leídos (0)'
+  if (badgeFiltroNoLeidos) {
+    badgeFiltroNoLeidos.textContent = totalNoLeidos;
+  }
+}
+
+// Evento Clic en la Campanita
 if (btnCampanita) {
   btnCampanita.addEventListener("click", () => {
     if (badgeCampanita && !badgeCampanita.classList.contains("oculto")) {
@@ -2118,17 +2149,79 @@ if (btnCampanita) {
   });
 }
 
+// Evento Switch de Ajustes
 if (toggleNotificaciones) {
-  toggleNotificaciones.addEventListener("change", () => {
+  toggleNotificaciones.addEventListener("change", async () => {
     if (toggleNotificaciones.checked) {
       localStorage.setItem("movachat-notificaciones", "activado");
-      mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀");
+      
+      // Pedimos permiso al sistema operativo/navegador
+      const concedido = await solicitarPermisoNotificaciones();
+      if (!concedido) {
+        mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️");
+      } else {
+        mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀");
+      }
+      
+      actualizarBadgesNotificaciones();
     } else {
       localStorage.setItem("movachat-notificaciones", "desactivado");
       if (badgeCampanita) badgeCampanita.classList.add("oculto");
       mostrarAvisoPremium("Notificaciones silenciadas por el usuario. 🔕");
     }
   });
+}
+
+// --- 6. NOTIFICACIONES PUSH NATIVAS ---
+
+// Solicitar permiso de notificaciones al navegador/móvil
+async function solicitarPermisoNotificaciones() {
+  if (!("Notification" in window)) {
+    console.warn("Este navegador no soporta notificaciones nativas.");
+    return false;
+  }
+
+  if (Notification.permission === "granted") {
+    return true;
+  }
+
+  if (Notification.permission !== "denied") {
+    const permiso = await Notification.requestPermission();
+    if (permiso === "granted") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// 🔔 Función global para lanzar notificación de nuevo mensaje
+function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  if (estaSilenciado) return;
+
+  // Si la app está en segundo plano o minimizada
+  if (document.hidden && Notification.permission === "granted") {
+    const opciones = {
+      body: textoMensaje || "Te ha enviado un mensaje.",
+      icon: avatarUrl || "assets/logo.png",
+      badge: "assets/logo.png",
+      vibrate: [100, 50, 100],
+      tag: "movachat-mensaje",
+      renotify: true
+    };
+
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
+      });
+    } else {
+      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
+    }
+  } else {
+    // Si la app está abierta en pantalla, actualizamos la campanita y badges
+    actualizarBadgesNotificaciones();
+  }
 }
 
 // --- 5. MODO SIGILO (INVISIBLE) ---
@@ -3280,18 +3373,6 @@ function conectarBotonEmoji() {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  conectarBotonEmoji();
-
-  const menuTarjetas = document.getElementById("menu-tarjetas-chat");
-
-  window.addEventListener("scroll", cerrarMenuContextualMova, true);
-
-  if (window.lucide) {
-    window.lucide.createIcons();
-  }
-});
-
 // ==========================================================
 // 📇 CONECTOR DE CONTACTOS A CHAT PRIVADO
 // ==========================================================
@@ -3814,6 +3895,15 @@ function escucharMensajesChat(chatId) {
         const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
         const esMio = idEmisorReal === miUid;
 
+        // 🔔 NOTIFICACIÓN: Lanzar si el mensaje NO lo envié yo
+        if (!esMio) {
+          const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
+          const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
+          const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
+
+          notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+        }
+
         // 🚀 B) Formateador de hora seguro
         let horaFormateada = "00:00";
         if (msg.hora) {
@@ -3953,12 +4043,22 @@ function actualizarEstadoPantallaInicio() {
   }
 }
 
-// 🎯 Evento para el botón 'Buscar amigo' de la pantalla vacía
+// ⚡ Inicialización principal y eventos al cargar el DOM
 document.addEventListener("DOMContentLoaded", () => {
+
+  // 1️⃣ Ajustes iniciales (Emojis, scroll y Lucide Icons)
+  conectarBotonEmoji();
+  const menuTarjetas = document.getElementById("menu-tarjetas-chat");
+  window.addEventListener("scroll", cerrarMenuContextualMova, true);
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+
+  // 2️⃣ Botón 'Buscar amigo' de la pantalla de bienvenida vacía
   const btnBuscarVacio = document.getElementById("btn-vacio-buscar-amigo");
   if (btnBuscarVacio) {
     btnBuscarVacio.addEventListener("click", () => {
-      // Abre el modal de búsqueda de usuarios/contactos
       if (typeof abrirModalBuscarAmigos === "function") {
         abrirModalBuscarAmigos();
       } else if (typeof modalContactos !== "undefined" && modalContactos) {
@@ -3966,4 +4066,62 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  // 3️⃣ Buscador/Filtro en tiempo real por texto
+  const inputBuscador = document.getElementById("input-buscador-chats");
+  if (inputBuscador) {
+    inputBuscador.addEventListener("input", (e) => {
+      const textoBusqueda = e.target.value.toLowerCase().trim();
+      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+
+      tarjetasChat.forEach((tarjeta) => {
+        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+
+        const contenidoTarjeta = tarjeta.textContent.toLowerCase();
+        
+        if (contenidoTarjeta.includes(textoBusqueda)) {
+          tarjeta.style.display = "";
+        } else {
+          tarjeta.style.display = "none";
+        }
+      });
+    });
+  }
+
+  // 4️⃣ Filtros de pestañas: 'Todos' y 'No leídos'
+  const btnFiltroTodos = document.getElementById("filtro-todos");
+  const btnFiltroNoLeidos = document.getElementById("filtro-no-leidos");
+
+  if (btnFiltroNoLeidos) {
+    btnFiltroNoLeidos.addEventListener("click", () => {
+      btnFiltroTodos?.classList.remove("activo");
+      btnFiltroNoLeidos.classList.add("activo");
+
+      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+      
+      tarjetasChat.forEach((tarjeta) => {
+        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+
+        const badge = tarjeta.querySelector(".badge-chat-no-leido");
+        const tieneNoLeidos = badge && parseInt(badge.textContent, 10) > 0;
+
+        if (tieneNoLeidos) {
+          tarjeta.style.display = "";
+        } else {
+          tarjeta.style.display = "none";
+        }
+      });
+    });
+  }
+
+  if (btnFiltroTodos) {
+    btnFiltroTodos.addEventListener("click", () => {
+      btnFiltroNoLeidos?.classList.remove("activo");
+      btnFiltroTodos.classList.add("activo");
+
+      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+      tarjetasChat.forEach((tarjeta) => tarjeta.style.display = "");
+    });
+  }
+
 });

@@ -1,5 +1,5 @@
-// Nombre de la versión del caché
-const CACHE_NAME = 'movachat-v0.3';
+// Nombre de la versión del caché (subida a v0.6 para refrescar cambios)
+const CACHE_NAME = 'movachat-v0.4';
 
 // Archivos básicos para guardar en caché y cargar súper rápido
 const ASSETS_TO_CACHE = [
@@ -41,6 +41,25 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       return cachedResponse || fetch(event.request);
+    })
+  );
+});
+
+// 4. Evento al hacer clic en una notificación Push emergente
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close(); // Cierra la tarjeta emergente
+
+  // Enfoca la ventana de la app si ya está abierta, o abre una nueva
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow('./');
+      }
     })
   );
 });

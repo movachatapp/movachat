@@ -88,10 +88,10 @@
         <button class="icono-btn" id="btn-buscador-encabezado" aria-label="Buscar">
           <i data-lucide="search"></i>
         </button>
+        
         <button class="icono-btn" id="btn-campanita-alertas" style="position: relative;">
           <i data-lucide="bell"></i>
-          <span id="badge-campanita" class="oculto"
-            style="position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #ff4b2b; border-radius: 50%; box-shadow: 0 0 8px #ff4b2b;"></span>
+          <span id="badge-campanita" class="badge-notificacion oculto">0</span>
         </button>
 
         <!-- 3 PUNTOS DE LA CABECERA -->
@@ -134,7 +134,7 @@
     <main class="area-chats" id="pantalla-chats">
       <div class="caja-buscador">
         <i data-lucide="search" class="icono-buscador"></i>
-        <input type="text" class="input-buscador" placeholder="Buscar mensajes o amigos...">
+        <input type="text" id="input-buscador-chats" class="input-buscador" placeholder="Buscar mensajes o amigos...">
       </div>
 
       <div class="caja-filtros">

@@ -2933,3 +2933,29 @@ body {
   width: 16px !important;
   height: 16px !important;
 }
+
+/* 🔔 Badge de la campanita en el Header */
+#badge-campanita {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  background: #ff4b2b; /* El rojo/naranja que ya tenías */
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: bold;
+  padding: 1px 5px;
+  border-radius: 10px;
+  min-width: 15px;
+  text-align: center;
+  box-shadow: 0 0 8px #ff4b2b;
+  animation: pulsoBadge 1.5s infinite alternate;
+}
+
+@keyframes pulsoBadge {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.15); }
+}
+
+.oculto {
+  display: none !important;
+}
