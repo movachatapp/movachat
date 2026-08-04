@@ -1,5 +1,5 @@
 // Nombre de la versión del caché
-const CACHE_NAME = 'movachat-v2.3';
+const CACHE_NAME = 'movachat-v2.4';
 
 // Archivos básicos para guardar en memoria del dispositivo
 const ASSETS_TO_CACHE = [

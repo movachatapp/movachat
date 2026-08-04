@@ -3761,7 +3761,7 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// 🚀 Función para contar mensajes no leídos REALES y subir la tarjeta al inicio
+// 🚀 Función para contar mensajes no leídos REALES y reiniciar a cero al abrir el chat
 function escucharUltimoMensajeContacto(miUid, contactoUid) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -3793,43 +3793,38 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
         contenedorLista.prepend(tarjetaContacto);
       }
 
-      // 3. Contar CUÁNTOS mensajes no leídos hay acumulados
+      // 3. Comprobar si la pantalla de chat privado con ESTE contacto está actualmente abierta
       const pantallaChat = document.getElementById("pantalla-chat-privado");
-      const estaChatAbierto = window.contactoActivoUid === contactoUid && pantallaChat && pantallaChat.style.display === "flex";
+      const estaChatAbierto = window.contactoActivoUid === contactoUid && 
+                              pantallaChat && 
+                              (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
-      if (!estaChatAbierto) {
-        let contadorNoLeidos = 0;
-
-        // Recorremos los mensajes para contar solo los que envió el contacto
-        keys.forEach((k) => {
-          const m = mensajes[k];
-          const esMio = (m.emisor || m.emisorUid) === miUid;
-          if (!esMio && !m.leido) {
-            contadorNoLeidos++;
-          }
-        });
-
-        // Si no hay propiedad "leido", usamos el total de mensajes no atendidos
-        if (contadorNoLeidos === 0) {
-          const numeroPrevio = parseInt(elemBadge?.textContent || "0", 10);
-          const esUltimoMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
-          if (!esUltimoMio) {
-            contadorNoLeidos = numeroPrevio > 0 ? numeroPrevio + 1 : 1;
-          }
-        }
-
-        if (contadorNoLeidos > 0 && elemBadge) {
-          elemBadge.textContent = contadorNoLeidos > 99 ? "99+" : contadorNoLeidos;
-          elemBadge.classList.remove("oculto");
-          if (elemTexto) elemTexto.classList.add("texto-resaltado");
-        }
-      } else {
-        // Si el chat está abierto, limpiamos el contador
+      if (estaChatAbierto) {
+        // 🟢 SI EL CHAT ESTÁ ABIERTO: Reiniciar contador a CERO e invisibilizar badge
+        tarjetaContacto.dataset.mensajesNoLeidos = "0";
         if (elemBadge) {
           elemBadge.textContent = "0";
           elemBadge.classList.add("oculto");
         }
         if (elemTexto) elemTexto.classList.remove("texto-resaltado");
+      } else {
+        // 🔴 SI EL CHAT ESTÁ CERRADO: Procesar la llegada de mensajes nuevos
+        const esUltimoMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
+
+        if (!esUltimoMio) {
+          // Obtener la cuenta previa guardada en la tarjeta (o 0 si no existe)
+          let cuentaActual = parseInt(tarjetaContacto.dataset.mensajesNoLeidos || "0", 10);
+          
+          // Incrementar en +1 por el nuevo mensaje entrante
+          cuentaActual += 1;
+          tarjetaContacto.dataset.mensajesNoLeidos = cuentaActual.toString();
+
+          if (elemBadge) {
+            elemBadge.textContent = cuentaActual > 99 ? "99+" : cuentaActual.toString();
+            elemBadge.classList.remove("oculto");
+          }
+          if (elemTexto) elemTexto.classList.add("texto-resaltado");
+        }
       }
     }
   });
