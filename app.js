@@ -2926,3 +2926,91 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }, { once: true });
 });
+
+// ========================================================
+// 🚀 SOLUCIÓN DEFINITIVA: ENVÍO, RECEPCIÓN Y BOTÓN FLOTANTE
+// ========================================================
+
+// 1. Conectar el Botón Flotante (+) para abrir el Modal de Contactos
+document.addEventListener("click", (e) => {
+  const btnPlus = e.target.closest("#btn-abrir-contactos") || e.target.closest(".btn-flotante-contacto");
+  if (btnPlus) {
+    e.preventDefault();
+    e.stopPropagation();
+    const modalCont = document.getElementById("modal-contactos");
+    if (modalCont) {
+      modalCont.classList.remove("oculto");
+      if (typeof renderizarListaContactosModal === "function") {
+        renderizarListaContactosModal();
+      }
+    }
+  }
+});
+
+// 2. Escuchar Mensajes de Firebase en Tiempo Real
+window.escucharMensajesChat = function(chatId) {
+  const historial = document.getElementById("historial-mensajes") || document.querySelector(".historial-mensajes");
+  if (!historial) return;
+
+  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+
+  onValue(mensajesRef, (snapshot) => {
+    historial.innerHTML = "";
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+
+    if (snapshot.exists()) {
+      const mensajes = snapshot.val();
+      Object.keys(mensajes).forEach((key) => {
+        const msg = mensajes[key];
+        const idEmisor = msg.emisor || msg.emisorUid;
+        const esMio = idEmisor === miUid;
+
+        let horaTxt = msg.hora || "00:00";
+        if (!msg.hora && msg.timestamp) {
+          horaTxt = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        const burbuja = document.createElement("div");
+        burbuja.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
+        
+        let htmlContenido = `<p class="mensaje-texto">${msg.texto || ''}</p>`;
+        
+        if (msg.tipoAdjunto === 'foto' && msg.urlAdjunto) {
+          htmlContenido = `<img src="${msg.urlAdjunto}" style="max-width:100%; border-radius:8px; margin-bottom:4px;">` + htmlContenido;
+        }
+
+        burbuja.innerHTML = `
+          ${htmlContenido}
+          <span class="mensaje-hora">${horaTxt}</span>
+        `;
+
+        historial.appendChild(burbuja);
+      });
+
+      if (window.lucide) {
+        window.lucide.createIcons({ targets: [historial] });
+      }
+
+      historial.scrollTop = historial.scrollHeight;
+    } else {
+      historial.innerHTML = `<div style="text-align:center; color:rgba(255,255,255,0.4); padding:20px; font-size:0.85rem;">Inicia la conversación enviando un mensaje 👋</div>`;
+    }
+  });
+};
+
+// 3. Reconectar la Apertura de Chats con la Escucha de Mensajes
+const funcionAbrirChatOriginal = window.abrirChatConUsuario;
+window.abrirChatConUsuario = function(contactoUid, nombreContacto, fotoContacto) {
+  if (typeof funcionAbrirChatOriginal === "function") {
+    funcionAbrirChatOriginal(contactoUid, nombreContacto, fotoContacto);
+  }
+
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  if (miUid && contactoUid) {
+    const chatId = typeof obtenerChatId === "function" 
+      ? obtenerChatId(miUid, contactoUid) 
+      : (miUid < contactoUid ? `${miUid}_${contactoUid}` : `${contactoUid}_${miUid}`);
+      
+    window.escucharMensajesChat(chatId);
+  }
+};
