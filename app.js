@@ -81,6 +81,62 @@ document.addEventListener("click", (e) => {
   }
 });
 
+// 👁️ Función global para compatibilidad con el onclick del HTML
+window.togglePasswordVisibility = function () {
+  const btn = document.getElementById("btn-toggle-password");
+  if (btn) btn.click();
+};
+
+// --- MOSTRAR / OCULTAR CONTRASEÑA (ÚNICO LISTENER UNIFICADO) ---
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("#btn-toggle-password");
+  if (!btn) return;
+
+  e.preventDefault();
+  const inputPass = document.getElementById("auth-password");
+  if (!inputPass) return;
+
+  const esPassword = inputPass.type === "password";
+  inputPass.type = esPassword ? "text" : "password";
+
+  const icono = btn.querySelector("[data-lucide]") || btn.querySelector("svg");
+  if (icono) {
+    icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
+    if (window.lucide) {
+      window.lucide.createIcons({ targets: [btn] });
+    }
+  }
+});
+
+// --- MOSTRAR / OCULTAR CONTRASEÑA ---
+window.togglePasswordVisibility = function () {
+  const inputPass = document.getElementById("auth-password");
+  const btn = document.getElementById("btn-toggle-password");
+
+  if (inputPass) {
+    const esPassword = inputPass.type === "password";
+    inputPass.type = esPassword ? "text" : "password";
+
+    if (btn) {
+      const icono = btn.querySelector("[data-lucide]") || btn.querySelector("svg");
+      if (icono) {
+        icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
+        if (window.lucide) {
+          window.lucide.createIcons({ targets: [btn] });
+        }
+      }
+    }
+  }
+};
+
+// Listener alternativo por si el usuario hace clic directo
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("#btn-toggle-password");
+  if (!btn) return;
+  e.preventDefault();
+  window.togglePasswordVisibility();
+});
+
 // Enviar Formulario (Login / Registro)
 if (authForm) {
   authForm.addEventListener("submit", async (e) => {
@@ -2874,46 +2930,6 @@ function eliminarChatAnimado(tarjeta) {
   setTimeout(() => {
     tarjeta.remove();
   }, 300);
-}
-
-// --- 4. CAMPANITA Y AJUSTES DE NOTIFICACIONES ---
-const btnCampanita = document.getElementById("btn-campanita-alertas");
-const badgeCampanita = document.getElementById("badge-campanita");
-const toggleNotificaciones = document.getElementById("check-notificaciones");
-
-// Cargar estado inicial guardado de Notificaciones
-const notifGuardada = localStorage.getItem("movachat-notificaciones");
-if (toggleNotificaciones) {
-  toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
-}
-
-// 🔔 Función para recalcular y actualizar los badges (Campanita + Filtro)
-function actualizarBadgesNotificaciones() {
-  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
-  const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
-
-  const badgesChats = document.querySelectorAll(".badge-chat-no-leido, .badge-mensaje");
-  let totalNoLeidos = 0;
-
-  badgesChats.forEach((badge) => {
-    const cantidad = parseInt(badge.textContent, 10) || 0;
-    totalNoLeidos += cantidad;
-  });
-
-  // 1️⃣ Actualizar Campanita
-  if (badgeCampanita) {
-    if (totalNoLeidos > 0 && !estaSilenciado) {
-      badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos;
-      badgeCampanita.classList.remove("oculto");
-    } else {
-      badgeCampanita.classList.add("oculto");
-    }
-  }
-
-  // 2️⃣ Actualizar filtro 'No leídos'
-  if (badgeFiltroNoLeidos) {
-    badgeFiltroNoLeidos.textContent = totalNoLeidos;
-  }
 }
 
 // Evento Clic en la Campanita
