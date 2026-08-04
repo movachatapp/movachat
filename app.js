@@ -360,13 +360,23 @@ window.sonidosApp = window.sonidosApp || {
   grabando: new Audio("assets/sounds/grabando.mp3")
 };
 
-// 🔊 Función global para reproducir sonidos sin interrupciones ni duplicados
+// 🔊 Función global para reproducir sonidos uno a la vez (detiene el anterior)
 window.reproducirSonido = function(tipo) {
-  if (window.sonidosApp && window.sonidosApp[tipo]) {
-    window.sonidosApp[tipo].currentTime = 0; // Reinicia el audio si entra rápido uno tras otro
-    window.sonidosApp[tipo].play().catch(() => {
-      // Evita bloqueos por políticas de autoplay del navegador
+  if (window.sonidosApp) {
+    // 1. Apagamos cualquier sonido que se esté reproduciendo en este momento
+    Object.keys(window.sonidosApp).forEach((clave) => {
+      if (window.sonidosApp[clave]) {
+        window.sonidosApp[clave].pause();
+        window.sonidosApp[clave].currentTime = 0;
+      }
     });
+
+    // 2. Reproducimos únicamente el sonido solicitado
+    if (window.sonidosApp[tipo]) {
+      window.sonidosApp[tipo].play().catch(() => {
+        // Evita bloqueos silenciosos por políticas de reproducción automática del navegador
+      });
+    }
   }
 };
 
@@ -3543,16 +3553,6 @@ function mostrarToast(mensaje) {
   }, 2500);
 }
 
-// --- SERVICE WORKER DESACTIVADO PARA EVITAR BUCLES Y TIMEOUTS ---
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (let registration of registrations) {
-      registration.unregister(); // Elimina cualquier Service Worker atascado en el teléfono
-      console.log('🧹 Service Worker atascado eliminado con éxito.');
-    }
-  });
-}
-
 // Función global para alternar visibilidad de contraseña
 window.togglePasswordVisibility = function () {
   const inputPass = document.getElementById("auth-password");
@@ -4171,4 +4171,17 @@ function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
     // Si la app está abierta en pantalla, actualizamos la campanita y badges
     actualizarBadgesNotificaciones();
   }
+}
+
+// --- REGISTRO OFICIAL DEL SERVICE WORKER (Permite instalar la PWA) ---
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then((registro) => {
+        console.log('🟢 MovaChat PWA lista. Service Worker activo en:', registro.scope);
+      })
+      .catch((error) => {
+        console.error('🔴 Error al activar el Service Worker:', error);
+      });
+  });
 }

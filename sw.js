@@ -1,7 +1,7 @@
-// Nombre de la versión del caché (subida a v0.6 para refrescar cambios)
-const CACHE_NAME = 'movachat-v1.8';
+// Nombre de la versión del caché
+const CACHE_NAME = 'movachat-v2.0';
 
-// Archivos básicos para guardar en caché y cargar súper rápido
+// Archivos básicos para guardar en memoria del dispositivo
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -14,6 +14,7 @@ const ASSETS_TO_CACHE = [
 
 // 1. Instalar el Service Worker
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Se activa inmediatamente sin esperar a cerrar la ventana
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE);
@@ -21,7 +22,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activar y limpiar cachés antiguos si los hay
+// 2. Activar y borrar cachés viejos
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -32,24 +33,38 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
 
-// 3. Responder con caché o red
+// 3. Estrategia inteligente de carga (Red primero, si falla usa Caché)
 self.addEventListener('fetch', (event) => {
+  // Ignorar peticiones a Firebase u otros dominios externos
+  if (!event.request.url.startsWith(self.location.origin)) return;
+
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      return cachedResponse || fetch(event.request);
-    })
+    fetch(event.request)
+      .then((networkResponse) => {
+        // Guarda la copia actualizada en segundo plano
+        if (event.request.method === 'GET') {
+          const responseClone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return networkResponse;
+      })
+      .catch(() => {
+        // Si no hay conexión a internet, entrega la versión guardada
+        return caches.match(event.request);
+      })
   );
 });
 
-// 4. Evento al hacer clic en una notificación Push emergente
+// 4. Evento al tocar una notificación Push
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close(); // Cierra la tarjeta emergente
+  event.notification.close();
 
-  // Enfoca la ventana de la app si ya está abierta, o abre una nueva
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {

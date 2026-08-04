@@ -28,10 +28,8 @@ body {
   position: relative;
   width: 100%;
   max-width: 420px;
-  height: 100vh;
   height: 100dvh;
   padding-bottom: max(10px, env(safe-area-inset-bottom));
-  height: -webkit-fill-available;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -164,6 +162,7 @@ body {
 .grupo-iconos {
   display: flex;
   gap: 16px;
+  position: relative;
 }
 
 .icono-btn {
@@ -186,7 +185,7 @@ body {
 .icono-btn i {
   width: 22px;
   height: 22px;
-  transition: transform 0.3s ease; /* Permite la rotación suave del piñón */
+  transition: transform 0.3s ease;
 }
 
 /* --- FASE 2.1: MENÚ FLOTANTE INFERIOR --- */
@@ -431,7 +430,6 @@ body {
   filter: drop-shadow(0 0 5px #00f2fe);
 }
 
-/* Revelado del lápiz al interactuar */
 .perfil-nombre:hover .icono-lapiz-nombre,
 .perfil-nombre:active .icono-lapiz-nombre {
   opacity: 1;
@@ -794,7 +792,7 @@ body {
   flex-direction: column;
   align-items: stretch !important;
   height: 100%;
-  max-height: calc(100vh - 70px);
+  max-height: calc(100dvh - 70px);
   overflow: hidden;
   position: relative;
 }
@@ -806,7 +804,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   padding: 12px 16px;
-  margin: 20px 20px 0 20px;
+  margin: 15px 15px 0 15px;
   transition: all 0.3s ease;
 }
 
@@ -839,7 +837,7 @@ body {
 .caja-filtros {
   display: flex;
   gap: 10px;
-  margin: 20px 20px 5px 20px;
+  margin: 15px 15px 5px 15px;
   overflow-x: auto;
   padding-bottom: 5px;
 }
@@ -886,7 +884,7 @@ body {
   gap: 12px;
   flex: 1;
   overflow-y: auto;
-  padding: 15px 20px 160px 20px;
+  padding: 15px 15px 160px 15px;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   width: 100%;
@@ -896,7 +894,6 @@ body {
   mask-image: linear-gradient(to bottom, transparent 0%, black 25px, black 100%);
 }
 
-/* 🛠️ ESTILO COMPLETO Y FIX DE EVENTOS EN MÓVILES PARA TARJETA CHAT */
 .tarjeta-chat {
   display: flex;
   align-items: center;
@@ -912,7 +909,6 @@ body {
   min-width: 100%;
   box-sizing: border-box;
 
-  /* Propiedades esenciales para teléfonos móviles: */
   pointer-events: auto !important;
   user-select: none;
   -webkit-user-select: none;
@@ -1103,13 +1099,13 @@ body {
   display: none;
   flex-direction: column;
   height: 100%;
-  max-height: calc(100vh - 70px);
+  max-height: calc(100dvh - 70px);
   overflow: hidden;
 }
 
 #pantalla-chat-privado.pantalla-completa {
-  max-height: 100vh !important;
-  height: 100vh !important;
+  max-height: 100dvh !important;
+  height: 100dvh !important;
   position: relative !important;
   top: 0;
   left: 0;
@@ -1250,22 +1246,19 @@ body {
   -webkit-user-select: none !important;
   line-height: 1.45;
   word-wrap: break-word;
-  /* Aceleración por hardware para que el scroll sea fluido */
   transform: translateZ(0); 
   will-change: transform;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   animation: aparecerDesdeAbajo 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
-/* 📤 ENVIADO (TÚ): Gradiente sólido que simula cristal */
 .mensaje-burbuja.enviado {
   align-self: flex-end;
-  /* Usamos colores un poco más sólidos en vez del blur pesado */
   background: linear-gradient(135deg, rgba(0, 140, 255, 0.85), rgba(0, 100, 255, 0.9));
   color: #f1f5f9;
   border-bottom-right-radius: 6px;
   border: 1px solid rgba(0, 242, 254, 0.25);
-  box-shadow: 0 6px 20px rgba(0, 150, 255, 0.15); /* Sombra exterior simplificada */
+  box-shadow: 0 6px 20px rgba(0, 150, 255, 0.15);
 }
 
 .mensaje-burbuja.enviado:hover {
@@ -1274,10 +1267,8 @@ body {
   border-color: rgba(0, 242, 254, 0.4);
 }
 
-/* 📥 RECIBIDO (AMIGO): Grafito sólido elegante */
 .mensaje-burbuja.recibido {
   align-self: flex-start;
-  /* Color sólido grafito que encaja perfecto con tu fondo */
   background: rgba(35, 32, 55, 0.9);
   color: #e2e8f0;
   border-bottom-left-radius: 6px;
@@ -1409,7 +1400,6 @@ body {
     0 10px 30px rgba(0, 0, 0, 0.6),
     0 0 15px rgba(0, 242, 254, 0.05);
 
-  /* Fix de posicionamiento: la animación nace en la punta del cursor */
   transform-origin: top left;
   opacity: 0;
   transform: scale(0.95);
@@ -1417,7 +1407,6 @@ body {
   transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Estado visible (Despliegue alineado sin saltos verticales) */
 .menu-contextual:not(.oculto) {
   opacity: 1;
   transform: scale(1);
@@ -1661,37 +1650,14 @@ body {
   transition: background 0.3s, height 0.3s;
 }
 
-.onda-barra:nth-child(1) {
-  height: 30%;
-}
-
-.onda-barra:nth-child(2) {
-  height: 60%;
-}
-
-.onda-barra:nth-child(3) {
-  height: 85%;
-}
-
-.onda-barra:nth-child(4) {
-  height: 40%;
-}
-
-.onda-barra:nth-child(5) {
-  height: 70%;
-}
-
-.onda-barra:nth-child(6) {
-  height: 95%;
-}
-
-.onda-barra:nth-child(7) {
-  height: 50%;
-}
-
-.onda-barra:nth-child(8) {
-  height: 30%;
-}
+.onda-barra:nth-child(1) { height: 30%; }
+.onda-barra:nth-child(2) { height: 60%; }
+.onda-barra:nth-child(3) { height: 85%; }
+.onda-barra:nth-child(4) { height: 40%; }
+.onda-barra:nth-child(5) { height: 70%; }
+.onda-barra:nth-child(6) { height: 95%; }
+.onda-barra:nth-child(7) { height: 50%; }
+.onda-barra:nth-child(8) { height: 30%; }
 
 .aguja-reproduccion-roja {
   position: absolute;
@@ -1725,7 +1691,7 @@ body {
   color: #ff4b2b !important;
 }
 
-/* --- REPRODUCTOR DE VIDEO CIRCULAR (DEFINITIVO Y RECALIBRADO) --- */
+/* --- REPRODUCTOR DE VIDEO CIRCULAR --- */
 .contenedor-video-circular-burbuja {
   position: relative !important;
   width: 140px !important;
@@ -1936,17 +1902,9 @@ body {
 }
 
 @keyframes latidoEfecto {
-  0% {
-    transform: scale(1);
-  }
-
-  50% {
-    transform: scale(1.25);
-  }
-
-  100% {
-    transform: scale(1);
-  }
+  0% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+  100% { transform: scale(1); }
 }
 
 .btn-like-estado-directo.activo i {
@@ -1964,37 +1922,14 @@ body {
 }
 
 /* --- TEMAS DE COLOR PARA "TU AURA" --- */
-.esfera-cyan.aura-cyan-morado {
-  background: rgba(0, 242, 254, 0.15);
-}
-
-.esfera-morada.aura-cyan-morado {
-  background: rgba(127, 0, 255, 0.15);
-}
-
-.esfera-cyan.aura-fuego {
-  background: rgba(255, 65, 108, 0.15);
-}
-
-.esfera-morada.aura-fuego {
-  background: rgba(255, 75, 43, 0.15);
-}
-
-.esfera-cyan.aura-oceano {
-  background: rgba(0, 198, 255, 0.15);
-}
-
-.esfera-morada.aura-oceano {
-  background: rgba(0, 114, 255, 0.15);
-}
-
-.esfera-cyan.aura-matrix {
-  background: rgba(17, 153, 142, 0.15);
-}
-
-.esfera-morada.aura-matrix {
-  background: rgba(56, 239, 125, 0.15);
-}
+.esfera-cyan.aura-cyan-morado { background: rgba(0, 242, 254, 0.15); }
+.esfera-morada.aura-cyan-morado { background: rgba(127, 0, 255, 0.15); }
+.esfera-cyan.aura-fuego { background: rgba(255, 65, 108, 0.15); }
+.esfera-morada.aura-fuego { background: rgba(255, 75, 43, 0.15); }
+.esfera-cyan.aura-oceano { background: rgba(0, 198, 255, 0.15); }
+.esfera-morada.aura-oceano { background: rgba(0, 114, 255, 0.15); }
+.esfera-cyan.aura-matrix { background: rgba(17, 153, 142, 0.15); }
+.esfera-morada.aura-matrix { background: rgba(56, 239, 125, 0.15); }
 
 /* --- OTROS COMPONENTES Y UTILIDADES --- */
 .toast-oculto {
@@ -2510,29 +2445,24 @@ body {
   }
 }
 
-/* ☁️ NUBECITA FLOATING ESCRIBIENDO (ABAJO IZQUIERDA) */
 #indicador-escribiendo-live {
   position: absolute;
-  bottom: 65px; /* Altura por encima de la barra de escribir */
+  bottom: 65px;
   left: 20px;
   z-index: 50;
   pointer-events: none;
 }
 
-/* ========================================================
-   ☁️ NUBECITA FLOTANTE BENTO "ESCRIBIENDO..." (ABAJO IZQUIERDA)
-   ======================================================== */
-
 .contenedor-escribiendo-flotante {
   position: absolute;
-  bottom: 70px; /* Queda justo flotando encima de la barra de texto */
+  bottom: 70px;
   left: 20px;
   z-index: 40;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: rgba(15, 20, 35, 0.85); /* Tinta cristal oscura para destacar sobre el chat */
+  background: rgba(15, 20, 35, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(0, 242, 254, 0.25);
@@ -2555,44 +2485,13 @@ body {
   }
 }
 
-.puntos-escribiendo {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.puntos-escribiendo span {
-  width: 6px;
-  height: 6px;
-  background-color: #00f2fe;
-  border-radius: 50%;
-  display: inline-block;
-  animation: rebasePuntos 1.4s infinite ease-in-out both;
-  box-shadow: 0 0 6px rgba(0, 242, 254, 0.6);
-}
-
-.puntos-escribiendo span:nth-child(1) { animation-delay: -0.32s; }
-.puntos-escribiendo span:nth-child(2) { animation-delay: -0.16s; }
-.puntos-escribiendo span:nth-child(3) { animation-delay: 0s; }
-
-@keyframes rebasePuntos {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.4;
-  }
-  40% {
-    transform: scale(1.2) translateY(-2px);
-    opacity: 1;
-  }
-}
-
 .tarjeta-chat * {
   pointer-events: auto !important;
 }
 
 #menu-tarjetas-chat {
   pointer-events: auto !important;
-  z-index: 2147483647 !important; /* Máximo nivel de capas en navegadores */
+  z-index: 2147483647 !important;
 }
 
 /* --- SELECTOR DE AURA EN PASTILLA SLIDER --- */
@@ -2605,16 +2504,15 @@ body {
   padding: 4px;
   gap: 4px;
   overflow: hidden;
-  justify-content: space-around; /* Distribuye equitativamente el espacio */
+  justify-content: space-around;
 }
 
-/* Indicador que ahora se adapta al botón activo */
 .glizzy-deslizante {
   position: absolute;
   top: 4px;
   bottom: 4px;
   left: 4px;
-  width: 25%; /* Ajusta dinámicamente al 25% de cada celda */
+  width: 25%;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(0, 242, 254, 0.4);
   border-radius: 12px;
@@ -2635,14 +2533,13 @@ body {
   z-index: 2;
 }
 
-/* Contenedor interno con ancho fijo o simétrico para que el LED y el texto respiren igual */
 .aura-contenido-interno {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 11px; /* Ligeramente más compacto para que encaje holgado */
+  font-size: 11px;
   font-weight: 500;
   transition: color 0.3s ease;
   pointer-events: none;
@@ -2665,7 +2562,6 @@ body {
   text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
 }
 
-/* Micro orbes con glow */
 .orbe-aura {
   width: 10px;
   height: 10px;
@@ -2714,19 +2610,19 @@ body {
   color: #00f2fe;
 }
 
-/* --- PANTALLA DE AUTENTICACIÓN (LOGIN / REGISTRO) --- */
+/* --- PANTALLA DE AUTENTICACIÓN --- */
 .pantalla-auth {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
-  height: 100vh;
+  height: 100dvh;
   background: rgba(9, 13, 22, 0.95);
   backdrop-filter: blur(15px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999; /* Se coloca por encima de toda la app */
+  z-index: 9999;
   padding: 20px;
   box-sizing: border-box;
 }
@@ -2758,7 +2654,7 @@ body {
 }
 
 .auth-header h2 span {
-  color: #00f2fe; /* Color neón principal */
+  color: #00f2fe;
 }
 
 .auth-header p {
@@ -2767,18 +2663,14 @@ body {
   margin-bottom: 25px;
 }
 
-/* --- CAMPOS DE ENTRADA (INPUTS) --- */
-
-/* Contenedor de cada Input + Icono */
 .input-grupo {
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
-  margin-bottom: 16px; /* Separación vertical entre cajitas para que no se peguen */
+  margin-bottom: 16px;
 }
 
-/* Alineación de los iconos izquierdos (candado, sobre, usuario) */
 .input-grupo > i[data-lucide],
 .input-grupo > svg[data-lucide] {
   position: absolute;
@@ -2788,14 +2680,13 @@ body {
   color: #a0aec0;
   width: 18px;
   height: 18px;
-  pointer-events: none; /* Evita bloquear la escritura */
+  pointer-events: none;
   z-index: 2;
 }
 
-/* El input dentro del grupo */
 .input-grupo input {
   width: 100%;
-  padding: 12px 42px 12px 42px; /* Margen a izq (icono) y der (ojito) */
+  padding: 12px 42px 12px 42px;
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
@@ -2811,10 +2702,9 @@ body {
   box-shadow: 0 0 10px rgba(0, 242, 254, 0.3);
 }
 
-/* --- BOTÓN DEL OJITO (CONTRASEÑA) --- */
 .btn-eye {
   position: absolute;
-  right: 12px; /* Alineado a la derecha DENTRO del recuadro */
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
   background: transparent;
@@ -2825,7 +2715,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10; /* Prioridad de clic sobre el input */
+  z-index: 10;
   transition: color 0.2s ease, transform 0.2s ease;
 }
 
@@ -2834,7 +2724,6 @@ body {
   transform: translateY(-50%) scale(1.1);
 }
 
-/* Ajuste del SVG interno del ojo (permite clic en todo el botón) */
 .btn-eye svg, 
 .btn-eye i {
   width: 18px;
@@ -2842,7 +2731,6 @@ body {
   pointer-events: none; 
 }
 
-/* --- BOTÓN PRINCIPAL Y FOOTER --- */
 .btn-principal {
   width: 100%;
   padding: 14px;
@@ -2873,16 +2761,14 @@ body {
   font-weight: bold;
 }
 
-/* 1. ASEGURA QUE EL CONTENEDOR TENGAN POSICIÓN RELATIVA */
 .grupo-iconos {
   position: relative;
 }
 
-/* 2. MENÚ DESPLEGABLE FLOTANTE (GLASSMORPHISM) */
 #menu-desplegable-cabecera {
   position: absolute !important;
-  top: calc(100% + 10px) !important; /* Se ubica justo debajo del encabezado */
-  right: 0 !important;               /* Alineado a la derecha */
+  top: calc(100% + 10px) !important;
+  right: 0 !important;
   min-width: 190px !important;
   background: rgba(15, 20, 35, 0.92) !important;
   backdrop-filter: blur(20px) !important;
@@ -2891,10 +2777,9 @@ body {
   border-radius: 16px !important;
   padding: 6px !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.1) !important;
-  z-index: 99999 !important;        /* Asegura que quede por encima del contenido */
+  z-index: 99999 !important;
 }
 
-/* Estilos de la lista dentro del desplegable */
 #lista-opciones-cabecera {
   list-style: none !important;
   margin: 0 !important;
@@ -2934,12 +2819,11 @@ body {
   height: 16px !important;
 }
 
-/* 🔔 Badge de la campanita en el Header */
 #badge-campanita {
   position: absolute;
   top: -4px;
   right: -6px;
-  background: #ff4b2b; /* El rojo/naranja que ya tenías */
+  background: #ff4b2b;
   color: #ffffff;
   font-size: 0.65rem;
   font-weight: bold;
