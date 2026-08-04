@@ -2147,6 +2147,9 @@ async function solicitarPermisoNotificaciones() {
   return false;
 }
 
+// Asignación global para compatibilidad total en el entorno
+window.solicitarPermisoNotificaciones = solicitarPermisoNotificaciones;
+
 // 🔔 FUNCIÓN GLOBAL PARA NOTIFICAR MENSAJES NUEVOS EN MÓVIL Y ESCRITORIO
 window.notificarNuevoMensaje = function(nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
@@ -2947,50 +2950,6 @@ if (btnCampanita) {
       mostrarAvisoPremium("Todo está en orden y en calma por aquí. 🌌");
     }
   });
-}
-
-// Evento Switch de Ajustes
-if (toggleNotificaciones) {
-  toggleNotificaciones.addEventListener("change", async () => {
-    if (toggleNotificaciones.checked) {
-      localStorage.setItem("movachat-notificaciones", "activado");
-
-      const concedido = await solicitarPermisoNotificaciones();
-      if (!concedido) {
-        mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️");
-      } else {
-        mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀");
-      }
-
-      actualizarBadgesNotificaciones();
-    } else {
-      localStorage.setItem("movachat-notificaciones", "desactivado");
-      if (badgeCampanita) badgeCampanita.classList.add("oculto");
-      mostrarAvisoPremium("Notificaciones silenciadas por el usuario. 🔕");
-    }
-  });
-}
-
-// --- 6. NOTIFICACIONES PUSH NATIVAS Y DISPARADOR ---
-
-async function solicitarPermisoNotificaciones() {
-  if (!("Notification" in window)) {
-    console.warn("Este navegador no soporta notificaciones nativas.");
-    return false;
-  }
-
-  if (Notification.permission === "granted") {
-    return true;
-  }
-
-  if (Notification.permission !== "denied") {
-    const permiso = await Notification.requestPermission();
-    if (permiso === "granted") {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 // 🔔 FUNCIÓN GLOBAL PARA NOTIFICAR MENSAJES NUEVOS EN MÓVIL Y ESCRITORIO
