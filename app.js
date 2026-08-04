@@ -3673,7 +3673,7 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
 // Variable global para guardar el contacto seleccionado actualmente
 let contactoSeleccionado = null;
 
-// Función para cargar los contactos aprobados en tiempo real
+// 🟢 Función para cargar los contactos y escuchar mensajes no leídos en tiempo real
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
@@ -3684,10 +3684,8 @@ function cargarContactosAprobados(usuarioActualUid) {
     try {
       const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
 
-      // Limpiar lista anterior
+      // Limpiar lista anterior preservando "Mi Estado"
       contenedorContactos.innerHTML = "";
-
-      // Preservar la tarjeta de "Mi Estado" arriba del todo
       if (tarjetaMiEstado) {
         contenedorContactos.appendChild(tarjetaMiEstado);
       }
@@ -3702,6 +3700,7 @@ function cargarContactosAprobados(usuarioActualUid) {
             const itemContacto = document.createElement("div");
             itemContacto.className = "tarjeta-chat contacto-item";
             itemContacto.dataset.uid = uid;
+            itemContacto.id = `tarjeta-chat-${uid}`;
 
             const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
 
@@ -3712,46 +3711,89 @@ function cargarContactosAprobados(usuarioActualUid) {
             itemContacto.innerHTML = `
               <div class="chat-avatar-caja">
                 ${foto}
+                <span class="punto-online-chat"></span>
               </div>
               <div class="chat-info">
                 <div class="chat-cabecera">
                   <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
+                  <span class="chat-hora">--:--</span>
                 </div>
                 <div class="chat-mensaje-caja">
                   <p class="chat-texto">${usuario.estado || "¡Disponible en MovaChat!"}</p>
+                  <div class="badge-mensaje badge-chat-no-leido oculto">0</div>
                 </div>
               </div>
             `;
 
-            // Evento de clic en tarjeta de chat (Corregido)
+            // Evento de clic en la tarjeta del contacto
             itemContacto.addEventListener("click", (e) => {
               e.stopPropagation();
 
-              // 1. Destacar contacto seleccionado visualmente
+              // Ocultar la marca de no leído al abrir el chat
+              const badge = itemContacto.querySelector(".badge-chat-no-leido");
+              if (badge) {
+                badge.textContent = "0";
+                badge.classList.add("oculto");
+              }
+
               document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
               itemContacto.classList.add("activo");
 
-              contactoSeleccionado = usuario;
+              const uidContacto = usuario.uid || uid;
+              const nombreContacto = usuario.nombre || "Usuario";
+              const fotoContacto = usuario.fotoUrl || "";
 
-              // 2. Extraer los datos limpios del usuario
-              const uidContacto = usuario.uid || usuario.id;
-              const nombreContacto = usuario.nombre || usuario.displayName || "Usuario";
-              const fotoContacto = usuario.fotoUrl || usuario.photoURL || "";
-
-              // 3. Abrir chat pasando los 3 parámetros correctos
               if (typeof abrirChatConUsuario === "function") {
                 abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
-              } else if (window.abrirChatConUsuario) {
-                window.abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
               }
             });
 
             contenedorContactos.appendChild(itemContacto);
+
+            // 🚀 Escuchar el último mensaje de este contacto para marcar "No leído"
+            escucharUltimoMensajeContacto(usuarioActualUid, uid);
           }
         });
       }
     } catch (e) {
       console.error("Error al cargar la lista de contactos:", e);
+    }
+  });
+}
+
+// 🚀 Función para marcar los mensajes no leídos en la lista principal
+function escucharUltimoMensajeContacto(miUid, contactoUid) {
+  const chatId = obtenerChatId(miUid, contactoUid);
+  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+
+  onValue(mensajesRef, (snapshot) => {
+    const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
+    if (!tarjetaContacto) return;
+
+    const elemTexto = tarjetaContacto.querySelector(".chat-texto");
+    const elemHora = tarjetaContacto.querySelector(".chat-hora");
+    const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido");
+
+    if (snapshot.exists()) {
+      const mensajes = snapshot.val();
+      const keys = Object.keys(mensajes);
+      const ultimoMsg = mensajes[keys[keys.length - 1]];
+
+      // 1. Mostrar el último mensaje y la hora
+      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
+      if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
+
+      // 2. Verificar si el último mensaje lo envió el contacto y el chat NO está abierto
+      const esMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
+      const estaChatAbierto = window.contactoActivoUid === contactoUid && document.getElementById("pantalla-chat-privado").style.display === "flex";
+
+      if (!esMio && !estaChatAbierto) {
+        if (elemBadge) {
+          elemBadge.textContent = "1";
+          elemBadge.classList.remove("oculto");
+        }
+        if (elemTexto) elemTexto.classList.add("texto-resaltado");
+      }
     }
   });
 }
