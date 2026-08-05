@@ -3893,20 +3893,30 @@ function cargarContactosAprobados(usuarioActualUid) {
               </div>
             `;
 
-            // Evento de clic en la tarjeta del contacto
+            // Evento de clic en la tarjeta del contacto (CON LIMPIEZA COMPLETA DE MEMORIA)
             itemContacto.addEventListener("click", (e) => {
               e.stopPropagation();
 
-              // Ocultar la marca de no leído al abrir el chat
+              // 1. Resetear la memoria interna del contador a CERO
+              itemContacto.dataset.mensajesNoLeidos = "0";
+
+              // 2. Ocultar la marca visual de no leído y quitar el texto resaltado
               const badge = itemContacto.querySelector(".badge-chat-no-leido");
+              const elemTexto = itemContacto.querySelector(".chat-texto");
+
               if (badge) {
                 badge.textContent = "0";
                 badge.classList.add("oculto");
               }
+              if (elemTexto) {
+                elemTexto.classList.remove("texto-resaltado");
+              }
 
+              // 3. Marcar la tarjeta visualmente como seleccionada/activa
               document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
               itemContacto.classList.add("activo");
 
+              // 4. Abrir la conversación privada
               const uidContacto = usuario.uid || uid;
               const nombreContacto = usuario.nombre || "Usuario";
               const fotoContacto = usuario.fotoUrl || "";
