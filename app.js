@@ -2216,11 +2216,12 @@ window.actualizarBadgesNotificaciones = function() {
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
 
 // ========================================================
-// 🚀 2. ESCUCHAR MENSAJES CON CANDADO DE LECTURA DEFINITIVO
+// 🚀 2. ESCUCHAR MENSAJES CON CANDADO DE LECTURA DESDE FIREBASE
 // ========================================================
 function escucharUltimoMensajeContacto(miUid, contactoUid) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+  const lecturaRef = ref(db, `lecturas/${miUid}/${contactoUid}`);
 
   onValue(mensajesRef, (snapshot) => {
     const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
@@ -2238,7 +2239,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
       const ultimoMsgKey = keys[keys.length - 1];
       const ultimoMsg = mensajes[ultimoMsgKey];
 
-      // Actualizar texto y hora en la tarjeta
+      // Actualizar vista previa de texto y hora
       if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
 
@@ -2248,64 +2249,64 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
                           pantallaChat && 
                           (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
-      if (estaAbierto || tarjetaContacto.dataset.forzarReiniciar === "true") {
-        // Chat Abierto: Poner en 0 y guardar la clave
-        tarjetaContacto.dataset.ultimoLeidoKey = ultimoMsgKey;
-        tarjetaContacto.dataset.mensajesNoLeidos = "0";
-        tarjetaContacto.dataset.forzarReiniciar = "false";
-
+      // 1. Si el chat está abierto, marcar lectura en la nube al instante
+      if (estaAbierto) {
+        set(lecturaRef, ultimoMsgKey);
+        
         if (elemBadge) {
           elemBadge.textContent = "0";
           elemBadge.classList.add("oculto");
         }
         if (elemTexto) elemTexto.classList.remove("texto-resaltado");
 
-      } else {
-        // Chat Cerrado: Contar solo los mensajes nuevos que no envié yo
-        const esMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
-
-        if (!esMio) {
-          const ultimoLeidoKey = tarjetaContacto.dataset.ultimoLeidoKey || "";
-          let nuevos = 0;
-          let empezarAContar = (ultimoLeidoKey === "");
-
-          keys.forEach((k) => {
-            if (k === ultimoLeidoKey) {
-              empezarAContar = true;
-              return;
-            }
-            if (empezarAContar) {
-              const m = mensajes[k];
-              const idEmisor = m.emisor || m.emisorUid;
-              if (idEmisor === contactoUid) nuevos++;
-            }
-          });
-
-          tarjetaContacto.dataset.mensajesNoLeidos = nuevos.toString();
-
-          if (nuevos > 0) {
-            if (elemBadge) {
-              elemBadge.textContent = nuevos > 99 ? "99+" : nuevos.toString();
-              elemBadge.classList.remove("oculto");
-            }
-            if (elemTexto) elemTexto.classList.add("texto-resaltado");
-
-            // Sonar alerta si el mensaje llegó en los últimos 4 segundos
-            const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
-            if (esReciente && typeof window.reproducirSonido === "function") {
-              window.reproducirSonido("recibido");
-            }
-          } else {
-            if (elemBadge) elemBadge.classList.add("oculto");
-            if (elemTexto) elemTexto.classList.remove("texto-resaltado");
-          }
+        if (typeof window.actualizarBadgesNotificaciones === "function") {
+          window.actualizarBadgesNotificaciones();
         }
+        return;
       }
 
-      // Sincronizar la campanita
-      if (typeof window.actualizarBadgesNotificaciones === "function") {
-        window.actualizarBadgesNotificaciones();
-      }
+      // 2. Si el chat está cerrado, comparar con la clave guardada en Firebase
+      get(lecturaRef).then((lecturaSnap) => {
+        const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
+        let nuevos = 0;
+        let empezarAContar = (ultimoLeidoKey === "");
+
+        keys.forEach((k) => {
+          if (k === ultimoLeidoKey) {
+            empezarAContar = true;
+            return;
+          }
+          if (empezarAContar) {
+            const m = mensajes[k];
+            const idEmisor = m.emisor || m.emisorUid;
+            if (idEmisor === contactoUid) nuevos++;
+          }
+        });
+
+        if (nuevos > 0) {
+          if (elemBadge) {
+            elemBadge.textContent = nuevos > 99 ? "99+" : nuevos.toString();
+            elemBadge.classList.remove("oculto");
+          }
+          if (elemTexto) elemTexto.classList.add("texto-resaltado");
+
+          // Sonar alerta solo si llegó en los últimos 4 segundos
+          const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
+          if (esReciente && typeof window.reproducirSonido === "function") {
+            window.reproducirSonido("recibido");
+          }
+        } else {
+          if (elemBadge) {
+            elemBadge.textContent = "0";
+            elemBadge.classList.add("oculto");
+          }
+          if (elemTexto) elemTexto.classList.remove("texto-resaltado");
+        }
+
+        if (typeof window.actualizarBadgesNotificaciones === "function") {
+          window.actualizarBadgesNotificaciones();
+        }
+      });
     }
   });
 }
@@ -4080,11 +4081,27 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // 7. Conectar Firebase de forma limpia
+  // 7. Conectar Firebase de forma limpia y guardar lectura en la nube
   const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
-  if (miUid && uidTarget && typeof escucharMensajesChat === "function") {
+  if (miUid && uidTarget) {
     const chatId = obtenerChatId(miUid, uidTarget);
-    escucharMensajesChat(chatId);
+
+    // ☁️ REGISTRAR EN FIREBASE EL ÚLTIMO MENSAJE VISTO
+    const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+    get(mensajesRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        const mensajes = snapshot.val();
+        const keys = Object.keys(mensajes);
+        const ultimoMsgKey = keys[keys.length - 1];
+
+        // Escribe el ID del último mensaje en el nodo 'lecturas'
+        set(ref(db, `lecturas/${miUid}/${uidTarget}`), ultimoMsgKey);
+      }
+    }).catch(err => console.error("Error al registrar lectura:", err));
+
+    if (typeof escucharMensajesChat === "function") {
+      escucharMensajesChat(chatId);
+    }
   }
 }
 
