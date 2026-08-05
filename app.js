@@ -2232,12 +2232,12 @@ if (toggleNotificaciones) {
   });
 }
 
-// --- 5. MODO SIGILO (INVISIBLE) ---
+// --- 5. MODO SIGILO (INVISIBLE) CONECTADO A FIREBASE ---
 const toggleSigilo = document.getElementById("check-sigilo");
 const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
 const textoEstadoIdentidad = document.querySelector(".texto-estado");
 
-// A. Cargar estado inicial guardado
+// A. Cargar estado inicial guardado al abrir la app
 const estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
 if (estadoSigiloGuardado === "activo" && toggleSigilo) {
   toggleSigilo.checked = true;
@@ -2248,14 +2248,20 @@ if (estadoSigiloGuardado === "activo" && toggleSigilo) {
   if (textoEstadoIdentidad) {
     textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
   }
+  // Enviar a Firebase que estamos invisibles desde el inicio
+  if (typeof actualizarEstadoEnFirebase === "function") {
+    actualizarEstadoEnFirebase("offline");
+  }
 }
 
-// B. Conectar el interruptor (Switch) para cuando el usuario lo presione
+// B. Conectar el interruptor para cuando el usuario lo toque en pantalla
 if (toggleSigilo) {
   toggleSigilo.addEventListener("change", () => {
     if (toggleSigilo.checked) {
+      // 1. Guardar en memoria
       localStorage.setItem("movachat-sigilo", "activo");
 
+      // 2. Cambio visual (Gris / Invisible)
       if (ledPerfilIdentidad) {
         ledPerfilIdentidad.style.backgroundColor = "#888888";
         ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
@@ -2264,12 +2270,20 @@ if (toggleSigilo) {
         textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
       }
 
+      // 3. Cartelito flotante
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Modo Sigilo activado: Tu estado ahora es invisible 👤", "🥷", "#888888");
       }
+
+      // 4. Avisar a Firebase que te ponga Offline/Invisible
+      if (typeof actualizarEstadoEnFirebase === "function") {
+        actualizarEstadoEnFirebase("offline");
+      }
     } else {
+      // 1. Guardar en memoria
       localStorage.setItem("movachat-sigilo", "inactivo");
 
+      // 2. Cambio visual (Cyan / En línea)
       if (ledPerfilIdentidad) {
         ledPerfilIdentidad.style.backgroundColor = "#00f2fe";
         ledPerfilIdentidad.style.boxShadow = "0 0 10px #00f2fe";
@@ -2278,8 +2292,14 @@ if (toggleSigilo) {
         textoEstadoIdentidad.textContent = "En línea";
       }
 
+      // 3. Cartelito flotante
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Modo Sigilo desactivado: Estás Visible 🟢", "✨", "#00f2fe");
+      }
+
+      // 4. Avisar a Firebase que te ponga Online
+      if (typeof actualizarEstadoEnFirebase === "function") {
+        actualizarEstadoEnFirebase("online");
       }
     }
   });
