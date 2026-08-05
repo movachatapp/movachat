@@ -178,7 +178,7 @@ if (authForm) {
 
 // Listener de Estado de Autenticación con Guardián de Acceso
 onAuthStateChanged(auth, async (user) => {
-  const chatPantalla = document.querySelector(".contenedor-chat") || document.body;
+  const authPantalla = document.getElementById("pantalla-auth") || document.querySelector(".contenedor-auth");
 
   if (user) {
     try {
@@ -199,13 +199,34 @@ onAuthStateChanged(auth, async (user) => {
           const elemUsernamePerfil = document.getElementById("perfil-username") || document.querySelector(".username-usuario");
           const elemEmailPerfil = document.getElementById("perfil-email") || document.querySelector(".email-usuario");
           const elemFotoPerfil = document.getElementById("perfil-foto") || document.querySelector(".foto-usuario");
+          const elemTextoEstado = document.querySelector(".texto-estado");
+          const elemLedPerfil = document.querySelector(".btn-estado-sutil .punto-online");
 
           if (elemNombrePerfil) elemNombrePerfil.textContent = datosUsuario.nombre || "Usuario";
           if (elemUsernamePerfil) elemUsernamePerfil.textContent = datosUsuario.username ? `@${datosUsuario.username}` : `@${(datosUsuario.nombre || "user").toLowerCase().replace(/\s+/g, "")}`;
           if (elemEmailPerfil) elemEmailPerfil.textContent = datosUsuario.correo || user.email;
           if (elemFotoPerfil && datosUsuario.fotoUrl) elemFotoPerfil.src = datosUsuario.fotoUrl;
 
-          // 🚀 3. CARGAR LISTA DE CONTACTOS EN TIEMPO REAL
+          // Cargar texto de estado guardado en Firebase o por defecto
+          const fraseEstado = datosUsuario.estadoTexto || "Disponible. Toca para añadir estado...";
+          if (elemTextoEstado) elemTextoEstado.textContent = fraseEstado;
+
+          // Ajustar color LED inicial según el estado guardado
+          if (elemLedPerfil) {
+            const estadoConexion = datosUsuario.estadoConexion || "online";
+            if (estadoConexion === "ocupado") {
+              elemLedPerfil.style.backgroundColor = "#ef4444";
+              elemLedPerfil.style.boxShadow = "0 0 10px #ef4444";
+            } else if (estadoConexion === "offline" || estadoConexion === "invisible") {
+              elemLedPerfil.style.backgroundColor = "#888888";
+              elemLedPerfil.style.boxShadow = "0 0 10px #888888";
+            } else {
+              elemLedPerfil.style.backgroundColor = "#00f2fe";
+              elemLedPerfil.style.boxShadow = "0 0 10px #00f2fe";
+            }
+          }
+
+          // 🚀 3. CARGAR LISTA DE CONTACTOS Y ACTIVAR ESCUCHA DE MENSAJES EN TIEMPO REAL
           if (typeof cargarContactosAprobados === "function") {
             cargarContactosAprobados(user.uid);
           }
@@ -3910,7 +3931,7 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// 🚀 Función para contar mensajes no leídos REALES y reiniciar a cero al abrir el chat
+// 🚀 Función para contar mensajes no leídos REALES y reproducir alertas
 function escucharUltimoMensajeContacto(miUid, contactoUid) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -3942,14 +3963,14 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
         contenedorLista.prepend(tarjetaContacto);
       }
 
-      // 3. Comprobar si la pantalla de chat privado con ESTE contacto está actualmente abierta
+      // 3. Comprobar si el chat privado con ESTE contacto está abierto
       const pantallaChat = document.getElementById("pantalla-chat-privado");
       const estaChatAbierto = window.contactoActivoUid === contactoUid && 
                               pantallaChat && 
                               (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
       if (estaChatAbierto) {
-        // 🟢 SI EL CHAT ESTÁ ABIERTO: Reiniciar contador a CERO e invisibilizar badge
+        // 🟢 CHAT ABIERTO: Reiniciar contador a CERO
         tarjetaContacto.dataset.mensajesNoLeidos = "0";
         if (elemBadge) {
           elemBadge.textContent = "0";
@@ -3957,22 +3978,34 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
         }
         if (elemTexto) elemTexto.classList.remove("texto-resaltado");
       } else {
-        // 🔴 SI EL CHAT ESTÁ CERRADO: Procesar la llegada de mensajes nuevos
+        // 🔴 CHAT CERRADO: Calcular mensajes no leídos
         const esUltimoMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
 
         if (!esUltimoMio) {
-          // Obtener la cuenta previa guardada en la tarjeta (o 0 si no existe)
-          let cuentaActual = parseInt(tarjetaContacto.dataset.mensajesNoLeidos || "0", 10);
-          
-          // Incrementar en +1 por el nuevo mensaje entrante
-          cuentaActual += 1;
-          tarjetaContacto.dataset.mensajesNoLeidos = cuentaActual.toString();
+          // A. Contar cuántos mensajes en el historial son del contacto y no han sido leídos
+          let conteoNoLeidos = 0;
+          keys.forEach((k) => {
+            const m = mensajes[k];
+            const emisorMsg = m.emisor || m.emisorUid;
+            if (emisorMsg === contactoUid) {
+              conteoNoLeidos++;
+            }
+          });
+
+          // B. Actualizar el contador en pantalla
+          tarjetaContacto.dataset.mensajesNoLeidos = conteoNoLeidos.toString();
 
           if (elemBadge) {
-            elemBadge.textContent = cuentaActual > 99 ? "99+" : cuentaActual.toString();
+            elemBadge.textContent = conteoNoLeidos > 99 ? "99+" : conteoNoLeidos.toString();
             elemBadge.classList.remove("oculto");
           }
           if (elemTexto) elemTexto.classList.add("texto-resaltado");
+
+          // C. 🔔 ACTIVAR SONIDO DE NOTIFICACIÓN (Si el mensaje acaba de llegar en los últimos 4 segundos)
+          const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
+          if (esReciente && typeof window.reproducirSonido === "function") {
+            window.reproducirSonido("recibido");
+          }
         }
       }
     }
