@@ -2226,35 +2226,12 @@ if (toggleNotificaciones) {
   });
 }
 
-// --- 6. NOTIFICACIONES PUSH NATIVAS ---
-
-// Solicitar permiso de notificaciones al navegador/móvil
-async function solicitarPermisoNotificaciones() {
-  if (!("Notification" in window)) {
-    console.warn("Este navegador no soporta notificaciones nativas.");
-    return false;
-  }
-
-  if (Notification.permission === "granted") {
-    return true;
-  }
-
-  if (Notification.permission !== "denied") {
-    const permiso = await Notification.requestPermission();
-    if (permiso === "granted") {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 // --- 5. MODO SIGILO (INVISIBLE) ---
 const toggleSigilo = document.getElementById("check-sigilo");
 const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
 const textoEstadoIdentidad = document.querySelector(".texto-estado");
 
-// Cargar estado inicial guardado de Sigilo
+// A. Cargar estado inicial guardado
 const estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
 if (estadoSigiloGuardado === "activo" && toggleSigilo) {
   toggleSigilo.checked = true;
@@ -2267,10 +2244,12 @@ if (estadoSigiloGuardado === "activo" && toggleSigilo) {
   }
 }
 
+// B. Conectar el interruptor (Switch) para cuando el usuario lo presione
 if (toggleSigilo) {
   toggleSigilo.addEventListener("change", () => {
     if (toggleSigilo.checked) {
       localStorage.setItem("movachat-sigilo", "activo");
+
       if (ledPerfilIdentidad) {
         ledPerfilIdentidad.style.backgroundColor = "#888888";
         ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
@@ -2278,17 +2257,56 @@ if (toggleSigilo) {
       if (textoEstadoIdentidad) {
         textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
       }
-      mostrarAvisoPremium("Has entrado en Modo Sigilo. Presencia oculta. 🌌");
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Modo Sigilo activado: Tu estado ahora es invisible 👤", "🥷", "#888888");
+      }
     } else {
       localStorage.setItem("movachat-sigilo", "inactivo");
+
       if (ledPerfilIdentidad) {
         ledPerfilIdentidad.style.backgroundColor = "#00f2fe";
         ledPerfilIdentidad.style.boxShadow = "0 0 10px #00f2fe";
       }
       if (textoEstadoIdentidad) {
-        textoEstadoIdentidad.textContent = "Disponible. Toca para añadir estado...";
+        textoEstadoIdentidad.textContent = "En línea";
       }
-      mostrarAvisoPremium("Modo Sigilo desactivado. Estás visible de nuevo. 📡");
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Modo Sigilo desactivado: Estás Visible 🟢", "✨", "#00f2fe");
+      }
+    }
+  });
+}
+
+// --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
+
+// A. Solicitar permiso al navegador/móvil
+async function solicitarPermisoNotificaciones() {
+  if (!("Notification" in window)) {
+    console.warn("Este navegador no soporta notificaciones nativas.");
+    return false;
+  }
+
+  if (Notification.permission === "granted") {
+    return true;
+  }
+
+  if (Notification.permission !== "denied") {
+    const permiso = await Notification.requestPermission();
+    return permiso === "granted";
+  }
+
+  return false;
+}
+
+// B. DISPARADOR AUTOMÁTICO: Pedir permiso al entrar si no se ha decidido
+if (typeof solicitarPermisoNotificaciones === "function") {
+  solicitarPermisoNotificaciones().then((permitido) => {
+    if (permitido) {
+      console.log("✅ Permiso de notificaciones activo y concedido.");
+    } else {
+      console.warn("⚠️ Notificaciones denegadas o no configuradas aún.");
     }
   });
 }

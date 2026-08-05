@@ -1,8 +1,8 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión con Notificaciones Push)
+// 📱 SERVICE WORKER MOVACHAT (Versión Corregida)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v3.0';
+const CACHE_NAME = 'movachat-v3.1';
 
 // Archivos básicos para guardar en memoria del dispositivo
 const ASSETS_TO_CACHE = [
@@ -40,14 +40,18 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Carga inteligente (Usa internet y guarda en caché si falla la red)
+// 3. Carga de red segura (Evita errores de conversión Response)
 self.addEventListener('fetch', (event) => {
-  if (!event.request.url.startsWith(self.location.origin)) return;
+  // Ignorar peticiones externas (Firebase, Google APIs, etc.) y peticiones no-GET
+  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
+    return;
+  }
 
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        if (event.request.method === 'GET') {
+        // Verificar que la respuesta sea válida antes de guardarla
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseClone);
@@ -56,12 +60,13 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       })
       .catch(() => {
+        // Si no hay red, entrega la versión guardada en caché
         return caches.match(event.request);
       })
   );
 });
 
-// 🚀 4. RECEPTOR DE NOTIFICACIONES PUSH (Muestra la alerta en la pantalla con app cerrada)
+// 🚀 4. RECEPTOR DE NOTIFICACIONES PUSH
 self.addEventListener('push', (event) => {
   let data = { titulo: 'MovaChat 💬', cuerpo: 'Tienes un nuevo mensaje recibido 📩', icono: './assets/logo/icon-192.png' };
 
