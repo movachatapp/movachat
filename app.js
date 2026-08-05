@@ -2174,29 +2174,24 @@ window.actualizarBadgesNotificaciones = function() {
 
   let totalNoLeidos = 0;
 
-  // Recorrer todas las tarjetas reales de chat en pantalla
   document.querySelectorAll("#lista-chats-principal .tarjeta-chat").forEach((tarjeta) => {
-    if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+    if (tarjeta.classList.contains("tarjeta-estado-propio") || tarjeta.id === "tarjeta-mi-estado-propio") return;
 
-    // Acepta ambas clases posibles de globos contadores
     const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
     
     if (badge) {
       const num = parseInt(badge.textContent.trim(), 10) || 0;
       
-      // Si el número es 0, ocultar el globo de la tarjeta
       if (num === 0) {
         badge.classList.add("oculto");
       }
       
-      const esVisible = !badge.classList.contains("oculto");
-      if (esVisible && num > 0) {
+      if (!badge.classList.contains("oculto") && num > 0) {
         totalNoLeidos += num;
       }
     }
   });
 
-  // 1. Actualizar el contador rojo de la Campanita superior
   if (elemBadgeCampanita) {
     if (totalNoLeidos > 0) {
       elemBadgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos.toString();
@@ -2207,7 +2202,6 @@ window.actualizarBadgesNotificaciones = function() {
     }
   }
 
-  // 2. Actualizar el número del botón de filtro 'No leídos'
   if (elemBadgeFiltroNoLeidos) {
     elemBadgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
   }
@@ -3902,6 +3896,9 @@ function cargarContactosAprobados(usuarioActualUid) {
               sombraLed = "0 0 8px #888888";
             }
 
+            itemContacto.dataset.mensajesNoLeidos = "0";
+            itemContacto.dataset.forzarReiniciar = "false";
+
             itemContacto.innerHTML = `
               <div class="chat-avatar-caja">
                 ${foto}
@@ -3914,7 +3911,7 @@ function cargarContactosAprobados(usuarioActualUid) {
                 </div>
                 <div class="chat-mensaje-caja">
                   <p class="chat-texto">${usuario.estadoTexto || usuario.estado || "¡Disponible en MovaChat!"}</p>
-                  <div class="badge-mensaje badge-chat-no-leido oculto">0</div>
+                  <div class="badge-chat-no-leido badge-mensaje oculto">0</div>
                 </div>
               </div>
             `;
@@ -4018,6 +4015,11 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     if (elemTexto) {
       elemTexto.classList.remove("texto-resaltado");
     }
+  }
+
+  // Sincronizar inmediatamente la campanita
+  if (typeof window.actualizarBadgesNotificaciones === "function") {
+    window.actualizarBadgesNotificaciones();
   }
 
   // 2. 🔔 RECALCULAR LA CAMPANITA GLOBAL DE NOTIFICACIONES
