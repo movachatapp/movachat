@@ -2,7 +2,7 @@
 // 📱 SERVICE WORKER MOVACHAT (Versión Corregida)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v3.6';
+const CACHE_NAME = 'movachat-v3.7';
 
 // Archivos básicos para guardar en memoria del dispositivo
 const ASSETS_TO_CACHE = [

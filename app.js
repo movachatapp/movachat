@@ -4362,28 +4362,21 @@ if ('serviceWorker' in navigator) {
 }
 
 // ========================================================
-// 🥷 CONEXIÓN REAL DEL MODO SIGILO A FIREBASE
+// 🥷 CONEXIÓN DIRECTA DEL MODO SIGILO A FIREBASE
 // ========================================================
 function actualizarEstadoEnFirebase(nuevoEstado) {
-  // 1. Obtener el usuario que tiene la sesión abierta
-  const usuarioActual = window.auth ? window.auth.currentUser : null;
-  if (!usuarioActual) {
-    console.warn("⚠️ No se encontró usuario activo para actualizar estado.");
-    return;
-  }
+  // 1. Verificamos que el usuario tenga la sesión iniciada
+  const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+  if (!usuarioActual) return;
 
-  // 2. Si usamos Realtime Database
-  if (window.db && window.ref && window.set) {
-    const estadoRef = window.ref(window.db, `usuarios/${usuarioActual.uid}/estado`);
-    window.set(estadoRef, nuevoEstado)
-      .then(() => console.log(`✅ Estado actualizado en Firebase: ${nuevoEstado}`))
-      .catch((error) => console.error("❌ Error al actualizar estado:", error));
-  } 
-  // 3. Si usamos Firestore
-  else if (window.db && window.doc && window.updateDoc) {
-    const userDocRef = window.doc(window.db, "usuarios", usuarioActual.uid);
-    window.updateDoc(userDocRef, { estado: nuevoEstado })
-      .then(() => console.log(`✅ Estado actualizado en Firestore: ${nuevoEstado}`))
-      .catch((error) => console.error("❌ Error al actualizar estado:", error));
+  // 2. Si el usuario activó Modo Sigilo, enviamos "offline", si no "online"
+  const estadoFinal = (nuevoEstado === "offline") ? "offline" : "online";
+
+  // 3. Guardar directamente en la base de datos de Firebase
+  if (typeof db !== "undefined" && typeof ref !== "undefined" && typeof set !== "undefined") {
+    const estadoRef = ref(db, `usuarios/${usuarioActual.uid}/estado`);
+    set(estadoRef, estadoFinal)
+      .then(() => console.log("🟢 Estado de presencia actualizado en Firebase:", estadoFinal))
+      .catch((err) => console.log("⚠️ Error guardando estado:", err));
   }
 }
