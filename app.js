@@ -2264,12 +2264,12 @@ if (toggleNotificaciones) {
   });
 }
 
-// --- 5. MODO SIGILO (INVISIBLE) CONECTADO A FIREBASE ---
+// --- 5. MODO SIGILO (INVISIBLE) - CONECTADO REALMENTE A FIREBASE ---
 const toggleSigilo = document.getElementById("check-sigilo");
 const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
 const textoEstadoIdentidad = document.querySelector(".texto-estado");
 
-// A. Cargar estado inicial guardado al abrir la app
+// A. Cargar estado inicial del Modo Sigilo al abrir la app
 const estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
 if (estadoSigiloGuardado === "activo" && toggleSigilo) {
   toggleSigilo.checked = true;
@@ -2278,60 +2278,68 @@ if (estadoSigiloGuardado === "activo" && toggleSigilo) {
     ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
   }
   if (textoEstadoIdentidad) {
-    textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
-  }
-  // Enviar a Firebase que estamos invisibles desde el inicio
-  if (typeof actualizarEstadoEnFirebase === "function") {
-    actualizarEstadoEnFirebase("offline");
+    textoEstadoIdentidad.textContent = "Invisible (Modo Sigilo)";
   }
 }
 
-// B. Conectar el interruptor para cuando el usuario lo toque en pantalla
+// B. Escuchar cuando el usuario enciende o apaga el interruptor
 if (toggleSigilo) {
   toggleSigilo.addEventListener("change", () => {
-    if (toggleSigilo.checked) {
-      // 1. Guardar en memoria
+    const estaActivo = toggleSigilo.checked;
+    const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+
+    if (estaActivo) {
+      // 1. Guardar preferencia local
       localStorage.setItem("movachat-sigilo", "activo");
 
-      // 2. Cambio visual (Gris / Invisible)
+      // 2. Cambiar aspecto visual local (Gris)
       if (ledPerfilIdentidad) {
         ledPerfilIdentidad.style.backgroundColor = "#888888";
         ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
       }
       if (textoEstadoIdentidad) {
-        textoEstadoIdentidad.textContent = "Modo Sigilo Activo (Invisible)";
+        textoEstadoIdentidad.textContent = "Invisible (Modo Sigilo)";
       }
 
-      // 3. Cartelito flotante
+      // 3. ENVIAR A FIREBASE: Marcar como offline en tu base de datos
+      if (usuarioActual && typeof db !== "undefined" && typeof ref !== "undefined") {
+        if (typeof update !== "undefined") {
+          update(ref(db, `usuarios/${usuarioActual.uid}`), {
+            estadoConexion: "offline",
+            estadoPresencia: "offline"
+          });
+        }
+      }
+
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Modo Sigilo activado: Tu estado ahora es invisible 👤", "🥷", "#888888");
       }
 
-      // 4. Avisar a Firebase que te ponga Offline/Invisible
-      if (typeof actualizarEstadoEnFirebase === "function") {
-        actualizarEstadoEnFirebase("offline");
-      }
     } else {
-      // 1. Guardar en memoria
+      // 1. Guardar preferencia local
       localStorage.setItem("movachat-sigilo", "inactivo");
 
-      // 2. Cambio visual (Cyan / En línea)
+      // 2. Cambiar aspecto visual local (Cyan / En línea)
       if (ledPerfilIdentidad) {
         ledPerfilIdentidad.style.backgroundColor = "#00f2fe";
         ledPerfilIdentidad.style.boxShadow = "0 0 10px #00f2fe";
       }
       if (textoEstadoIdentidad) {
-        textoEstadoIdentidad.textContent = "En línea";
+        textoEstadoIdentidad.textContent = "Disponible";
       }
 
-      // 3. Cartelito flotante
+      // 3. ENVIAR A FIREBASE: Marcar como online en tu base de datos
+      if (usuarioActual && typeof db !== "undefined" && typeof ref !== "undefined") {
+        if (typeof update !== "undefined") {
+          update(ref(db, `usuarios/${usuarioActual.uid}`), {
+            estadoConexion: "online",
+            estadoPresencia: "online"
+          });
+        }
+      }
+
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Modo Sigilo desactivado: Estás Visible 🟢", "✨", "#00f2fe");
-      }
-
-      // 4. Avisar a Firebase que te ponga Online
-      if (typeof actualizarEstadoEnFirebase === "function") {
-        actualizarEstadoEnFirebase("online");
       }
     }
   });
