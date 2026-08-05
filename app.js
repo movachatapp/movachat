@@ -4507,6 +4507,7 @@ function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
 
 // --- REGISTRO OFICIAL DEL SERVICE WORKER (Permite instalar la PWA) ---
 if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
       .then((registro) => {
