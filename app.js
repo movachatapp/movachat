@@ -3605,12 +3605,18 @@ function mostrarToast(mensaje) {
 
 // 🔊 Función para el sonido de mensaje recibido (Respeta el botón de silenciar)
 function reproducirSonidoRecibido() {
+  // 1. Preguntamos a la memoria si el usuario apagó las notificaciones
   const notifEstado = localStorage.getItem("movachat-notificaciones");
-  if (notifEstado === "desactivado") return; // Si el botón está en apagado, NO suena
+  
+  // 2. Si dice "desactivado", nos detenemos aquí y NO suena nada
+  if (notifEstado === "desactivado") {
+    return;
+  }
 
+  // 3. Si está activado, reproduce el sonido de recibido
   const audioRecibido = document.getElementById("sonido-recibido");
   if (audioRecibido) {
-    audioRecibido.currentTime = 0; // Detiene el sonido anterior y lo inicia desde 0
+    audioRecibido.currentTime = 0; // Detiene cualquier audio previo para que no se encima
     audioRecibido.play().catch((e) => console.log("Audio bloqueado por el navegador:", e));
   }
 }
