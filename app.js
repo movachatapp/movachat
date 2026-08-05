@@ -2054,7 +2054,7 @@ if (btnCerrarQr && modalQr) {
   });
 }
 
-// --- 3. EDITAR ESTADO DE PERFIL Y LED (CONECTADO A FIREBASE) ---
+// --- 3. EDITAR ESTADO DE PERFIL Y LED (AMARRADO TOTALMENTE A FIREBASE) ---
 const btnEditarEstado = document.getElementById("btn-editar-estado");
 const modalEstado = document.getElementById("modal-estado");
 const btnCerrarModal = document.getElementById("btn-cerrar-modal");
@@ -2063,8 +2063,10 @@ const inputNuevoEstado = document.getElementById("input-nuevo-estado");
 const textoEstadoPerfil = document.querySelector(".texto-estado");
 const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
 const botonesLed = document.querySelectorAll(".selector-led .btn-led");
+
 let colorLedSeleccionado = "#00f2fe";
 let tipoEstadoSeleccionado = "online"; // 'online', 'ocupado' o 'offline'
+let nombreEstadoSeleccionado = "Disponible"; // 'Disponible', 'Ocupado' o 'Invisible'
 
 if (btnEditarEstado && modalEstado) {
   btnEditarEstado.addEventListener("click", () => {
@@ -2079,66 +2081,72 @@ if (btnCerrarModal && modalEstado) {
   });
 }
 
-// Escuchar la selección de botones LED en el modal
+// 🎨 Escuchar los botones del modal para saber qué estado eligió el usuario
 botonesLed.forEach(boton => {
   boton.addEventListener("click", () => {
     botonesLed.forEach(b => b.classList.remove("activo"));
     boton.classList.add("activo");
 
-    // Guardar el color del LED
+    // Leer el color configurado en el botón
     colorLedSeleccionado = boton.style.getPropertyValue("--led-color").trim() || "#00f2fe";
 
-    // Traducir el color seleccionado al tipo de estado para Firebase
-    if (colorLedSeleccionado === "#ef4444") {
+    // Asignar el tipo y el nombre según el color elegido
+    if (colorLedSeleccionado === "#ef4444" || colorLedSeleccionado === "#ff4b2b") {
       tipoEstadoSeleccionado = "ocupado";
+      nombreEstadoSeleccionado = "Ocupado";
     } else if (colorLedSeleccionado === "#888888") {
       tipoEstadoSeleccionado = "offline";
+      nombreEstadoSeleccionado = "Invisible";
     } else {
       tipoEstadoSeleccionado = "online";
+      nombreEstadoSeleccionado = "Disponible";
     }
   });
 });
 
+// 💾 Guardar en el perfil local y enviar a Firebase
 if (btnGuardarEstado && modalEstado) {
   btnGuardarEstado.addEventListener("click", () => {
-    const nuevaFrase = inputNuevoEstado ? inputNuevoEstado.value.trim() : "";
-    const textoMostrar = nuevaFrase !== "" ? nuevaFrase : "En línea";
+    const fraseIngresada = inputNuevoEstado ? inputNuevoEstado.value.trim() : "";
+    
+    // Si escribió una frase personalizada la usa, si no, usa "Disponible", "Ocupado" o "Invisible"
+    const textoFinal = fraseIngresada !== "" ? fraseIngresada : nombreEstadoSeleccionado;
 
-    // 1. Actualizar la interfaz local
+    // 1. Actualizar pantalla propia
     if (textoEstadoPerfil) {
-      textoEstadoPerfil.textContent = textoMostrar;
+      textoEstadoPerfil.textContent = textoFinal;
     }
     if (ledPerfil) {
       ledPerfil.style.backgroundColor = colorLedSeleccionado;
       ledPerfil.style.boxShadow = `0 0 10px ${colorLedSeleccionado}`;
     }
 
-    // 2. Guardar en la memoria local del teléfono
-    localStorage.setItem("movachat-estado-texto", textoMostrar);
+    // 2. Guardar en memoria local del teléfono
+    localStorage.setItem("movachat-estado-texto", textoFinal);
     localStorage.setItem("movachat-estado-tipo", tipoEstadoSeleccionado);
 
-    // 3. Enviar los cambios a Firebase para que otros usuarios los vean
+    // 3. AMARRAR A FIREBASE: Escribir en el perfil del usuario activo
     const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
-    if (usuarioActual && typeof db !== "undefined" && typeof ref !== "undefined" && typeof set !== "undefined") {
-      const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
+    if (usuarioActual && typeof db !== "undefined" && typeof ref !== "undefined") {
+      
+      const datosActualizar = {
+        estadoTexto: textoFinal,
+        estadoConexion: tipoEstadoSeleccionado,
+        estadoPresencia: tipoEstadoSeleccionado
+      };
 
-      // Actualizar solo las propiedades de estado sin borrar la foto o el nombre
       if (typeof update !== "undefined") {
-        update(userRef, {
-          estadoTexto: textoMostrar,
-          estadoPresencia: tipoEstadoSeleccionado,
-          estadoConexion: tipoEstadoSeleccionado
-        });
-      } else {
-        set(ref(db, `usuarios/${usuarioActual.uid}/estadoTexto`), textoMostrar);
-        set(ref(db, `usuarios/${usuarioActual.uid}/estadoPresencia`), tipoEstadoSeleccionado);
+        update(ref(db, `usuarios/${usuarioActual.uid}`), datosActualizar);
+      } else if (typeof set !== "undefined") {
+        set(ref(db, `usuarios/${usuarioActual.uid}/estadoTexto`), textoFinal);
+        set(ref(db, `usuarios/${usuarioActual.uid}/estadoConexion`), tipoEstadoSeleccionado);
       }
     }
 
-    // 4. Cerrar el modal y mostrar aviso
+    // 4. Cerrar el modal y notificar
     modalEstado.classList.add("oculto");
     if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Estado guardado y sincronizado ✨");
+      mostrarAvisoPremium(`Perfil actualizado: ${nombreEstadoSeleccionado} ✨`);
     }
   });
 }
