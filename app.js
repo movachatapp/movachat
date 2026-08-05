@@ -3893,14 +3893,20 @@ function cargarContactosAprobados(usuarioActualUid) {
               </div>
             `;
 
-            // Evento de clic en la tarjeta del contacto (CON LIMPIEZA COMPLETA DE MEMORIA)
+            // Evento de clic en la tarjeta del contacto (REINICIA TARJETA Y CAMPANITA)
             itemContacto.addEventListener("click", (e) => {
               e.stopPropagation();
 
-              // 1. Resetear la memoria interna del contador a CERO
-              itemContacto.dataset.mensajesNoLeidos = "0";
+              const uidContacto = usuario.uid || uid;
 
-              // 2. Ocultar la marca visual de no leído y quitar el texto resaltado
+              // Guardar globalmente cuál chat está activo
+              contactoSeleccionado = uidContacto;
+              window.contactoActivoUid = uidContacto;
+
+              // 1. Limpiar la tarjeta local
+              itemContacto.dataset.mensajesNoLeidos = "0";
+              itemContacto.dataset.forzarReiniciar = "true";
+
               const badge = itemContacto.querySelector(".badge-chat-no-leido");
               const elemTexto = itemContacto.querySelector(".chat-texto");
 
@@ -3912,12 +3918,15 @@ function cargarContactosAprobados(usuarioActualUid) {
                 elemTexto.classList.remove("texto-resaltado");
               }
 
-              // 3. Marcar la tarjeta visualmente como seleccionada/activa
+              // 2. 🔔 RECALCULAR EL TOTAL DE LA CAMPANITA GENERAL
+              if (typeof actualizarCampanitaGlobal === "function") {
+                actualizarCampanitaGlobal();
+              }
+
+              // 3. Seleccionar tarjeta y abrir chat
               document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
               itemContacto.classList.add("activo");
 
-              // 4. Abrir la conversación privada
-              const uidContacto = usuario.uid || uid;
               const nombreContacto = usuario.nombre || "Usuario";
               const fotoContacto = usuario.fotoUrl || "";
 
@@ -3939,6 +3948,29 @@ function cargarContactosAprobados(usuarioActualUid) {
       console.error("Error al cargar la lista de contactos:", e);
     }
   });
+}
+
+// 🔔 FUNCIÓN GENERAL PARA ACTUALIZAR LA CAMPANITA DE NOTIFICACIONES
+function actualizarCampanitaGlobal() {
+  const badgeCampanita = document.getElementById("badge-notificaciones") || document.querySelector(".badge-notificacion");
+  if (!badgeCampanita) return;
+
+  let totalNoLeidos = 0;
+
+  // Sumar todos los números de las tarjetas de la lista
+  document.querySelectorAll(".contacto-item").forEach((tarjeta) => {
+    const num = parseInt(tarjeta.dataset.mensajesNoLeidos || "0", 10);
+    totalNoLeidos += num;
+  });
+
+  // Mostrar el valor real o esconderlo si es 0
+  if (totalNoLeidos > 0) {
+    badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos.toString();
+    badgeCampanita.classList.remove("oculto");
+  } else {
+    badgeCampanita.textContent = "0";
+    badgeCampanita.classList.add("oculto");
+  }
 }
 
 // 🚀 Función para contar mensajes no leídos REALES y sincronizar al abrir el chat
