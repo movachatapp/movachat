@@ -1,15 +1,12 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Corregida)
+// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v0.7)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v0.6';
+const CACHE_NAME = 'movachat-v0.8';
 
-// Archivos básicos para guardar en memoria del dispositivo
+// Solo guardamos recursos ESTÁTICOS (Imágenes, Fuentes, CSS base)
 const ASSETS_TO_CACHE = [
-  './',
-  './index.html',
   './styles.css',
-  './app.js',
   './manifest.json',
   './assets/logo/icon-192.png',
   './assets/logo/icon-512.png'
@@ -25,7 +22,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activar y borrar cachés viejos
+// 2. Activar y borrar cachés viejas
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -40,29 +37,28 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Carga de red segura (Evita errores de conversión Response)
+// 3. Estrategia RED PRIMERO para scripts (Evita congelar contadores en caché)
 self.addEventListener('fetch', (event) => {
-  // Ignorar peticiones externas (Firebase, Google APIs, etc.) y peticiones no-GET
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
+  // SI ES CÓDIGO JS O HTML: Pedir SIEMPRE la versión fresca de la red
+  if (event.request.url.includes('app.js') || event.request.url.includes('index.html')) {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Para otros archivos (imágenes/CSS), buscar en caché primero
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        // Verificar que la respuesta sea válida antes de guardarla
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return networkResponse;
-      })
-      .catch(() => {
-        // Si no hay red, entrega la versión guardada en caché
-        return caches.match(event.request);
-      })
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request);
+    })
   );
 });
 
@@ -93,7 +89,7 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// 5. Evento al tocar la notificación en el teléfono
+// 5. Evento al tocar la notificación
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
