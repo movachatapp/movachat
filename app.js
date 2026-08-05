@@ -1540,19 +1540,40 @@ if (inputBuscadorModal) {
   });
 }
 
+// 🎯 CONTROL ÚNICO Y DEFINITIVO DE FILTROS (Basado en tu HTML real)
 const botonesFiltros = document.querySelectorAll(".caja-filtros .filtro-btn");
+
 botonesFiltros.forEach((boton, index) => {
   boton.addEventListener("click", () => {
+    // 1. Cambiar estilo visual del botón activo
     botonesFiltros.forEach(b => b.classList.remove("activo"));
     boton.classList.add("activo");
-    if (index === 0) filtroActual = "todos";
-    if (index === 1) filtroActual = "no-leidos";
-    if (index === 2) filtroActual = "grupos";
-    filtrarYRenderizar();
+
+    // 2. Obtener todas las tarjetas de chat reales
+    const tarjetas = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+
+    tarjetas.forEach((tarjeta) => {
+      // Ignorar la tarjeta de "Mi Estado"
+      if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+
+      if (index === 0) {
+        // 🟢 Botón "Todos": Mostrar absolutamente todo
+        tarjeta.style.display = "flex";
+      } else if (index === 1) {
+        // 🔴 Botón "No leídos": Verificar si tiene mensajes pendientes
+        const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
+        const conteo = parseInt(tarjeta.dataset.mensajesNoLeidos || "0", 10);
+        const tieneNoLeidos = conteo > 0 || (badge && !badge.classList.contains("oculto") && badge.textContent.trim() !== "0");
+
+        if (tieneNoLeidos) {
+          tarjeta.style.display = "flex"; // Se queda visible
+        } else {
+          tarjeta.style.display = "none";  // Se oculta limpiamente sin borrar del HTML
+        }
+      }
+    });
   });
 });
-
-filtrarYRenderizar();
 
 function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
   // 1. APAGADO EN SEGUNDO PLANO (Corta timers y medios activos)
@@ -4396,31 +4417,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
-
-  // 3️⃣ Buscador/Filtro en tiempo real por texto
-  const inputBuscador = document.getElementById("input-buscador-chats");
-  if (inputBuscador) {
-    inputBuscador.addEventListener("input", (e) => {
-      const textoBusqueda = e.target.value.toLowerCase().trim();
-      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
-
-      tarjetasChat.forEach((tarjeta) => {
-        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
-
-        const contenidoTarjeta = tarjeta.textContent.toLowerCase();
-
-        if (contenidoTarjeta.includes(textoBusqueda)) {
-          tarjeta.style.display = "";
-        } else {
-          tarjeta.style.display = "none";
-        }
-      });
-    });
-  }
-
-  // 4️⃣ Filtros de pestañas: 'Todos' y 'No leídos'
-  const btnFiltroTodos = document.getElementById("filtro-todos");
-  const btnFiltroNoLeidos = document.getElementById("filtro-no-leidos");
 
   if (btnFiltroNoLeidos) {
     btnFiltroNoLeidos.addEventListener("click", () => {
