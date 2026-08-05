@@ -360,8 +360,14 @@ window.sonidosApp = window.sonidosApp || {
   grabando: new Audio("assets/sounds/grabando.mp3")
 };
 
-// 🔊 Función global para reproducir sonidos uno a la vez (detiene el anterior)
+// 🔊 Función global para reproducir sonidos uno a la vez (detiene el anterior y respeta silencio)
 window.reproducirSonido = function(tipo) {
+  // 🛡️ GUARDIA DE SEGURIDAD: Comprobar si el usuario apagó las notificaciones en Ajustes
+  const notifEstado = localStorage.getItem("movachat-notificaciones");
+  if (notifEstado === "desactivado") {
+    return; // Si el botón está en apagado, NO suena nada
+  }
+
   if (window.sonidosApp) {
     // 1. Apagamos cualquier sonido que se esté reproduciendo en este momento
     Object.keys(window.sonidosApp).forEach((clave) => {
