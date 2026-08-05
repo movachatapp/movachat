@@ -4445,38 +4445,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  if (btnFiltroNoLeidos) {
-    btnFiltroNoLeidos.addEventListener("click", () => {
-      btnFiltroTodos?.classList.remove("activo");
-      btnFiltroNoLeidos.classList.add("activo");
-
-      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
-
-      tarjetasChat.forEach((tarjeta) => {
-        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
-
-        const badge = tarjeta.querySelector(".badge-chat-no-leido");
-        const tieneNoLeidos = badge && parseInt(badge.textContent, 10) > 0;
-
-        if (tieneNoLeidos) {
-          tarjeta.style.display = "";
-        } else {
-          tarjeta.style.display = "none";
-        }
-      });
-    });
-  }
-
-  if (btnFiltroTodos) {
-    btnFiltroTodos.addEventListener("click", () => {
-      btnFiltroNoLeidos?.classList.remove("activo");
-      btnFiltroTodos.classList.add("activo");
-
-      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
-      tarjetasChat.forEach((tarjeta) => tarjeta.style.display = "");
-    });
-  }
-
   // 5️⃣ Conectar el interruptor de notificaciones con el permiso del navegador
   const toggleNotificaciones = document.getElementById("check-notificaciones");
   if (toggleNotificaciones) {
