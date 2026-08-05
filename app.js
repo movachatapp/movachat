@@ -3941,7 +3941,7 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// 🚀 Función para contar mensajes no leídos REALES y reproducir alertas
+// 🚀 Función para contar mensajes no leídos REALES y sincronizar al abrir el chat
 function escucharUltimoMensajeContacto(miUid, contactoUid) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -3961,11 +3961,11 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
       const keys = Object.keys(mensajes);
       const ultimoMsg = mensajes[keys[keys.length - 1]];
 
-      // 1. Mostrar el texto del último mensaje y la hora
+      // 1. Mostrar texto del último mensaje y la hora
       if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
 
-      // 2. Mover la tarjeta al inicio de la lista (debajo de "Mi Estado")
+      // 2. Mover la tarjeta al inicio de la lista
       const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
       if (tarjetaMiEstado && tarjetaMiEstado.nextSibling) {
         contenedorLista.insertBefore(tarjetaContacto, tarjetaMiEstado.nextSibling);
@@ -3973,14 +3973,15 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
         contenedorLista.prepend(tarjetaContacto);
       }
 
-      // 3. Comprobar si el chat privado con ESTE contacto está abierto
+      // 3. Verificar si el chat privado está abierto con ESTE usuario
       const pantallaChat = document.getElementById("pantalla-chat-privado");
       const estaChatAbierto = window.contactoActivoUid === contactoUid && 
                               pantallaChat && 
                               (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
       if (estaChatAbierto) {
-        // 🟢 CHAT ABIERTO: Reiniciar contador a CERO
+        // 🟢 CHAT ABIERTO: Limpiar contador y marcar el último mensaje como leído
+        tarjetaContacto.dataset.ultimoLeidoId = keys[keys.length - 1];
         tarjetaContacto.dataset.mensajesNoLeidos = "0";
         if (elemBadge) {
           elemBadge.textContent = "0";
@@ -3988,33 +3989,45 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
         }
         if (elemTexto) elemTexto.classList.remove("texto-resaltado");
       } else {
-        // 🔴 CHAT CERRADO: Calcular mensajes no leídos
+        // 🔴 CHAT CERRADO: Contar solo los mensajes recibidos después del último leído
         const esUltimoMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
 
         if (!esUltimoMio) {
-          // A. Contar cuántos mensajes en el historial son del contacto y no han sido leídos
-          let conteoNoLeidos = 0;
+          const ultimoLeidoId = tarjetaContacto.dataset.ultimoLeidoId || "";
+          let noLeidos = 0;
+          let contando = ultimoLeidoId === ""; // Si no hay marca, cuenta desde el inicio
+
           keys.forEach((k) => {
-            const m = mensajes[k];
-            const emisorMsg = m.emisor || m.emisorUid;
-            if (emisorMsg === contactoUid) {
-              conteoNoLeidos++;
+            if (k === ultimoLeidoId) {
+              contando = true; // Empezar a contar a partir de aquí
+              return;
+            }
+            if (contando) {
+              const m = mensajes[k];
+              const emisorMsg = m.emisor || m.emisorUid;
+              if (emisorMsg === contactoUid) {
+                noLeidos++;
+              }
             }
           });
 
-          // B. Actualizar el contador en pantalla
-          tarjetaContacto.dataset.mensajesNoLeidos = conteoNoLeidos.toString();
+          tarjetaContacto.dataset.mensajesNoLeidos = noLeidos.toString();
 
-          if (elemBadge) {
-            elemBadge.textContent = conteoNoLeidos > 99 ? "99+" : conteoNoLeidos.toString();
-            elemBadge.classList.remove("oculto");
-          }
-          if (elemTexto) elemTexto.classList.add("texto-resaltado");
+          if (noLeidos > 0) {
+            if (elemBadge) {
+              elemBadge.textContent = noLeidos > 99 ? "99+" : noLeidos.toString();
+              elemBadge.classList.remove("oculto");
+            }
+            if (elemTexto) elemTexto.classList.add("texto-resaltado");
 
-          // C. 🔔 ACTIVAR SONIDO DE NOTIFICACIÓN (Si el mensaje acaba de llegar en los últimos 4 segundos)
-          const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
-          if (esReciente && typeof window.reproducirSonido === "function") {
-            window.reproducirSonido("recibido");
+            // 🔔 Reproducir sonido si el mensaje es reciente (menos de 4 segundos)
+            const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
+            if (esReciente && typeof window.reproducirSonido === "function") {
+              window.reproducirSonido("recibido");
+            }
+          } else {
+            if (elemBadge) elemBadge.classList.add("oculto");
+            if (elemTexto) elemTexto.classList.remove("texto-resaltado");
           }
         }
       }
