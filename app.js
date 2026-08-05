@@ -4084,7 +4084,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
   });
 }
 
-// 🟢 Función unificada adaptada a tus selectores y limpia de duplicados
+// 🟢 Función unificada adaptada a tus selectores y limpia de duplicados (CON LIMPIEZA DE CONTADOR Y CAMPANITA)
 function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   let uidTarget, nombreTarget, fotoTarget;
 
@@ -4100,14 +4100,41 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
 
   if (!uidTarget) return;
 
+  // Registrar el UID del contacto que estamos viendo
   window.contactoActivoUid = uidTarget;
+  if (typeof contactoSeleccionado !== "undefined") {
+    contactoSeleccionado = uidTarget;
+  }
 
-  // 1. Limpiar pantalla de mensajes previa para evitar "parpadeo" de la conversación anterior
-  if (historialMensajes) {
+  // 1. 🧹 LIMPIAR EL CONTADOR Y EL BADGE DE LA TARJETA EN LA LISTA
+  const tarjetaContacto = document.getElementById(`tarjeta-chat-${uidTarget}`);
+  if (tarjetaContacto) {
+    tarjetaContacto.dataset.mensajesNoLeidos = "0";
+    tarjetaContacto.dataset.forzarReiniciar = "true";
+
+    const badge = tarjetaContacto.querySelector(".badge-chat-no-leido");
+    const elemTexto = tarjetaContacto.querySelector(".chat-texto");
+
+    if (badge) {
+      badge.textContent = "0";
+      badge.classList.add("oculto");
+    }
+    if (elemTexto) {
+      elemTexto.classList.remove("texto-resaltado");
+    }
+  }
+
+  // 2. 🔔 RECALCULAR LA CAMPANITA GLOBAL DE NOTIFICACIONES
+  if (typeof actualizarCampanitaGlobal === "function") {
+    actualizarCampanitaGlobal();
+  }
+
+  // 3. Limpiar pantalla de mensajes previa para evitar "parpadeo" de la conversación anterior
+  if (typeof historialMensajes !== "undefined" && historialMensajes) {
     historialMensajes.innerHTML = "";
   }
 
-  // 2. Actualizar datos en la cabecera del chat privado
+  // 4. Actualizar datos en la cabecera del chat privado
   const elemNombre = document.querySelector(".amigo-nombre-chat");
   const elemFoto = document.getElementById("avatar-cabecera-privada");
 
@@ -4122,29 +4149,29 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // 3. Ocultar menús flotantes abiertos
+  // 5. Ocultar menús flotantes abiertos
   const menuTarjetas = document.getElementById("menu-tarjetas-chat");
   if (menuTarjetas) menuTarjetas.classList.add("oculto");
 
-  // 4. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
-  if (encabezadoGlobal) encabezadoGlobal.style.display = "none";
-  if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
+  // 6. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
+  if (typeof encabezadoGlobal !== "undefined" && encabezadoGlobal) encabezadoGlobal.style.display = "none";
+  if (typeof menuFlotanteGlobal !== "undefined" && menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
 
   const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
   if (btnFlotanteContacto) btnFlotanteContacto.style.display = "none";
 
-  if (pantallaChatPrivado) {
+  if (typeof pantallaChatPrivado !== "undefined" && pantallaChatPrivado) {
     pantallaChatPrivado.classList.add("pantalla-completa");
     if (typeof switchPantalla === "function") {
       switchPantalla(pantallaChatPrivado, pantallaChats, pantallaBienvenida, pantallaPerfil);
     } else {
-      if (pantallaChats) pantallaChats.style.display = "none";
+      if (typeof pantallaChats !== "undefined" && pantallaChats) pantallaChats.style.display = "none";
       pantallaChatPrivado.style.display = "flex";
     }
   }
 
-  // 5. Conectar Firebase de forma limpia
-  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  // 7. Conectar Firebase de forma limpia
+  const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
   if (miUid && uidTarget && typeof escucharMensajesChat === "function") {
     const chatId = obtenerChatId(miUid, uidTarget);
     escucharMensajesChat(chatId);
