@@ -3603,6 +3603,18 @@ function mostrarToast(mensaje) {
   }, 2500);
 }
 
+// 🔊 Función para el sonido de mensaje recibido (Respeta el botón de silenciar)
+function reproducirSonidoRecibido() {
+  const notifEstado = localStorage.getItem("movachat-notificaciones");
+  if (notifEstado === "desactivado") return; // Si el botón está en apagado, NO suena
+
+  const audioRecibido = document.getElementById("sonido-recibido");
+  if (audioRecibido) {
+    audioRecibido.currentTime = 0; // Detiene el sonido anterior y lo inicia desde 0
+    audioRecibido.play().catch((e) => console.log("Audio bloqueado por el navegador:", e));
+  }
+}
+
 // Función global para alternar visibilidad de contraseña
 window.togglePasswordVisibility = function () {
   const inputPass = document.getElementById("auth-password");
