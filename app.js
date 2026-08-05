@@ -2169,7 +2169,6 @@ if (btnCampanita) {
 // 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
 // ========================================================
 window.actualizarBadgesNotificaciones = function() {
-  // Apuntamos al ID exacto del HTML: 'badge-campanita'
   const elemBadgeCampanita = document.getElementById("badge-campanita");
   const elemBadgeFiltroNoLeidos = document.querySelector(".caja-filtros .badge-filtro");
 
@@ -2181,11 +2180,19 @@ window.actualizarBadgesNotificaciones = function() {
 
     // Acepta ambas clases posibles de globos contadores
     const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
-    const esVisible = badge && !badge.classList.contains("oculto");
-
-    if (esVisible) {
+    
+    if (badge) {
       const num = parseInt(badge.textContent.trim(), 10) || 0;
-      totalNoLeidos += num;
+      
+      // Si el número es 0, ocultar el globo de la tarjeta
+      if (num === 0) {
+        badge.classList.add("oculto");
+      }
+      
+      const esVisible = !badge.classList.contains("oculto");
+      if (esVisible && num > 0) {
+        totalNoLeidos += num;
+      }
     }
   });
 
@@ -2200,7 +2207,7 @@ window.actualizarBadgesNotificaciones = function() {
     }
   }
 
-  // 2. Actualizar el botón de filtro 'No leídos'
+  // 2. Actualizar el número del botón de filtro 'No leídos'
   if (elemBadgeFiltroNoLeidos) {
     elemBadgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
   }
@@ -2224,36 +2231,26 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
 
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
-    const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido");
+    const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
 
     if (snapshot.exists()) {
       const mensajes = snapshot.val();
       const keys = Object.keys(mensajes);
-      const ultimoMsgKey = keys[keys.length - 1]; // ID del último mensaje
+      const ultimoMsgKey = keys[keys.length - 1];
       const ultimoMsg = mensajes[ultimoMsgKey];
 
-      // Mostrar vista previa de texto y hora
+      // Actualizar texto y hora en la tarjeta
       if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
 
-      // Reordenar tarjeta al inicio de la lista
-      const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
-      if (tarjetaMiEstado && tarjetaMiEstado.nextSibling) {
-        contenedorLista.insertBefore(tarjetaContacto, tarjetaMiEstado.nextSibling);
-      } else {
-        contenedorLista.prepend(tarjetaContacto);
-      }
-
-      // Verificar si el chat está abierto o si se acaba de hacer clic
+      // Verificar si el chat está abierto en pantalla
       const pantallaChat = document.getElementById("pantalla-chat-privado");
-      const estaChatAbierto = (window.contactoActivoUid === contactoUid || (typeof contactoSeleccionado !== "undefined" && contactoSeleccionado === contactoUid)) && 
-                              pantallaChat && 
-                              (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
+      const estaAbierto = (window.contactoActivoUid === contactoUid) && 
+                          pantallaChat && 
+                          (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
-      const forzarReiniciar = tarjetaContacto.dataset.forzarReiniciar === "true";
-
-      if (estaChatAbierto || forzarReiniciar) {
-        // 🟢 CHAT ABIERTO: Activar candado, ocultar badge y resetear contador
+      if (estaAbierto || tarjetaContacto.dataset.forzarReiniciar === "true") {
+        // Chat Abierto: Poner en 0 y guardar la clave
         tarjetaContacto.dataset.ultimoLeidoKey = ultimoMsgKey;
         tarjetaContacto.dataset.mensajesNoLeidos = "0";
         tarjetaContacto.dataset.forzarReiniciar = "false";
@@ -2264,42 +2261,37 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
         }
         if (elemTexto) elemTexto.classList.remove("texto-resaltado");
 
-        // Recalcular la campanita
-        window.actualizarBadgesNotificaciones();
-
       } else {
-        // 🔴 CHAT CERRADO: Contar únicamente mensajes nuevos después del candado
-        const esUltimoMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
+        // Chat Cerrado: Contar solo los mensajes nuevos que no envié yo
+        const esMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
 
-        if (!esUltimoMio) {
+        if (!esMio) {
           const ultimoLeidoKey = tarjetaContacto.dataset.ultimoLeidoKey || "";
-          let conteoNuevos = 0;
-          let empezarAContar = (ultimoLeidoKey === ""); 
+          let nuevos = 0;
+          let empezarAContar = (ultimoLeidoKey === "");
 
-          keys.forEach((key) => {
-            if (key === ultimoLeidoKey) {
+          keys.forEach((k) => {
+            if (k === ultimoLeidoKey) {
               empezarAContar = true;
               return;
             }
             if (empezarAContar) {
-              const m = mensajes[key];
-              const emisor = m.emisor || m.emisorUid;
-              if (emisor === contactoUid) {
-                conteoNuevos++;
-              }
+              const m = mensajes[k];
+              const idEmisor = m.emisor || m.emisorUid;
+              if (idEmisor === contactoUid) nuevos++;
             }
           });
 
-          tarjetaContacto.dataset.mensajesNoLeidos = conteoNuevos.toString();
+          tarjetaContacto.dataset.mensajesNoLeidos = nuevos.toString();
 
-          if (conteoNuevos > 0) {
+          if (nuevos > 0) {
             if (elemBadge) {
-              elemBadge.textContent = conteoNuevos > 99 ? "99+" : conteoNuevos.toString();
+              elemBadge.textContent = nuevos > 99 ? "99+" : nuevos.toString();
               elemBadge.classList.remove("oculto");
             }
             if (elemTexto) elemTexto.classList.add("texto-resaltado");
 
-            // Sonar alerta si el mensaje es reciente
+            // Sonar alerta si el mensaje llegó en los últimos 4 segundos
             const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
             if (esReciente && typeof window.reproducirSonido === "function") {
               window.reproducirSonido("recibido");
@@ -2308,10 +2300,12 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
             if (elemBadge) elemBadge.classList.add("oculto");
             if (elemTexto) elemTexto.classList.remove("texto-resaltado");
           }
-
-          // Recalcular la campanita
-          window.actualizarBadgesNotificaciones();
         }
+      }
+
+      // Sincronizar la campanita
+      if (typeof window.actualizarBadgesNotificaciones === "function") {
+        window.actualizarBadgesNotificaciones();
       }
     }
   });
@@ -4014,7 +4008,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     tarjetaContacto.dataset.mensajesNoLeidos = "0";
     tarjetaContacto.dataset.forzarReiniciar = "true";
 
-    const badge = tarjetaContacto.querySelector(".badge-chat-no-leido");
+    const badge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
 
     if (badge) {
