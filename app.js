@@ -424,75 +424,20 @@ function cargarDatosLocales() {
 }
 cargarDatosLocales();
 
+// 🟢 FUNCIÓN SEGURA: Mantiene tu lista real de Firebase intacta
 function filtrarYRenderizar() {
+  const contenedorChats = document.querySelector(".lista-chats");
   if (!contenedorChats) return;
-  const textoBusqueda = inputBuscador ? inputBuscador.value.toLowerCase().trim() : "";
-  contenedorChats.innerHTML = "";
 
-  // 1. Calcular total real de mensajes no leídos
-  let totalNoLeidos = 0;
-
-  // Contar no leídos de los chats dinámicos
-  chatsFalsosData.forEach(chat => {
-    if (chat.unread) totalNoLeidos++;
-  });
-
-  // 2. Renderizar tarjetas HTML originales
-  chatsOriginalesHTML.forEach((tarjeta) => {
-    const nombreElem = tarjeta.querySelector(".chat-nombre");
-    const nombre = nombreElem ? nombreElem.textContent.toLowerCase() : "";
-    const tieneBadge = tarjeta.querySelector(".badge-mensaje") !== null;
-
-    let pasaFiltro = false;
-    if (filtroActual === "todos") pasaFiltro = true;
-    if (filtroActual === "no-leidos" && tieneBadge) pasaFiltro = true;
-
-    if (pasaFiltro && nombre.includes(textoBusqueda)) {
-      contenedorChats.appendChild(tarjeta);
-    }
-  });
-
-  // 3. Renderizar chats de la base de datos (chatsFalsosData)
-  chatsFalsosData.forEach((chat) => {
-    let pasaFiltro = false;
-    if (filtroActual === "todos") pasaFiltro = true;
-    if (filtroActual === "no-leidos" && chat.unread) pasaFiltro = true;
-
-    const coincideBusqueda = chat.nombre.toLowerCase().includes(textoBusqueda);
-
-    if (pasaFiltro && coincideBusqueda) {
-      const badgeHTML = chat.unread ? `<div class="badge-mensaje">1</div>` : "";
-      const avatarHTML = chat.group
-        ? `<div class="avatar-grupo"><i data-lucide="users"></i></div>`
-        : `<img src="https://i.pravatar.cc/150?img=${chat.img}" alt="${chat.nombre}">`;
-
-      // 🚀 Agregamos data-uid para que al hacer clic sepa a quién abrir en Firebase
-      const tarjetaFalsa = `
-        <div class="tarjeta-chat" data-uid="${chat.uid || ''}">
-          <div class="chat-avatar-caja">
-            ${avatarHTML}
-            ${chat.group ? "" : `<span class="punto-online-chat" style="--led-color: ${chat.led || '#00f2fe'};"></span>`}
-          </div>
-          <div class="chat-info">
-            <div class="chat-cabecera">
-              <h4 class="chat-nombre">${chat.nombre}</h4>
-              <span class="chat-hora ${chat.unread ? 'texto-cyan' : ''}">12:00 PM</span>
-            </div>
-            <div class="chat-mensaje-caja">
-              <p class="chat-texto ${chat.unread ? 'texto-resaltado' : ''}">${chat.msg}</p>
-              ${badgeHTML}
-            </div>
-          </div>
-        </div>`;
-      contenedorChats.insertAdjacentHTML('beforeend', tarjetaFalsa);
-    }
-  });
-
-  // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de 'contenedorChats'
-  if (window.lucide) {
-    window.lucide.createIcons({
-      targets: [contenedorChats]
+  // Actualizar el número del botón de filtro basándonos en los chats reales de Firebase
+  const badgeFiltro = document.querySelector(".caja-filtros .badge-filtro");
+  if (badgeFiltro) {
+    let totalNoLeidos = 0;
+    document.querySelectorAll("#lista-chats-principal .badge-chat-no-leido:not(.oculto)").forEach((badge) => {
+      const num = parseInt(badge.textContent.trim(), 10) || 0;
+      totalNoLeidos += num;
     });
+    badgeFiltro.textContent = totalNoLeidos.toString();
   }
 }
 
