@@ -1788,6 +1788,7 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
+// 💡 FUNCIÓN CORREGIDA: Actualiza solo los leds de la cabecera del usuario (sin afectar a otros contactos)
 function actualizarDobleLedCabecera(pantallaActual) {
   const ledSuperior = document.getElementById("led-enfoque-app");
   const ledInferior = document.getElementById("led-presencia-base");
@@ -1801,46 +1802,31 @@ function actualizarDobleLedCabecera(pantallaActual) {
     colorEstadoActual = window.getComputedStyle(ledPerfil).backgroundColor;
   }
 
-  let esOcupado = colorEstadoActual.includes("255, 75, 43") || colorEstadoActual === "rgb(255, 75, 43)" || colorEstadoActual === "#ff4b2b";
+  // Detectar el color propio de tu perfil
+  let esOcupado = colorEstadoActual.includes("255, 75, 43") || colorEstadoActual === "rgb(255, 75, 43)" || colorEstadoActual === "#ff4b2b" || colorEstadoActual.includes("239, 68, 68");
   let esInvisible = colorEstadoActual.includes("136, 136, 136") || colorEstadoActual === "rgb(136, 136, 136)" || colorEstadoActual === "#888888";
 
-  const todosLosLedsBandeja = document.querySelectorAll(".lista-chats .punto-online-chat");
-
+  // 1. Si tu estado es INVISIBLE
   if (esInvisible) {
     ledInferior.style.setProperty("background-color", "#888888", "important");
-    ledInferior.style.setProperty("--led-color", "#888888", "important");
     ledInferior.style.boxShadow = "none";
 
     ledSuperior.style.setProperty("background-color", "#888888", "important");
     ledSuperior.style.boxShadow = "none";
-
-    todosLosLedsBandeja.forEach(led => {
-      led.style.setProperty("--led-color", "#888888", "important");
-      led.style.boxShadow = "none";
-    });
     return;
   }
 
+  // 2. Si tu estado es OCUPADO
   if (esOcupado) {
-    ledInferior.style.setProperty("background-color", "#ff4b2b", "important");
-    ledInferior.style.setProperty("--led-color", "#ff4b2b", "important");
-    ledInferior.style.boxShadow = "0 0 8px #ff4b2b";
+    ledInferior.style.setProperty("background-color", "#ef4444", "important");
+    ledInferior.style.boxShadow = "0 0 8px #ef4444";
 
-    ledSuperior.style.setProperty("background-color", "#ff4b2b", "important");
-    ledSuperior.style.boxShadow = "0 0 8px #ff4b2b";
-
-    todosLosLedsBandeja.forEach(led => {
-      led.style.setProperty("--led-color", "#ff4b2b", "important");
-      led.style.boxShadow = "0 0 8px #ff4b2b";
-    });
+    ledSuperior.style.setProperty("background-color", "#ef4444", "important");
+    ledSuperior.style.boxShadow = "0 0 8px #ef4444";
     return;
   }
 
-  todosLosLedsBandeja.forEach(led => {
-    led.style.setProperty("--led-color", "#00f2fe", "important");
-    led.style.boxShadow = "0 0 5px #00f2fe";
-  });
-
+  // 3. Estado DISPONIBLE (Default en cabecera)
   if (pantallaActual === "perfil") {
     ledInferior.style.setProperty("background-color", "rgba(255, 255, 255, 0.05)", "important");
     ledInferior.style.boxShadow = "none";
@@ -2068,7 +2054,7 @@ if (btnCerrarQr && modalQr) {
   });
 }
 
-// --- 3. EDITAR ESTADO DE PERFIL Y LED ---
+// --- 3. EDITAR ESTADO DE PERFIL Y LED (CONECTADO A FIREBASE) ---
 const btnEditarEstado = document.getElementById("btn-editar-estado");
 const modalEstado = document.getElementById("modal-estado");
 const btnCerrarModal = document.getElementById("btn-cerrar-modal");
@@ -2078,6 +2064,7 @@ const textoEstadoPerfil = document.querySelector(".texto-estado");
 const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
 const botonesLed = document.querySelectorAll(".selector-led .btn-led");
 let colorLedSeleccionado = "#00f2fe";
+let tipoEstadoSeleccionado = "online"; // 'online', 'ocupado' o 'offline'
 
 if (btnEditarEstado && modalEstado) {
   btnEditarEstado.addEventListener("click", () => {
@@ -2092,30 +2079,67 @@ if (btnCerrarModal && modalEstado) {
   });
 }
 
+// Escuchar la selección de botones LED en el modal
 botonesLed.forEach(boton => {
   boton.addEventListener("click", () => {
     botonesLed.forEach(b => b.classList.remove("activo"));
     boton.classList.add("activo");
-    colorLedSeleccionado = boton.style.getPropertyValue("--led-color").trim();
+
+    // Guardar el color del LED
+    colorLedSeleccionado = boton.style.getPropertyValue("--led-color").trim() || "#00f2fe";
+
+    // Traducir el color seleccionado al tipo de estado para Firebase
+    if (colorLedSeleccionado === "#ef4444") {
+      tipoEstadoSeleccionado = "ocupado";
+    } else if (colorLedSeleccionado === "#888888") {
+      tipoEstadoSeleccionado = "offline";
+    } else {
+      tipoEstadoSeleccionado = "online";
+    }
   });
 });
 
 if (btnGuardarEstado && modalEstado) {
   btnGuardarEstado.addEventListener("click", () => {
-    if (inputNuevoEstado && textoEstadoPerfil) {
-      const nuevaFrase = inputNuevoEstado.value.trim();
-      if (nuevaFrase !== "") {
-        textoEstadoPerfil.textContent = nuevaFrase;
-      } else {
-        textoEstadoPerfil.textContent = "Toca para añadir estado...";
-      }
+    const nuevaFrase = inputNuevoEstado ? inputNuevoEstado.value.trim() : "";
+    const textoMostrar = nuevaFrase !== "" ? nuevaFrase : "En línea";
+
+    // 1. Actualizar la interfaz local
+    if (textoEstadoPerfil) {
+      textoEstadoPerfil.textContent = textoMostrar;
     }
     if (ledPerfil) {
       ledPerfil.style.backgroundColor = colorLedSeleccionado;
       ledPerfil.style.boxShadow = `0 0 10px ${colorLedSeleccionado}`;
     }
+
+    // 2. Guardar en la memoria local del teléfono
+    localStorage.setItem("movachat-estado-texto", textoMostrar);
+    localStorage.setItem("movachat-estado-tipo", tipoEstadoSeleccionado);
+
+    // 3. Enviar los cambios a Firebase para que otros usuarios los vean
+    const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+    if (usuarioActual && typeof db !== "undefined" && typeof ref !== "undefined" && typeof set !== "undefined") {
+      const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
+
+      // Actualizar solo las propiedades de estado sin borrar la foto o el nombre
+      if (typeof update !== "undefined") {
+        update(userRef, {
+          estadoTexto: textoMostrar,
+          estadoPresencia: tipoEstadoSeleccionado,
+          estadoConexion: tipoEstadoSeleccionado
+        });
+      } else {
+        set(ref(db, `usuarios/${usuarioActual.uid}/estadoTexto`), textoMostrar);
+        set(ref(db, `usuarios/${usuarioActual.uid}/estadoPresencia`), tipoEstadoSeleccionado);
+      }
+    }
+
+    // 4. Cerrar el modal y mostrar aviso
     modalEstado.classList.add("oculto");
-    mostrarAvisoPremium("Estado de conexión actualizado en tu perfil.");
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Estado guardado y sincronizado ✨");
+    }
   });
 }
 
@@ -3802,10 +3826,23 @@ function cargarContactosAprobados(usuarioActualUid) {
               ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
               : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
 
+            // 🎨 Calculemos el color del puntito LED según el estado de ESTE usuario
+            const estadoDelContacto = usuario.estadoConexion || usuario.estadoPresencia || usuario.estado || "online";
+            let colorLed = "#00f2fe"; // Azul Cyan (En línea / Disponible por defecto)
+            let sombraLed = "0 0 8px #00f2fe";
+
+            if (estadoDelContacto === "ocupado") {
+              colorLed = "#ef4444"; // Rojo (Ocupado)
+              sombraLed = "0 0 8px #ef4444";
+            } else if (estadoDelContacto === "offline" || estadoDelContacto === "invisible") {
+              colorLed = "#888888"; // Gris (Invisible / Desconectado)
+              sombraLed = "0 0 8px #888888";
+            }
+
             itemContacto.innerHTML = `
               <div class="chat-avatar-caja">
                 ${foto}
-                <span class="punto-online-chat"></span>
+                <span class="punto-online-chat" style="background-color: ${colorLed}; box-shadow: ${sombraLed};"></span>
               </div>
               <div class="chat-info">
                 <div class="chat-cabecera">
@@ -3813,7 +3850,7 @@ function cargarContactosAprobados(usuarioActualUid) {
                   <span class="chat-hora">--:--</span>
                 </div>
                 <div class="chat-mensaje-caja">
-                  <p class="chat-texto">${usuario.estado || "¡Disponible en MovaChat!"}</p>
+                  <p class="chat-texto">${usuario.estadoTexto || usuario.estado || "¡Disponible en MovaChat!"}</p>
                   <div class="badge-mensaje badge-chat-no-leido oculto">0</div>
                 </div>
               </div>
@@ -3845,7 +3882,9 @@ function cargarContactosAprobados(usuarioActualUid) {
             contenedorContactos.appendChild(itemContacto);
 
             // 🚀 Escuchar el último mensaje de este contacto para marcar "No leído"
-            escucharUltimoMensajeContacto(usuarioActualUid, uid);
+            if (typeof escucharUltimoMensajeContacto === "function") {
+              escucharUltimoMensajeContacto(usuarioActualUid, uid);
+            }
           }
         });
       }
