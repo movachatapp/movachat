@@ -4361,3 +4361,29 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// ========================================================
+// 🥷 CONEXIÓN REAL DEL MODO SIGILO A FIREBASE
+// ========================================================
+function actualizarEstadoEnFirebase(nuevoEstado) {
+  // 1. Obtener el usuario que tiene la sesión abierta
+  const usuarioActual = window.auth ? window.auth.currentUser : null;
+  if (!usuarioActual) {
+    console.warn("⚠️ No se encontró usuario activo para actualizar estado.");
+    return;
+  }
+
+  // 2. Si usamos Realtime Database
+  if (window.db && window.ref && window.set) {
+    const estadoRef = window.ref(window.db, `usuarios/${usuarioActual.uid}/estado`);
+    window.set(estadoRef, nuevoEstado)
+      .then(() => console.log(`✅ Estado actualizado en Firebase: ${nuevoEstado}`))
+      .catch((error) => console.error("❌ Error al actualizar estado:", error));
+  } 
+  // 3. Si usamos Firestore
+  else if (window.db && window.doc && window.updateDoc) {
+    const userDocRef = window.doc(window.db, "usuarios", usuarioActual.uid);
+    window.updateDoc(userDocRef, { estado: nuevoEstado })
+      .then(() => console.log(`✅ Estado actualizado en Firestore: ${nuevoEstado}`))
+      .catch((error) => console.error("❌ Error al actualizar estado:", error));
+  }
+}
