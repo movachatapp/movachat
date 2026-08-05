@@ -3973,7 +3973,7 @@ function actualizarCampanitaGlobal() {
   }
 }
 
-// 🚀 Función para contar mensajes no leídos REALES y sincronizar al abrir el chat
+// 🚀 Función para contar mensajes no leídos con Candado de Lectura (Evita acumulaciones y corrige la campanita)
 function escucharUltimoMensajeContacto(miUid, contactoUid) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -3991,13 +3991,14 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
     if (snapshot.exists()) {
       const mensajes = snapshot.val();
       const keys = Object.keys(mensajes);
-      const ultimoMsg = mensajes[keys[keys.length - 1]];
+      const ultimoMsgKey = keys[keys.length - 1]; // Identificador único del último mensaje
+      const ultimoMsg = mensajes[ultimoMsgKey];
 
-      // 1. Mostrar texto del último mensaje y la hora
+      // 1. Mostrar texto del último mensaje y la hora en la lista de chats
       if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
 
-      // 2. Mover la tarjeta al inicio de la lista
+      // 2. Mover la tarjeta al inicio de la lista (justo debajo de "Mi Estado")
       const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
       if (tarjetaMiEstado && tarjetaMiEstado.nextSibling) {
         contenedorLista.insertBefore(tarjetaContacto, tarjetaMiEstado.nextSibling);
@@ -4005,54 +4006,65 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
         contenedorLista.prepend(tarjetaContacto);
       }
 
-      // 3. Verificar si el chat privado está abierto con ESTE usuario
+      // 3. Comprobar si el chat privado está abierto o si el usuario acaba de tocar la tarjeta
       const pantallaChat = document.getElementById("pantalla-chat-privado");
-      const estaChatAbierto = window.contactoActivoUid === contactoUid && 
+      const estaChatAbierto = (window.contactoActivoUid === contactoUid || contactoSeleccionado === contactoUid) && 
                               pantallaChat && 
                               (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
-      if (estaChatAbierto) {
-        // 🟢 CHAT ABIERTO: Limpiar contador y marcar el último mensaje como leído
-        tarjetaContacto.dataset.ultimoLeidoId = keys[keys.length - 1];
+      const forzarReiniciar = tarjetaContacto.dataset.forzarReiniciar === "true";
+
+      if (estaChatAbierto || forzarReiniciar) {
+        // 🟢 SI EL CHAT ESTÁ ABIERTO: Guardar el candado del último mensaje leído y Poner a CERO
+        tarjetaContacto.dataset.ultimoLeidoKey = ultimoMsgKey;
         tarjetaContacto.dataset.mensajesNoLeidos = "0";
+        tarjetaContacto.dataset.forzarReiniciar = "false";
+
         if (elemBadge) {
           elemBadge.textContent = "0";
           elemBadge.classList.add("oculto");
         }
         if (elemTexto) elemTexto.classList.remove("texto-resaltado");
+
+        // Actualizar la campanita superior
+        if (typeof actualizarCampanitaGlobal === "function") {
+          actualizarCampanitaGlobal();
+        }
+
       } else {
-        // 🔴 CHAT CERRADO: Contar solo los mensajes recibidos después del último leído
+        // 🔴 SI EL CHAT ESTÁ CERRADO: Contar únicamente los mensajes recibidos después del candado
         const esUltimoMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
 
         if (!esUltimoMio) {
-          const ultimoLeidoId = tarjetaContacto.dataset.ultimoLeidoId || "";
-          let noLeidos = 0;
-          let contando = ultimoLeidoId === ""; // Si no hay marca, cuenta desde el inicio
+          const ultimoLeidoKey = tarjetaContacto.dataset.ultimoLeidoKey || "";
+          let conteoNuevos = 0;
+          let empezarAContar = (ultimoLeidoKey === ""); 
 
-          keys.forEach((k) => {
-            if (k === ultimoLeidoId) {
-              contando = true; // Empezar a contar a partir de aquí
+          keys.forEach((key) => {
+            if (key === ultimoLeidoKey) {
+              empezarAContar = true; // Empieza a contar únicamente a partir del mensaje posterior
               return;
             }
-            if (contando) {
-              const m = mensajes[k];
-              const emisorMsg = m.emisor || m.emisorUid;
-              if (emisorMsg === contactoUid) {
-                noLeidos++;
+            if (empezarAContar) {
+              const m = mensajes[key];
+              const emisor = m.emisor || m.emisorUid;
+              if (emisor === contactoUid) {
+                conteoNuevos++;
               }
             }
           });
 
-          tarjetaContacto.dataset.mensajesNoLeidos = noLeidos.toString();
+          // Guardar el número en la tarjeta
+          tarjetaContacto.dataset.mensajesNoLeidos = conteoNuevos.toString();
 
-          if (noLeidos > 0) {
+          if (conteoNuevos > 0) {
             if (elemBadge) {
-              elemBadge.textContent = noLeidos > 99 ? "99+" : noLeidos.toString();
+              elemBadge.textContent = conteoNuevos > 99 ? "99+" : conteoNuevos.toString();
               elemBadge.classList.remove("oculto");
             }
             if (elemTexto) elemTexto.classList.add("texto-resaltado");
 
-            // 🔔 Reproducir sonido si el mensaje es reciente (menos de 4 segundos)
+            // Reproducir sonido solo si el mensaje tiene menos de 4 segundos de haber llegado
             const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
             if (esReciente && typeof window.reproducirSonido === "function") {
               window.reproducirSonido("recibido");
@@ -4060,6 +4072,11 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
           } else {
             if (elemBadge) elemBadge.classList.add("oculto");
             if (elemTexto) elemTexto.classList.remove("texto-resaltado");
+          }
+
+          // Actualizar la campanita superior
+          if (typeof actualizarCampanitaGlobal === "function") {
+            actualizarCampanitaGlobal();
           }
         }
       }
