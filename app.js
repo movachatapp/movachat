@@ -2141,20 +2141,46 @@ if (toggleNotificaciones) {
   toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
 }
 
+// 🔔 EVENTO AL TOCAR LA CAMPANITA: Activa el filtro "No leídos" en la interfaz
+if (btnCampanita) {
+  btnCampanita.onclick = () => {
+    const botonesFiltro = document.querySelectorAll(".caja-filtros .filtro-btn");
+    const btnTodos = botonesFiltro[0];
+    const btnNoLeidos = botonesFiltro[1];
+
+    if (btnNoLeidos) {
+      if (btnTodos) btnTodos.classList.remove("activo");
+      btnNoLeidos.classList.add("activo");
+
+      // Simular la filtración de la lista
+      document.querySelectorAll("#lista-chats-principal .tarjeta-chat").forEach((tarjeta) => {
+        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+
+        const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
+        const tieneNoLeidos = badge && !badge.classList.contains("oculto") && parseInt(badge.textContent.trim(), 10) > 0;
+
+        tarjeta.style.display = tieneNoLeidos ? "flex" : "none";
+      });
+    }
+  };
+}
+
 // ========================================================
 // 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
 // ========================================================
 window.actualizarBadgesNotificaciones = function() {
-  const badgeCampanita = document.getElementById("badge-notificaciones") || document.querySelector(".badge-notificacion") || document.getElementById("badgeCampanita");
-  const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
+  // Apuntamos al ID exacto del HTML: 'badge-campanita'
+  const elemBadgeCampanita = document.getElementById("badge-campanita");
+  const elemBadgeFiltroNoLeidos = document.querySelector(".caja-filtros .badge-filtro");
 
   let totalNoLeidos = 0;
 
-  // Recorrer todas las tarjetas reales de chat
+  // Recorrer todas las tarjetas reales de chat en pantalla
   document.querySelectorAll("#lista-chats-principal .tarjeta-chat").forEach((tarjeta) => {
     if (tarjeta.id === "tarjeta-mi-estado-propio") return;
 
-    const badge = tarjeta.querySelector(".badge-chat-no-leido");
+    // Acepta ambas clases posibles de globos contadores
+    const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
     const esVisible = badge && !badge.classList.contains("oculto");
 
     if (esVisible) {
@@ -2163,26 +2189,25 @@ window.actualizarBadgesNotificaciones = function() {
     }
   });
 
-  // Actualizar la campanita superior
-  if (badgeCampanita) {
+  // 1. Actualizar el contador rojo de la Campanita superior
+  if (elemBadgeCampanita) {
     if (totalNoLeidos > 0) {
-      badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos.toString();
-      badgeCampanita.classList.remove("oculto");
+      elemBadgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos.toString();
+      elemBadgeCampanita.classList.remove("oculto");
     } else {
-      badgeCampanita.textContent = "0";
-      badgeCampanita.classList.add("oculto");
+      elemBadgeCampanita.textContent = "0";
+      elemBadgeCampanita.classList.add("oculto");
     }
   }
 
-  // Actualizar el botón de filtro 'No leídos'
-  if (badgeFiltroNoLeidos) {
-    badgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
+  // 2. Actualizar el botón de filtro 'No leídos'
+  if (elemBadgeFiltroNoLeidos) {
+    elemBadgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
   }
 };
 
-// Crear alias para que ambas llamadas funcionen igual de bien
+// Crear alias global para sincronizar ambas llamadas
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
-
 
 // ========================================================
 // 🚀 2. ESCUCHAR MENSAJES CON CANDADO DE LECTURA DEFINITIVO
