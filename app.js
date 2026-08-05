@@ -424,12 +424,11 @@ function cargarDatosLocales() {
 }
 cargarDatosLocales();
 
-// 🟢 FUNCIÓN SEGURA: Mantiene tu lista real de Firebase intacta
+// 🟢 FUNCIÓN DE FILTROS SEGURA
 function filtrarYRenderizar() {
   const contenedorChats = document.querySelector(".lista-chats");
   if (!contenedorChats) return;
 
-  // Actualizar el número del botón de filtro basándonos en los chats reales de Firebase
   const badgeFiltro = document.querySelector(".caja-filtros .badge-filtro");
   if (badgeFiltro) {
     let totalNoLeidos = 0;
