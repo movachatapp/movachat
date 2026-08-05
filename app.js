@@ -185,7 +185,7 @@ if (authForm) {
 
 // Listener de Estado de Autenticación con Guardián de Acceso
 onAuthStateChanged(auth, async (user) => {
-  const authPantalla = document.getElementById("pantalla-auth") || document.querySelector(".contenedor-auth");
+  const authPantalla = document.getElementById("pantalla-auth");
 
   if (user) {
     try {
@@ -201,24 +201,28 @@ onAuthStateChanged(auth, async (user) => {
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
-          // 🚀 2. LE DARÁ VIDA AL PERFIL EN PANTALLA
-          const elemNombrePerfil = document.getElementById("perfil-nombre") || document.querySelector(".nombre-usuario");
-          const elemUsernamePerfil = document.getElementById("perfil-username") || document.querySelector(".username-usuario");
-          const elemEmailPerfil = document.getElementById("perfil-email") || document.querySelector(".email-usuario");
-          const elemFotoPerfil = document.getElementById("perfil-foto") || document.querySelector(".foto-usuario");
+          // 🚀 2. INYECCIÓN DIRECTA DE DATOS REALES EN EL PERFIL
+          // Apuntamos al selector exacto del HTML: <h2 id="texto-perfil-nombre"><span>Tu Nombre</span></h2>
+          const elemNombreSpan = document.querySelector("#texto-perfil-nombre span");
+          const elemFotoPerfil = document.querySelector(".avatar-perfil-img");
           const elemTextoEstado = document.querySelector(".texto-estado");
           const elemLedPerfil = document.querySelector(".btn-estado-sutil .punto-online");
 
-          if (elemNombrePerfil) elemNombrePerfil.textContent = datosUsuario.nombre || "Usuario";
-          if (elemUsernamePerfil) elemUsernamePerfil.textContent = datosUsuario.username ? `@${datosUsuario.username}` : `@${(datosUsuario.nombre || "user").toLowerCase().replace(/\s+/g, "")}`;
-          if (elemEmailPerfil) elemEmailPerfil.textContent = datosUsuario.correo || user.email;
-          if (elemFotoPerfil && datosUsuario.fotoUrl) elemFotoPerfil.src = datosUsuario.fotoUrl;
+          // A) Asignar nombre registrado
+          if (elemNombreSpan) {
+            elemNombreSpan.textContent = datosUsuario.nombre || user.displayName || "Usuario Mova";
+          }
 
-          // Cargar texto de estado guardado en Firebase o por defecto
+          // B) Asignar foto de perfil si la subió
+          if (elemFotoPerfil && datosUsuario.fotoUrl) {
+            elemFotoPerfil.src = datosUsuario.fotoUrl;
+          }
+
+          // C) Cargar texto de estado guardado en Firebase
           const fraseEstado = datosUsuario.estadoTexto || "Disponible. Toca para añadir estado...";
           if (elemTextoEstado) elemTextoEstado.textContent = fraseEstado;
 
-          // Ajustar color LED inicial según el estado guardado
+          // D) Ajustar color LED según estado
           if (elemLedPerfil) {
             const estadoConexion = datosUsuario.estadoConexion || "online";
             if (estadoConexion === "ocupado") {
@@ -233,7 +237,7 @@ onAuthStateChanged(auth, async (user) => {
             }
           }
 
-          // 🚀 3. CARGAR LISTA DE CONTACTOS Y ACTIVAR ESCUCHA DE MENSAJES EN TIEMPO REAL
+          // 🚀 3. CARGAR CONTACTOS Y LISTA
           if (typeof cargarContactosAprobados === "function") {
             cargarContactosAprobados(user.uid);
           }
@@ -265,12 +269,14 @@ onAuthStateChanged(auth, async (user) => {
           }
 
         } else {
-          // ⚠️ MODO DESARROLLO: Permitir paso visual para reparar la app
-          console.warn("⚠️ Usuario en estado pendiente/baneado. Permitido paso de prueba.");
-          if (authPantalla) authPantalla.style.display = "none";
+          // ⏳ Bloqueo real si está pendiente
+          await signOut(auth);
+          if (authPantalla) authPantalla.style.display = "flex";
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("⏳ Tu acceso está pendiente de aprobación por el Administrador.", "🔒", "#ffb703");
+          }
         }
       } else {
-        // Si no existe el registro en la BD, expulsar
         await signOut(auth);
         if (authPantalla) authPantalla.style.display = "flex";
       }
@@ -280,7 +286,6 @@ onAuthStateChanged(auth, async (user) => {
       if (authPantalla) authPantalla.style.display = "flex";
     }
   } else {
-    // Usuario no autenticado -> Mostrar login
     if (authPantalla) authPantalla.style.display = "flex";
   }
 });
@@ -3829,19 +3834,26 @@ function cargarUsuariosPendientes() {
   });
 }
 
-// Función global para cambiar el estado de acceso desde los botones
+// Función global para cambiar el estado de acceso desde los botones de Admin
 window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
   try {
+    // 1. Actualizar el estado de acceso en Firebase Realtime Database
     await update(ref(db, 'usuarios/' + uid), {
       estadoAcceso: nuevoEstado
     });
 
+    // 2. Notificación visual de confirmación
     if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Usuario ${nuevoEstado === 'aprobado' ? 'aprobado' : 'rechazado'} con éxito`, "✅", "#2ec4b6");
+      const msj = nuevoEstado === 'aprobado' ? 'aprobado 🟢' : 'rechazado 🔴';
+      mostrarAvisoPremium(`Usuario ${msj} con éxito.`, "✅", "#2ec4b6");
     }
   } catch (error) {
-    console.error("Error al actualizar acceso:", error);
-    alert("Error al actualizar el estado del usuario.");
+    console.error("❌ Error al actualizar el estado de acceso:", error);
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("No se pudo cambiar el estado del usuario.", "⚠️", "#ff4b2b");
+    } else {
+      alert("Error al actualizar el estado del usuario.");
+    }
   }
 };
 
