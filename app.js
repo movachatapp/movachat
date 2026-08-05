@@ -437,17 +437,6 @@ function filtrarYRenderizar() {
     if (chat.unread) totalNoLeidos++;
   });
 
-  // Contar no leídos de los HTML originales si tienen badge
-  chatsOriginalesHTML.forEach(tarjeta => {
-    if (tarjeta.querySelector(".badge-mensaje")) totalNoLeidos++;
-  });
-
-  // Actualizar el número en el botón de filtro
-  const badgeFiltro = document.querySelector(".caja-filtros .badge-filtro");
-  if (badgeFiltro) {
-    badgeFiltro.textContent = totalNoLeidos;
-  }
-
   // 2. Renderizar tarjetas HTML originales
   chatsOriginalesHTML.forEach((tarjeta) => {
     const nombreElem = tarjeta.querySelector(".chat-nombre");
@@ -1541,43 +1530,45 @@ if (inputBuscadorModal) {
 }
 
 // ========================================================
-// 🎯 CONTROL ÚNICO Y DEFINITIVO DE FILTROS (Protegido y Seguro)
+// 🎯 CONTROL DE FILTROS DEFINITIVO (Fusionado y Estable)
 // ========================================================
-(function inicializarFiltrosDefinitivos() {
-  const botonesFiltros = document.querySelectorAll(".caja-filtros .filtro-btn");
-  if (!botonesFiltros || botonesFiltros.length === 0) return;
+(function inicializarFiltrosEstables() {
+  const botones = document.querySelectorAll(".caja-filtros .filtro-btn");
+  const btnFiltroTodos = botones[0];
+  const btnFiltroNoLeidos = botones[1];
 
-  botonesFiltros.forEach((boton, index) => {
-    boton.addEventListener("click", () => {
-      // 1. Cambiar estilo visual del botón activo
-      botonesFiltros.forEach(b => b.classList.remove("activo"));
-      boton.classList.add("activo");
+  if (btnFiltroNoLeidos) {
+    btnFiltroNoLeidos.addEventListener("click", () => {
+      if (btnFiltroTodos) btnFiltroTodos.classList.remove("activo");
+      btnFiltroNoLeidos.classList.add("activo");
 
-      // 2. Obtener todas las tarjetas de chat reales
-      const tarjetas = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
 
-      tarjetas.forEach((tarjeta) => {
-        // Ignorar la tarjeta de "Mi Estado"
+      tarjetasChat.forEach((tarjeta) => {
         if (tarjeta.id === "tarjeta-mi-estado-propio") return;
 
-        if (index === 0) {
-          // 🟢 Botón "Todos": Mostrar absolutamente todo
-          tarjeta.style.display = "flex";
-        } else if (index === 1) {
-          // 🔴 Botón "No leídos": Verificar si tiene mensajes pendientes
-          const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
-          const conteo = parseInt(tarjeta.dataset.mensajesNoLeidos || "0", 10);
-          const tieneNoLeidos = conteo > 0 || (badge && !badge.classList.contains("oculto") && badge.textContent.trim() !== "0");
+        // Leer directamente la bolita visual para no depender de memorias ocultas
+        const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
+        const tieneNoLeidos = badge && !badge.classList.contains("oculto") && parseInt(badge.textContent.trim(), 10) > 0;
 
-          if (tieneNoLeidos) {
-            tarjeta.style.display = "flex"; // Se queda visible
-          } else {
-            tarjeta.style.display = "none";  // Se oculta limpiamente sin borrar del HTML
-          }
+        if (tieneNoLeidos) {
+          tarjeta.style.display = "flex";
+        } else {
+          tarjeta.style.display = "none";
         }
       });
     });
-  });
+  }
+
+  if (btnFiltroTodos) {
+    btnFiltroTodos.addEventListener("click", () => {
+      if (btnFiltroNoLeidos) btnFiltroNoLeidos.classList.remove("activo");
+      btnFiltroTodos.classList.add("activo");
+
+      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+      tarjetasChat.forEach((tarjeta) => (tarjeta.style.display = "flex"));
+    });
+  }
 })();
 
 function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
@@ -2209,14 +2200,16 @@ if (toggleNotificaciones) {
   toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
 }
 
-// 🔔 FUNCIÓN UNIFICADA PARA ACTUALIZAR BADGES Y CAMPANITA
+// ========================================================
+// 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
+// ========================================================
 window.actualizarBadgesNotificaciones = function() {
   const badgeCampanita = document.getElementById("badge-notificaciones") || document.querySelector(".badge-notificacion") || document.getElementById("badgeCampanita");
   const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
 
   let totalNoLeidos = 0;
 
-  // Recorrer todas las tarjetas reales de chat y sumar su propiedad dataset
+  // Recorrer todas las tarjetas reales de chat
   document.querySelectorAll("#lista-chats-principal .tarjeta-chat").forEach((tarjeta) => {
     if (tarjeta.id === "tarjeta-mi-estado-propio") return;
 
@@ -2229,7 +2222,7 @@ window.actualizarBadgesNotificaciones = function() {
     }
   });
 
-  // 1. Actualizar número de la campanita superior
+  // Actualizar la campanita superior
   if (badgeCampanita) {
     if (totalNoLeidos > 0) {
       badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos.toString();
@@ -2240,82 +2233,119 @@ window.actualizarBadgesNotificaciones = function() {
     }
   }
 
-  // 2. Actualizar número del botón de filtro "No leídos"
+  // Actualizar el botón de filtro 'No leídos'
   if (badgeFiltroNoLeidos) {
     badgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
   }
 };
 
-// Crear alias para evitar errores si otras funciones llaman a 'actualizarCampanitaGlobal'
+// Crear alias para que ambas llamadas funcionen igual de bien
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
 
-// 🚀 EVENTO CLIC EN LA CAMPANITA (Filtrado de chats)
-if (btnCampanita) {
-  btnCampanita.onclick = function (e) {
-    e.preventDefault();
-    e.stopPropagation();
 
-    const tarjetas = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
-    let hayMensajesSinLeer = false;
-    let totalMensajes = 0;
+// ========================================================
+// 🚀 2. ESCUCHAR MENSAJES CON CANDADO DE LECTURA DEFINITIVO
+// ========================================================
+function escucharUltimoMensajeContacto(miUid, contactoUid) {
+  const chatId = obtenerChatId(miUid, contactoUid);
+  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
 
-    tarjetas.forEach((tarjeta) => {
-      if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+  onValue(mensajesRef, (snapshot) => {
+    const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
+    const contenedorLista = document.getElementById("lista-chats-principal");
 
-      const badge = tarjeta.querySelector(".badge-chat-no-leido");
-      const tieneBadgeActivo = badge && !badge.classList.contains("oculto") && parseInt(badge.textContent, 10) > 0;
+    if (!tarjetaContacto || !contenedorLista) return;
 
-      if (tieneBadgeActivo) {
-        tarjeta.style.display = ""; // Mostrar el chat con mensajes pendientes
-        hayMensajesSinLeer = true;
-        totalMensajes += parseInt(badge.textContent, 10) || 1;
+    const elemTexto = tarjetaContacto.querySelector(".chat-texto");
+    const elemHora = tarjetaContacto.querySelector(".chat-hora");
+    const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido");
+
+    if (snapshot.exists()) {
+      const mensajes = snapshot.val();
+      const keys = Object.keys(mensajes);
+      const ultimoMsgKey = keys[keys.length - 1]; // ID del último mensaje
+      const ultimoMsg = mensajes[ultimoMsgKey];
+
+      // Mostrar vista previa de texto y hora
+      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
+      if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
+
+      // Reordenar tarjeta al inicio de la lista
+      const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+      if (tarjetaMiEstado && tarjetaMiEstado.nextSibling) {
+        contenedorLista.insertBefore(tarjetaContacto, tarjetaMiEstado.nextSibling);
       } else {
-        tarjeta.style.display = "none"; // Ocultar chats leídos
+        contenedorLista.prepend(tarjetaContacto);
       }
-    });
 
-    if (!hayMensajesSinLeer) {
-      tarjetas.forEach((tarjeta) => (tarjeta.style.display = ""));
+      // Verificar si el chat está abierto o si se acaba de hacer clic
+      const pantallaChat = document.getElementById("pantalla-chat-privado");
+      const estaChatAbierto = (window.contactoActivoUid === contactoUid || (typeof contactoSeleccionado !== "undefined" && contactoSeleccionado === contactoUid)) && 
+                              pantallaChat && 
+                              (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Todo está en orden y en calma por aquí. 🌌", "✨", "#00f2fe");
-      }
-    } else {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Mostrando chats con ${totalMensajes} mensaje(s) pendiente(s) 📩`, "🔔", "#00f2fe");
-      }
-    }
-  };
-}
+      const forzarReiniciar = tarjetaContacto.dataset.forzarReiniciar === "true";
 
-// ⚙️ EVENTO SWITCH DE AJUSTES EN EL PERFIL
-if (toggleNotificaciones) {
-  toggleNotificaciones.addEventListener("change", async () => {
-    if (toggleNotificaciones.checked) {
-      localStorage.setItem("movachat-notificaciones", "activado");
+      if (estaChatAbierto || forzarReiniciar) {
+        // 🟢 CHAT ABIERTO: Activar candado, ocultar badge y resetear contador
+        tarjetaContacto.dataset.ultimoLeidoKey = ultimoMsgKey;
+        tarjetaContacto.dataset.mensajesNoLeidos = "0";
+        tarjetaContacto.dataset.forzarReiniciar = "false";
 
-      // Pedimos permiso al sistema operativo/navegador
-      if (typeof solicitarPermisoNotificaciones === "function") {
-        const concedido = await solicitarPermisoNotificaciones();
-        if (!concedido) {
-          if (typeof mostrarAvisoPremium === "function") {
-            mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️", "⚠️", "#ff4b2b");
-          }
-        } else {
-          if (typeof mostrarAvisoPremium === "function") {
-            mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀", "🔔", "#00f2fe");
-          }
+        if (elemBadge) {
+          elemBadge.textContent = "0";
+          elemBadge.classList.add("oculto");
         }
-      }
+        if (elemTexto) elemTexto.classList.remove("texto-resaltado");
 
-      if (typeof window.actualizarBadgesNotificaciones === "function") {
+        // Recalcular la campanita
         window.actualizarBadgesNotificaciones();
-      }
-    } else {
-      localStorage.setItem("movachat-notificaciones", "desactivado");
-      if (badgeCampanita) badgeCampanita.classList.add("oculto");
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Notificaciones silenciadas por el usuario. 🔕", "🔕", "#ff4b2b");
+
+      } else {
+        // 🔴 CHAT CERRADO: Contar únicamente mensajes nuevos después del candado
+        const esUltimoMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
+
+        if (!esUltimoMio) {
+          const ultimoLeidoKey = tarjetaContacto.dataset.ultimoLeidoKey || "";
+          let conteoNuevos = 0;
+          let empezarAContar = (ultimoLeidoKey === ""); 
+
+          keys.forEach((key) => {
+            if (key === ultimoLeidoKey) {
+              empezarAContar = true;
+              return;
+            }
+            if (empezarAContar) {
+              const m = mensajes[key];
+              const emisor = m.emisor || m.emisorUid;
+              if (emisor === contactoUid) {
+                conteoNuevos++;
+              }
+            }
+          });
+
+          tarjetaContacto.dataset.mensajesNoLeidos = conteoNuevos.toString();
+
+          if (conteoNuevos > 0) {
+            if (elemBadge) {
+              elemBadge.textContent = conteoNuevos > 99 ? "99+" : conteoNuevos.toString();
+              elemBadge.classList.remove("oculto");
+            }
+            if (elemTexto) elemTexto.classList.add("texto-resaltado");
+
+            // Sonar alerta si el mensaje es reciente
+            const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
+            if (esReciente && typeof window.reproducirSonido === "function") {
+              window.reproducirSonido("recibido");
+            }
+          } else {
+            if (elemBadge) elemBadge.classList.add("oculto");
+            if (elemTexto) elemTexto.classList.remove("texto-resaltado");
+          }
+
+          // Recalcular la campanita
+          window.actualizarBadgesNotificaciones();
+        }
       }
     }
   });
@@ -4449,157 +4479,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
-
-  // ========================================================
-// 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
-// ========================================================
-window.actualizarBadgesNotificaciones = function() {
-  const badgeCampanita = document.getElementById("badge-notificaciones") || document.querySelector(".badge-notificacion") || document.getElementById("badgeCampanita");
-  const badgeFiltroNoLeidos = document.querySelector(".badge-filtro");
-
-  let totalNoLeidos = 0;
-
-  // Recorrer todas las tarjetas reales de chat
-  document.querySelectorAll("#lista-chats-principal .tarjeta-chat").forEach((tarjeta) => {
-    if (tarjeta.id === "tarjeta-mi-estado-propio") return;
-
-    const badge = tarjeta.querySelector(".badge-chat-no-leido");
-    const esVisible = badge && !badge.classList.contains("oculto");
-
-    if (esVisible) {
-      const num = parseInt(badge.textContent.trim(), 10) || 0;
-      totalNoLeidos += num;
-    }
-  });
-
-  // Actualizar la campanita superior
-  if (badgeCampanita) {
-    if (totalNoLeidos > 0) {
-      badgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos.toString();
-      badgeCampanita.classList.remove("oculto");
-    } else {
-      badgeCampanita.textContent = "0";
-      badgeCampanita.classList.add("oculto");
-    }
-  }
-
-  // Actualizar el botón de filtro 'No leídos'
-  if (badgeFiltroNoLeidos) {
-    badgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
-  }
-};
-
-// Crear alias para que ambas llamadas funcionen igual de bien
-window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
-
-
-// ========================================================
-// 🚀 2. ESCUCHAR MENSAJES CON CANDADO DE LECTURA DEFINITIVO
-// ========================================================
-function escucharUltimoMensajeContacto(miUid, contactoUid) {
-  const chatId = obtenerChatId(miUid, contactoUid);
-  const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
-
-  onValue(mensajesRef, (snapshot) => {
-    const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
-    const contenedorLista = document.getElementById("lista-chats-principal");
-
-    if (!tarjetaContacto || !contenedorLista) return;
-
-    const elemTexto = tarjetaContacto.querySelector(".chat-texto");
-    const elemHora = tarjetaContacto.querySelector(".chat-hora");
-    const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido");
-
-    if (snapshot.exists()) {
-      const mensajes = snapshot.val();
-      const keys = Object.keys(mensajes);
-      const ultimoMsgKey = keys[keys.length - 1]; // ID del último mensaje
-      const ultimoMsg = mensajes[ultimoMsgKey];
-
-      // Mostrar vista previa de texto y hora
-      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
-      if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
-
-      // Reordenar tarjeta al inicio de la lista
-      const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
-      if (tarjetaMiEstado && tarjetaMiEstado.nextSibling) {
-        contenedorLista.insertBefore(tarjetaContacto, tarjetaMiEstado.nextSibling);
-      } else {
-        contenedorLista.prepend(tarjetaContacto);
-      }
-
-      // Verificar si el chat está abierto o si se acaba de hacer clic
-      const pantallaChat = document.getElementById("pantalla-chat-privado");
-      const estaChatAbierto = (window.contactoActivoUid === contactoUid || (typeof contactoSeleccionado !== "undefined" && contactoSeleccionado === contactoUid)) && 
-                              pantallaChat && 
-                              (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
-
-      const forzarReiniciar = tarjetaContacto.dataset.forzarReiniciar === "true";
-
-      if (estaChatAbierto || forzarReiniciar) {
-        // 🟢 CHAT ABIERTO: Activar candado, ocultar badge y resetear contador
-        tarjetaContacto.dataset.ultimoLeidoKey = ultimoMsgKey;
-        tarjetaContacto.dataset.mensajesNoLeidos = "0";
-        tarjetaContacto.dataset.forzarReiniciar = "false";
-
-        if (elemBadge) {
-          elemBadge.textContent = "0";
-          elemBadge.classList.add("oculto");
-        }
-        if (elemTexto) elemTexto.classList.remove("texto-resaltado");
-
-        // Recalcular la campanita
-        window.actualizarBadgesNotificaciones();
-
-      } else {
-        // 🔴 CHAT CERRADO: Contar únicamente mensajes nuevos después del candado
-        const esUltimoMio = (ultimoMsg.emisor || ultimoMsg.emisorUid) === miUid;
-
-        if (!esUltimoMio) {
-          const ultimoLeidoKey = tarjetaContacto.dataset.ultimoLeidoKey || "";
-          let conteoNuevos = 0;
-          let empezarAContar = (ultimoLeidoKey === ""); 
-
-          keys.forEach((key) => {
-            if (key === ultimoLeidoKey) {
-              empezarAContar = true;
-              return;
-            }
-            if (empezarAContar) {
-              const m = mensajes[key];
-              const emisor = m.emisor || m.emisorUid;
-              if (emisor === contactoUid) {
-                conteoNuevos++;
-              }
-            }
-          });
-
-          tarjetaContacto.dataset.mensajesNoLeidos = conteoNuevos.toString();
-
-          if (conteoNuevos > 0) {
-            if (elemBadge) {
-              elemBadge.textContent = conteoNuevos > 99 ? "99+" : conteoNuevos.toString();
-              elemBadge.classList.remove("oculto");
-            }
-            if (elemTexto) elemTexto.classList.add("texto-resaltado");
-
-            // Sonar alerta si el mensaje es reciente
-            const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
-            if (esReciente && typeof window.reproducirSonido === "function") {
-              window.reproducirSonido("recibido");
-            }
-          } else {
-            if (elemBadge) elemBadge.classList.add("oculto");
-            if (elemTexto) elemTexto.classList.remove("texto-resaltado");
-          }
-
-          // Recalcular la campanita
-          window.actualizarBadgesNotificaciones();
-        }
-      }
-    }
-  });
-}
 
   // 5️⃣ Conectar el interruptor de notificaciones con el permiso del navegador
   const toggleNotificaciones = document.getElementById("check-notificaciones");
