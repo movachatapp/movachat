@@ -2997,7 +2997,7 @@ const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
 // ========================================================
-// 📱 1 Y 2: ABRIR EL MENÚ CONTEXTUAL (TU CÓDIGO ACTUAL)
+// 📱 1 Y 2: ABRIR EL MENÚ CONTEXTUAL (SINTAXIS LIMPIA)
 // ========================================================
 
 // Clic Derecho en PC
@@ -3011,12 +3011,10 @@ document.addEventListener("contextmenu", (e) => {
 });
 
 // Long Press para Móviles
-let temporizadorLongPress = null;
-let bloquarClickFantasma = false;
-
 document.addEventListener("touchstart", (e) => {
   const tarjeta = e.target.closest(".tarjeta-chat");
   if (tarjeta) {
+    if (typeof temporizadorLongPress !== "undefined") clearTimeout(temporizadorLongPress);
     temporizadorLongPress = setTimeout(() => {
       const touch = e.touches[0];
       bloquarClickFantasma = true;
@@ -3030,8 +3028,12 @@ document.addEventListener("touchstart", (e) => {
   }
 }, { passive: true });
 
-document.addEventListener("touchend", () => clearTimeout(temporizadorLongPress));
-document.addEventListener("touchmove", () => clearTimeout(temporizadorLongPress));
+document.addEventListener("touchend", () => {
+  if (typeof temporizadorLongPress !== "undefined") clearTimeout(temporizadorLongPress);
+});
+document.addEventListener("touchmove", () => {
+  if (typeof temporizadorLongPress !== "undefined") clearTimeout(temporizadorLongPress);
+});
 
 
 // ========================================================

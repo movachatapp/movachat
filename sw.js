@@ -1,5 +1,5 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v1.2)
+// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v1.3)
 // ========================================================
 
 const CACHE_NAME = 'movachat-v0.8';
