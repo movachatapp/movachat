@@ -4340,19 +4340,28 @@ if (inputChatPrivado) {
   };
 }
 
+let listenerChatActivo = null;
 let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (CON BLOQUEO, VACIADO INDIVIDUAL Y TODOS LOS ADJUNTOS)
+// 📌 Escuchar mensajes en tiempo real desde Firebase (SIN DUPLICACIONES / CLEAN LISTENERS)
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
   if (!contenedorHistorial) return;
 
+  // 1. 🧹 CANCELAR SUSCRIPCIONES ANTERIORES PARA EVITAR MULTIPLICACIÓN DE EVENTOS
+  if (typeof listenerChatActivo === "function") {
+    listenerChatActivo(); // Ejecuta la función de desuscripción de Firebase
+    listenerChatActivo = null;
+  }
+  if (typeof listenerConfigActivo === "function") {
+    listenerConfigActivo();
+    listenerConfigActivo = null;
+  }
+
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  const contactoUid = window.contactoActivoUid;
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
   const configRef = ref(db, `chats/${chatId}/config/temporales`);
-
-  // 1. Limpiar listeners anteriores
-  if (typeof listenerChatActivo === "function") listenerChatActivo();
-  if (typeof listenerConfigActivo === "function") listenerConfigActivo();
 
   // 2. Escuchar el estado de mensajes temporales
   listenerConfigActivo = onValue(configRef, (snapshot) => {
@@ -4371,179 +4380,159 @@ function escucharMensajesChat(chatId) {
 
   let esCargaInicial = true;
 
-  // 3. Escuchar mensajes en tiempo real
-  listenerChatActivo = onValue(mensajesRef, async (snapshot) => {
+  // 3. Escuchar mensajes en tiempo real guardando la referencia de desuscripción
+  listenerChatActivo = onValue(mensajesRef, (snapshot) => {
     const elemHistorial = document.querySelector(".historial-mensajes");
     if (!elemHistorial) return;
 
-    elemHistorial.innerHTML = ""; // Limpiar historial antes de redibujar
+    // Resolver promesas de vaciado y bloqueo antes de renderizar para evitar bloqueos del DOM
+    Promise.all([
+      miUid && contactoUid ? get(ref(db, `vaciados/${miUid}/${contactoUid}`)) : Promise.resolve(null),
+      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null)
+    ]).then(([snapVaciado, snapBloqueo]) => {
 
-    const miUid = auth.currentUser ? auth.currentUser.uid : null;
-    const contactoUid = window.contactoActivoUid;
+      const timestampUltimoVaciado = (snapVaciado && snapVaciado.exists()) ? snapVaciado.val() : 0;
+      const estaBloqueadoElContacto = (snapBloqueo && snapBloqueo.exists()) ? (snapBloqueo.val() === true) : false;
 
-    // 🕒 1. OBTENER MARCA DE VACIADO PERSONAL
-    let timestampUltimoVaciado = 0;
-    if (miUid && contactoUid) {
-      try {
-        const snapVaciado = await get(ref(db, `vaciados/${miUid}/${contactoUid}`));
-        if (snapVaciado.exists()) {
-          timestampUltimoVaciado = snapVaciado.val();
-        }
-      } catch (e) {
-        console.error("Error leyendo marca de vaciado:", e);
-      }
-    }
+      // Limpieza total del contenedor de mensajes
+      elemHistorial.innerHTML = "";
 
-    // 🛡️ 2. VERIFICACIÓN DE BLOQUEO MUTUO
-    let estaBloqueadoElContacto = false;
-    if (miUid && contactoUid) {
-      try {
-        const snapYoBloquee = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
-        estaBloqueadoElContacto = snapYoBloquee.exists() && snapYoBloquee.val() === true;
-      } catch (err) {
-        console.error("Error al consultar bloqueos en Firebase:", err);
-      }
-    }
+      if (snapshot.exists()) {
+        const mensajes = snapshot.val();
 
-    if (snapshot.exists()) {
-      const mensajes = snapshot.val();
+        Object.keys(mensajes).forEach((msgId) => {
+          const msg = mensajes[msgId];
+          if (!msg) return;
 
-      Object.keys(mensajes).forEach((msgId) => {
-        const msg = mensajes[msgId];
-        if (!msg) return;
+          // 🗑️ Ignorar mensajes anteriores al vaciado personal
+          const msgTimestamp = msg.timestamp || 0;
+          if (msgTimestamp <= timestampUltimoVaciado) return;
 
-        // 🗑️ IGNORAR MENSAJES ANTERIORES A TU VACIADO PERSONAL
-        const msgTimestamp = msg.timestamp || 0;
-        if (msgTimestamp <= timestampUltimoVaciado) {
-          return;
-        }
+          const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
+          const esMio = idEmisorReal === miUid;
 
-        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
-        const esMio = idEmisorReal === miUid;
+          // 🛑 Ignorar mensajes de contactos bloqueados
+          if (estaBloqueadoElContacto && !esMio) return;
 
-        // 🛑 SI YO BLOQUEÉ AL OTRO Y EL MENSAJE ES DE ÉL -> NO RENDERIZAR
-        if (estaBloqueadoElContacto && !esMio) {
-          return; 
-        }
+          // A) Lógica de mensajes efímeros
+          if (msg.esEfimero) {
+            const transcurrido = Date.now() - (msg.timestamp || Date.now());
+            const tiempoRestante = 10000 - transcurrido;
 
-        // A) LÓGICA DE MENSAJE EFÍMERO
-        if (msg.esEfimero) {
-          const transcurrido = Date.now() - (msg.timestamp || Date.now());
-          const tiempoRestante = 10000 - transcurrido;
-
-          if (tiempoRestante <= 0) {
-            set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
-            return;
-          } else {
-            setTimeout(() => {
+            if (tiempoRestante <= 0) {
               set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
-            }, tiempoRestante);
+              return;
+            } else {
+              setTimeout(() => {
+                set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
+              }, tiempoRestante);
+            }
           }
-        }
 
-        const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
-        const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
+          const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
+          const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
 
-        if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto) {
-          const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
-          const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
-          const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
+          if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto) {
+            const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
+            const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
+            const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
 
-          if (typeof notificarNuevoMensaje === "function") {
-            notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+            if (typeof notificarNuevoMensaje === "function") {
+              notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+            }
+            if (typeof reproducirSonido === "function") {
+              reproducirSonido("recibido", idEmisorReal);
+            }
           }
-          if (typeof reproducirSonido === "function") {
-            reproducirSonido("recibido", idEmisorReal);
+
+          let horaFormateada = "00:00";
+          if (msg.hora) {
+            horaFormateada = msg.hora;
+          } else if (msg.fecha || msg.timestamp) {
+            const fechaObj = new Date(msg.fecha || msg.timestamp);
+            horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           }
+
+          const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
+          const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
+
+          let contenidoBurbuja = "";
+          let estiloEspecialBurbuja = "";
+
+          if (msg.tipoAdjunto === 'foto') {
+            contenidoBurbuja = `
+              <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
+                <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
+              </div>
+              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          } else if (msg.tipoAdjunto === 'documento') {
+            contenidoBurbuja = `
+              <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+                <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
+                <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
+              </div>
+              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          } else if (msg.tipoAdjunto === 'video') {
+            estiloEspecialBurbuja = "padding: 10px;";
+            contenidoBurbuja = `
+              <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
+                <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+                  <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
+                </svg>
+                <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
+                  <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+                </div>
+                <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
+                  <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+                </div>
+              </div>
+              ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+              <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          } else if (msg.tipoAdjunto === 'audio') {
+            contenidoBurbuja = `
+              <div class="reproductor-audio-burbuja">
+                <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+                <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
+                  <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                </div>
+                <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
+                <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
+              </div>
+              <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          } else {
+            contenidoBurbuja = `
+              <p class="mensaje-texto">${msg.texto || ''}</p>
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          }
+
+          const burbujaHTML = document.createElement("div");
+          burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'} ${msg.esEfimero ? 'mensaje-efimero' : ''}`;
+          burbujaHTML.setAttribute("data-msg-id", msgId);
+          if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
+          burbujaHTML.innerHTML = contenidoBurbuja;
+
+          elemHistorial.appendChild(burbujaHTML);
+        });
+
+        if (window.lucide) {
+          window.lucide.createIcons({ targets: [elemHistorial] });
         }
 
-        let horaFormateada = "00:00";
-        if (msg.hora) {
-          horaFormateada = msg.hora;
-        } else if (msg.fecha || msg.timestamp) {
-          const fechaObj = new Date(msg.fecha || msg.timestamp);
-          horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
-        const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
-
-        let contenidoBurbuja = "";
-        let estiloEspecialBurbuja = "";
-
-        if (msg.tipoAdjunto === 'foto') {
-          contenidoBurbuja = `
-            <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
-              <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else if (msg.tipoAdjunto === 'documento') {
-          contenidoBurbuja = `
-            <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
-              <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
-              <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else if (msg.tipoAdjunto === 'video') {
-          estiloEspecialBurbuja = "padding: 10px;";
-          contenidoBurbuja = `
-            <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-              <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-              </svg>
-              <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-                <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
-              </div>
-              <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-              </div>
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else if (msg.tipoAdjunto === 'audio') {
-          contenidoBurbuja = `
-            <div class="reproductor-audio-burbuja">
-              <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
-              <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-                <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-              </div>
-              <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-              <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
-            </div>
-            <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else {
-          contenidoBurbuja = `
-            <p class="mensaje-texto">${msg.texto || ''}</p>
-            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
-
-        const burbujaHTML = document.createElement("div");
-        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'} ${msg.esEfimero ? 'mensaje-efimero' : ''}`;
-        burbujaHTML.setAttribute("data-msg-id", msgId);
-        if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
-        burbujaHTML.innerHTML = contenidoBurbuja;
-
-        elemHistorial.appendChild(burbujaHTML);
-      });
-
-      if (window.lucide) {
-        window.lucide.createIcons({ targets: [elemHistorial] });
+        elemHistorial.scrollTop = elemHistorial.scrollHeight;
       }
 
-      elemHistorial.scrollTop = elemHistorial.scrollHeight;
-    }
-
-    esCargaInicial = false;
+      esCargaInicial = false;
+    });
   });
 }
 
