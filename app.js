@@ -3085,16 +3085,19 @@ if (btnAceptarBloquear) {
 
     if (modalBloquear) modalBloquear.classList.add("oculto");
 
-    if (!miUid || !contactoUid) {
-      console.error("❌ Fallo de IDs:", { miUid, contactoUid });
-      alert("Error: No se pudo identificar al usuario.");
-      return;
-    }
+    if (!miUid || !contactoUid) return;
 
     const esBloqueo = (accionBloqueoPendiente === 'bloquear');
 
-    // APLICACIÓN INMEDIATA EN INTERFAZ
-    aplicarEstadoBloqueoInterfaz(esBloqueo, contactoUid);
+    // Comprobar si el otro usuario me tenía bloqueado previamente para mantener la UI ajustada
+    let esSuBloqueo = false;
+    try {
+      const snapSuBloqueo = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
+      esSuBloqueo = snapSuBloqueo.exists() && snapSuBloqueo.val() === true;
+    } catch (e) {}
+
+    // APLICACIÓN INMEDIATA CON AUTORÍA CORRECTA
+    aplicarEstadoBloqueoInterfaz({ esMiBloqueo: esBloqueo, esSuBloqueo }, contactoUid);
 
     if (typeof mostrarAvisoPremium === "function") {
       mostrarAvisoPremium(
@@ -3104,7 +3107,7 @@ if (btnAceptarBloquear) {
       );
     }
 
-    // GUARDAR EN FIREBASE
+    // GUARDAR O ELIMINAR EN FIREBASE DE MI NODO
     try {
       const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
       await set(bloqueoRef, esBloqueo ? true : null);
@@ -3114,36 +3117,60 @@ if (btnAceptarBloquear) {
   };
 }
 
-// 4️⃣ Función de Interfaz
-function aplicarEstadoBloqueoInterfaz(bloqueado, targetUid = null) {
-  const contactoUid = targetUid || obtenerUidContactoActivo();
+// 4️⃣ Función de Interfaz con diferenciación de autor del bloqueo
+function aplicarEstadoBloqueoInterfaz(estado, targetUid = null) {
+  // Manejo flexible si se recibe un booleano antiguo o un objeto con detalles
+  let esMiBloqueo = false;
+  let esSuBloqueo = false;
+
+  if (typeof estado === "object" && estado !== null) {
+    esMiBloqueo = !!estado.esMiBloqueo;
+    esSuBloqueo = !!estado.esSuBloqueo;
+  } else {
+    esMiBloqueo = !!estado;
+  }
+
+  const contactoUid = targetUid || (typeof obtenerUidContactoActivo === "function" ? obtenerUidContactoActivo() : window.contactoActivoUid);
   const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
   const inputChat = document.getElementById("input-chat-privado");
   const btnAccionChat = document.getElementById("btn-accion-chat");
+  const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
 
+  const estaBloqueadoCualquiera = esMiBloqueo || esSuBloqueo;
+
+  // A) Botón del menú: SOLO cambia a "Desbloquear" si YO lo bloqueé a él
   if (btnCtxBloquear) {
-    btnCtxBloquear.innerHTML = bloqueado
+    btnCtxBloquear.innerHTML = esMiBloqueo
       ? `<i data-lucide="shield-check"></i> Desbloquear usuario`
       : `<i data-lucide="shield-alert"></i> Bloquear usuario`;
 
-    btnCtxBloquear.style.color = bloqueado ? "#00f2fe" : "";
+    btnCtxBloquear.style.color = esMiBloqueo ? "#00f2fe" : "";
     if (window.lucide) window.lucide.createIcons({ targets: [btnCtxBloquear] });
   }
 
+  // B) Campo de texto de chat
   if (inputChat) {
-    inputChat.disabled = bloqueado;
-    inputChat.placeholder = bloqueado ? "Has bloqueado a este contacto." : "Escribe un mensaje privado...";
-    inputChat.style.opacity = bloqueado ? "0.5" : "1";
+    inputChat.disabled = estaBloqueadoCualquiera;
+    if (esMiBloqueo) {
+      inputChat.placeholder = "Has bloqueado a este contacto.";
+    } else if (esSuBloqueo) {
+      inputChat.placeholder = "Este usuario te ha bloqueado.";
+    } else {
+      inputChat.placeholder = "Escribe un mensaje privado...";
+    }
+    inputChat.style.opacity = estaBloqueadoCualquiera ? "0.5" : "1";
   }
 
+  // C) Botón de enviar / nota de voz
   if (btnAccionChat) {
-    btnAccionChat.style.pointerEvents = bloqueado ? "none" : "auto";
-    btnAccionChat.style.opacity = bloqueado ? "0.3" : "1";
+    btnAccionChat.style.pointerEvents = estaBloqueadoCualquiera ? "none" : "auto";
+    btnAccionChat.style.opacity = estaBloqueadoCualquiera ? "0.3" : "1";
   }
 
+  // D) Tarjeta en la lista principal (solo se oscurece si YO lo tengo bloqueado)
   if (tarjetaContacto) {
-    tarjetaContacto.style.opacity = bloqueado ? "0.4" : "1";
-    tarjetaContacto.style.filter = bloqueado ? "grayscale(100%)" : "none";
+    tarjetaContacto.style.opacity = esMiBloqueo ? "0.4" : "1";
+    tarjetaContacto.style.filter = esMiBloqueo ? "grayscale(100%)" : "none";
   }
 }
 
@@ -4333,30 +4360,22 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // 7. Conectar Firebase de forma limpia, verificar bloqueos y guardar lectura en la nube
+  // 7. Conectar Firebase, verificar bloqueos cruzados y guardar lectura
   const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
   if (miUid && uidTarget) {
     const chatId = obtenerChatId(miUid, uidTarget);
 
-    // 🛡️ VERIFICACIÓN DE BLOQUEOS EN AMBAS DIRECCIONES
+    // 🛡️ VERIFICACIÓN DE BLOQUEO CON DISTINCIÓN DE AUTOR
     get(ref(db, `bloqueos/${miUid}/${uidTarget}`)).then((snapMiBloqueo) => {
       get(ref(db, `bloqueos/${uidTarget}/${miUid}`)).then((snapSuBloqueo) => {
-        const bloqueadoPorMi = snapMiBloqueo.exists() && snapMiBloqueo.val() === true;
-        const bloqueadoPorEl = snapSuBloqueo.exists() && snapSuBloqueo.val() === true;
+        const esMiBloqueo = snapMiBloqueo.exists() && snapMiBloqueo.val() === true;
+        const esSuBloqueo = snapSuBloqueo.exists() && snapSuBloqueo.val() === true;
 
-        if (bloqueadoPorMi || bloqueadoPorEl) {
-          aplicarEstadoBloqueoInterfaz(true, uidTarget);
-          if (bloqueadoPorEl) {
-            const inputChatPriv = document.getElementById("input-chat-privado");
-            if (inputChatPriv) inputChatPriv.placeholder = "Este usuario te ha bloqueado.";
-          }
-        } else {
-          aplicarEstadoBloqueoInterfaz(false, uidTarget);
-        }
+        aplicarEstadoBloqueoInterfaz({ esMiBloqueo, esSuBloqueo }, uidTarget);
       });
     });
 
-    // ☁️ REGISTRAR EN FIREBASE EL ÚLTIMO MENSAJE VISTO
+    // ☁️ REGISTRAR LECTURA EN FIREBASE
     const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
     get(mensajesRef).then((snapshot) => {
       if (snapshot.exists()) {
@@ -4364,7 +4383,6 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
         const keys = Object.keys(mensajes);
         const ultimoMsgKey = keys[keys.length - 1];
 
-        // Escribe el ID del último mensaje en el nodo 'lecturas'
         set(ref(db, `lecturas/${miUid}/${uidTarget}`), ultimoMsgKey);
       }
     }).catch(err => console.error("Error al registrar lectura:", err));
