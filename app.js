@@ -3121,7 +3121,6 @@ if (btnAceptarBloquear) {
 
 // 4️⃣ Función de Interfaz con diferenciación de autor del bloqueo
 function aplicarEstadoBloqueoInterfaz(estado, targetUid = null) {
-  // Manejo flexible si se recibe un booleano antiguo o un objeto con detalles
   let esMiBloqueo = false;
   let esSuBloqueo = false;
 
@@ -3138,9 +3137,7 @@ function aplicarEstadoBloqueoInterfaz(estado, targetUid = null) {
   const btnAccionChat = document.getElementById("btn-accion-chat");
   const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
 
-  const estaBloqueadoCualquiera = esMiBloqueo || esSuBloqueo;
-
-  // A) Botón del menú: SOLO cambia a "Desbloquear" si YO lo bloqueé a él
+  // A) Botón del menú: Muestra "Desbloquear usuario" a quien ejecutó el bloqueo
   if (btnCtxBloquear) {
     btnCtxBloquear.innerHTML = esMiBloqueo
       ? `<i data-lucide="shield-check"></i> Desbloquear usuario`
@@ -3150,9 +3147,9 @@ function aplicarEstadoBloqueoInterfaz(estado, targetUid = null) {
     if (window.lucide) window.lucide.createIcons({ targets: [btnCtxBloquear] });
   }
 
-  // B) Campo de texto de chat
+  // B) Campo de texto: SOLO SE DESHABILITA SI "A MÍ ME BLOQUEARON" (esSuBloqueo)
   if (inputChat) {
-    inputChat.disabled = estaBloqueadoCualquiera;
+    inputChat.disabled = esSuBloqueo;
     if (esMiBloqueo) {
       inputChat.placeholder = "Has bloqueado a este contacto.";
     } else if (esSuBloqueo) {
@@ -3160,16 +3157,16 @@ function aplicarEstadoBloqueoInterfaz(estado, targetUid = null) {
     } else {
       inputChat.placeholder = "Escribe un mensaje privado...";
     }
-    inputChat.style.opacity = estaBloqueadoCualquiera ? "0.5" : "1";
+    inputChat.style.opacity = esSuBloqueo ? "0.5" : "1";
   }
 
-  // C) Botón de enviar / nota de voz
+  // C) Botón de enviar / nota de voz: SOLO SE DESHABILITA SI "A MÍ ME BLOQUEARON"
   if (btnAccionChat) {
-    btnAccionChat.style.pointerEvents = estaBloqueadoCualquiera ? "none" : "auto";
-    btnAccionChat.style.opacity = estaBloqueadoCualquiera ? "0.3" : "1";
+    btnAccionChat.style.pointerEvents = esSuBloqueo ? "none" : "auto";
+    btnAccionChat.style.opacity = esSuBloqueo ? "0.3" : "1";
   }
 
-  // D) Tarjeta en la lista principal (solo se oscurece si YO lo tengo bloqueado)
+  // D) Tarjeta en la lista principal (efecto visual de gris únicamente para quien bloqueó)
   if (tarjetaContacto) {
     tarjetaContacto.style.opacity = esMiBloqueo ? "0.4" : "1";
     tarjetaContacto.style.filter = esMiBloqueo ? "grayscale(100%)" : "none";
