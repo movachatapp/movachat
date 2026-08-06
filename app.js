@@ -546,20 +546,23 @@ if (contenedorChats) {
 // 3. MENÚS DESPLEGABLES Y ARCHIVOS DE CÁMARA PRO
 // ========================================================
 if (btnOpcionesChat) {
-  btnOpcionesChat.addEventListener("click", (e) => {
+  btnOpcionesChat.addEventListener("click", async (e) => {
     e.stopPropagation();
 
-    // 🔕 VERIFICAR Y ACTUALIZAR TEXTO DEL BOTÓN SILENCIAR ANTES DE MOSTRAR EL MENÚ
+    const contactoUid = window.contactoActivoUid;
+
+    // 🔕 1. ACTUALIZAR TEXTO Y ESTADO DEL BOTÓN SILENCIAR
     const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
-    if (btnCtxSilenciar && window.contactoActivoUid) {
-      const estaSilenciado = localStorage.getItem(`silenciado_${window.contactoActivoUid}`) === "true";
+    if (btnCtxSilenciar && contactoUid) {
+      const estaSilenciado = localStorage.getItem(`silenciado_${contactoUid}`) === "true";
       btnCtxSilenciar.innerHTML = estaSilenciado
         ? `<i data-lucide="bell"></i> Activar notificaciones`
         : `<i data-lucide="bell-off"></i> Silenciar chat`;
+    }
 
-      if (window.lucide) {
-        window.lucide.createIcons({ targets: [btnCtxSilenciar] });
-      }
+    // 🛡️ 2. ACTUALIZAR TEXTO Y ESTADO DEL BOTÓN BLOQUEAR EN TIEMPO REAL
+    if (typeof verificarEstadoBloqueo === "function" && contactoUid) {
+      await verificarEstadoBloqueo(contactoUid);
     }
 
     menuCabecera.classList.toggle("oculto");
@@ -571,6 +574,10 @@ if (btnOpcionesChat) {
     menuCabecera.style.right = "20px";
     menuCabecera.style.left = "auto";
     menuCabecera.style.top = `${rect.bottom - marcoRect.top + 10}px`;
+
+    if (window.lucide) {
+      window.lucide.createIcons({ targets: [menuCabecera] });
+    }
   });
 }
 
@@ -2978,9 +2985,7 @@ function cargarMensajesChat(contactoUid) {
   });
 }
 
-// ========================================================
-// 🛡️ SISTEMA DE BLOQUEO DE USUARIOS (PERSISTENTE EN FIREBASE)
-// ========================================================
+// 🛡️ EVENTO DE CLIC EN BLOQUEAR / DESBLOQUEAR
 const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
 
 if (btnCtxBloquear) {
@@ -3000,68 +3005,21 @@ if (btnCtxBloquear) {
     const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
 
     try {
-      // 1. Consultar en Firebase si el contacto ya está bloqueado
       const snap = await get(bloqueoRef);
       const estaBloqueado = snap.exists() && snap.val() === true;
 
       if (!estaBloqueado) {
-        // 🔒 BLOQUEAR: Escribir en Firebase
+        // 🔒 BLOQUEAR
         await set(bloqueoRef, true);
-        
-        btnCtxBloquear.innerHTML = `<i data-lucide="shield-check"></i> Desbloquear usuario`;
-        btnCtxBloquear.classList.remove("texto-rojo");
-        btnCtxBloquear.style.color = "#00f2fe";
-
-        // Desactivar caja de entrada e interacción
-        if (inputChat) {
-          inputChat.disabled = true;
-          inputChat.placeholder = "Has bloqueado a este usuario.";
-          inputChat.style.opacity = "0.5";
-        }
-        if (btnAccionChat) {
-          btnAccionChat.style.pointerEvents = "none";
-          btnAccionChat.style.opacity = "0.3";
-        }
-
-        const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
-        if (tarjetaAmigoNodo) {
-          tarjetaAmigoNodo.style.opacity = "0.4";
-          tarjetaAmigoNodo.style.filter = "grayscale(100%)";
-        }
-
         mostrarAvisoPremium(`Usuario <b>${nombreAmigoActual}</b> bloqueado con éxito.`, "⚠️", "#ff4b2b");
-
       } else {
-        // 🔓 DESBLOQUEAR: Borrar en Firebase
+        // 🔓 DESBLOQUEAR
         await set(bloqueoRef, null);
-
-        btnCtxBloquear.innerHTML = `<i data-lucide="shield-alert"></i> Bloquear usuario`;
-        btnCtxBloquear.classList.add("texto-rojo");
-        btnCtxBloquear.style.color = "";
-
-        // Reactivar caja de entrada e interacción
-        if (inputChat) {
-          inputChat.disabled = false;
-          inputChat.placeholder = "Escribe un mensaje privado...";
-          inputChat.style.opacity = "1";
-        }
-        if (btnAccionChat) {
-          btnAccionChat.style.pointerEvents = "auto";
-          btnAccionChat.style.opacity = "1";
-        }
-
-        const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
-        if (tarjetaAmigoNodo) {
-          tarjetaAmigoNodo.style.opacity = "1";
-          tarjetaAmigoNodo.style.filter = "none";
-        }
-
         mostrarAvisoPremium(`Has desbloqueado a <b>${nombreAmigoActual}</b>. Conexión restaurada.`, "📡", "#00f2fe");
       }
 
-      if (window.lucide) {
-        window.lucide.createIcons({ targets: [btnCtxBloquear] });
-      }
+      // Re-sincronizar el estado de este usuario específico en la interfaz
+      await window.verificarEstadoBloqueo(contactoUid);
 
     } catch (error) {
       console.error("❌ Error al actualizar bloqueo en Firebase:", error);
@@ -3070,40 +3028,65 @@ if (btnCtxBloquear) {
   });
 }
 
-// 🟢 VERIFICAR ESTADO DE BLOQUEO AL ABRIR CHAT
+// 🟢 VERIFICAR ESTADO DE BLOQUEO EN FIREBASE Y SINCRONIZAR INTERFAZ
 window.verificarEstadoBloqueo = async function(contactoUid) {
-  const miUid = auth.currentUser ? auth.currentUser.uid : null;
-  if (!miUid || !contactoUid) return;
+  const usuarioActual = auth.currentUser;
+  const miUid = usuarioActual ? usuarioActual.uid : null;
+  if (!miUid || !contactoUid) return false;
 
-  const snap = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
-  const estaBloqueado = snap.exists() && snap.val() === true;
+  try {
+    const snap = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
+    const estaBloqueado = snap.exists() && snap.val() === true;
 
-  if (btnCtxBloquear) {
-    btnCtxBloquear.innerHTML = estaBloqueado
-      ? `<i data-lucide="shield-check"></i> Desbloquear usuario`
-      : `<i data-lucide="shield-alert"></i> Bloquear usuario`;
-    
-    if (estaBloqueado) {
-      btnCtxBloquear.classList.remove("texto-rojo");
-      btnCtxBloquear.style.color = "#00f2fe";
-    } else {
-      btnCtxBloquear.classList.add("texto-rojo");
-      btnCtxBloquear.style.color = "";
+    // 1. Actualizar botón en el menú desplegable
+    const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
+    if (btnCtxBloquear) {
+      btnCtxBloquear.innerHTML = estaBloqueado
+        ? `<i data-lucide="shield-check"></i> Desbloquear usuario`
+        : `<i data-lucide="shield-alert"></i> Bloquear usuario`;
+      
+      if (estaBloqueado) {
+        btnCtxBloquear.classList.remove("texto-rojo");
+        btnCtxBloquear.style.color = "#00f2fe";
+      } else {
+        btnCtxBloquear.classList.add("texto-rojo");
+        btnCtxBloquear.style.color = "";
+      }
+
+      if (window.lucide) {
+        window.lucide.createIcons({ targets: [btnCtxBloquear] });
+      }
     }
 
-    if (window.lucide) {
-      window.lucide.createIcons({ targets: [btnCtxBloquear] });
+    // 2. Si el chat abierto en pantalla es el de este contacto, ajustar inputs
+    if (window.contactoActivoUid === contactoUid) {
+      if (inputChat) {
+        inputChat.disabled = estaBloqueado;
+        inputChat.placeholder = estaBloqueado ? "Has bloqueado a este usuario." : "Escribe un mensaje privado...";
+        inputChat.style.opacity = estaBloqueado ? "0.5" : "1";
+      }
+      if (btnAccionChat) {
+        btnAccionChat.style.pointerEvents = estaBloqueado ? "none" : "auto";
+        btnAccionChat.style.opacity = estaBloqueado ? "0.3" : "1";
+      }
     }
-  }
 
-  if (inputChat) {
-    inputChat.disabled = estaBloqueado;
-    inputChat.placeholder = estaBloqueado ? "Has bloqueado a este usuario." : "Escribe un mensaje privado...";
-    inputChat.style.opacity = estaBloqueado ? "0.5" : "1";
-  }
-  if (btnAccionChat) {
-    btnAccionChat.style.pointerEvents = estaBloqueado ? "none" : "auto";
-    btnAccionChat.style.opacity = estaBloqueado ? "0.3" : "1";
+    // 3. Actualizar aspecto visual de la tarjeta en la lista principal
+    const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
+    if (tarjetaAmigoNodo) {
+      if (estaBloqueado) {
+        tarjetaAmigoNodo.style.opacity = "0.4";
+        tarjetaAmigoNodo.style.filter = "grayscale(100%)";
+      } else {
+        tarjetaAmigoNodo.style.opacity = "1";
+        tarjetaAmigoNodo.style.filter = "none";
+      }
+    }
+
+    return estaBloqueado;
+  } catch (error) {
+    console.error("Error al verificar estado de bloqueo:", error);
+    return false;
   }
 };
 
@@ -4192,8 +4175,19 @@ function cargarContactosAprobados(usuarioActualUid) {
 // Crear alias para que ambas llamadas funcionen igual de bien
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
 
-// 🟢 Función unificada adaptada a tus selectores y limpia de duplicados (CON VERIFICACIÓN DE BLOQUEO)
+// 🟢 Función unificada adaptada a tus selectores (CON RESET DE CAJA DE TEXTO Y VERIFICACIÓN DE BLOQUEO)
 function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
+  // 🟢 RESETEAR CAJA DE TEXTO A ESTADO NORMAL AL CAMBIAR DE CHAT
+  if (inputChat) {
+    inputChat.disabled = false;
+    inputChat.placeholder = "Escribe un mensaje privado...";
+    inputChat.style.opacity = "1";
+  }
+  if (btnAccionChat) {
+    btnAccionChat.style.pointerEvents = "auto";
+    btnAccionChat.style.opacity = "1";
+  }
+
   let uidTarget, nombreTarget, fotoTarget;
 
   if (typeof contactoUid === 'object' && contactoUid !== null) {
