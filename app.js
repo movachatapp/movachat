@@ -31,6 +31,7 @@ let segundosRestantes = 10;
 let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
+let contactoSeleccionado = null;
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -3133,6 +3134,8 @@ async function ejecutarAccionBloqueo(bloquear, miUid, contactoUid, nombreAmigo) 
 }
 
 // Cancelar Modal Bloqueo
+const btnCancelarBloquear = document.getElementById("btn-cancelar-bloquear-modal");
+
 if (btnCancelarBloquear) {
   btnCancelarBloquear.addEventListener("click", () => {
     if (modalBloquear) modalBloquear.classList.add("oculto");
@@ -4134,9 +4137,6 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
     }
   }
 };
-
-// Variable global para guardar el contacto seleccionado actualmente
-let contactoSeleccionado = null;
 
 // 🟢 Función para cargar los contactos y escuchar mensajes no leídos en tiempo real (CON DETECCIÓN DE SILENCIADO)
 function cargarContactosAprobados(usuarioActualUid) {
