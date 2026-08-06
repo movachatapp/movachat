@@ -31,6 +31,7 @@ let segundosRestantes = 10;
 let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
+let listenerChatActivo = null;
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
