@@ -3030,33 +3030,52 @@ if (btnCtxBloquear) {
   });
 }
 
+// ========================================================
+// 🗑️ BOTÓN VACIAR CHAT (BORRADO DEFINITIVO EN FIREBASE)
+// ========================================================
 const btnCtxVaciar = document.getElementById("btn-ctx-vaciar");
+
 if (btnCtxVaciar) {
-  btnCtxVaciar.addEventListener("click", (e) => {
+  btnCtxVaciar.addEventListener("click", async (e) => {
     e.stopPropagation();
 
-    const nombreAmigoActual = document.querySelector(".amigo-nombre-chat").textContent;
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = window.contactoActivoUid;
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+    if (!miUid || !contactoUid) return;
     if (menuCabecera) menuCabecera.classList.add("oculto");
 
-    const contenedorMensajesActivo = document.querySelector("#pantalla-chat-privado .historial-mensajes");
-    if (!contenedorMensajesActivo) return;
+    const confirmacion = confirm(`¿Estás seguro de que deseas vaciar toda la conversación con ${nombreAmigoActual}? Esta acción no se puede deshacer.`);
+    
+    if (!confirmacion) return;
 
-    const burbujasDelChatActual = contenedorMensajesActivo.querySelectorAll(".mensaje-burbuja");
+    const chatId = typeof obtenerChatId === "function"
+      ? obtenerChatId(miUid, contactoUid)
+      : [miUid, contactoUid].sort().join("_");
 
-    if (burbujasDelChatActual.length === 0) {
-      mostrarAvisoPremium(`El historial con <b>${nombreAmigoActual}</b> ya está vacío.`, "📡", "#00f2fe");
-      return;
+    try {
+      // 1. Borrar todos los mensajes en la base de datos de Firebase
+      const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+      await set(mensajesRef, null);
+
+      // 2. Limpiar visualmente la pantalla del chat
+      const contenedorHistorial = document.querySelector(".historial-mensajes");
+      if (contenedorHistorial) {
+        contenedorHistorial.innerHTML = "";
+      }
+
+      // 3. Notificación de confirmación
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(`Se ha vaciado el chat con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
+      }
+    } catch (err) {
+      console.error("Error al vaciar el chat en Firebase:", err);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("No se pudo vaciar el chat. Inténtalo de nuevo.", "❌", "#ff4b2b");
+      }
     }
-
-    burbujasDelChatActual.forEach(burbuja => {
-      burbuja.style.transition = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
-      burbuja.style.opacity = "0";
-      burbuja.style.transform = "scale(0.8) translateY(-10px)";
-      setTimeout(() => { burbuja.remove(); }, 300);
-    });
-
-    localStorage.removeItem(`movachat_msgs_${nombreAmigoActual}`);
-    mostrarAvisoPremium(`Historial efímero con <b>${nombreAmigoActual}</b> eliminado con éxito.`, "🗑️", "#ff4b2b");
   });
 }
 
