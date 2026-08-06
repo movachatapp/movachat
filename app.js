@@ -242,11 +242,13 @@ onAuthStateChanged(auth, async (user) => {
             cargarContactosAprobados(user.uid);
           }
 
-          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP
+          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP (CON ICONO VISUAL)
           const refSilenciados = ref(db, `silenciados/${user.uid}`);
           onValue(refSilenciados, (snapshot) => {
             if (snapshot.exists()) {
               const silenciadosBD = snapshot.val();
+              const objetivosIconos = [];
+
               Object.keys(silenciadosBD).forEach((contactoUid) => {
                 if (silenciadosBD[contactoUid]) {
                   localStorage.setItem(`silenciado_${contactoUid}`, "true");
@@ -254,9 +256,25 @@ onAuthStateChanged(auth, async (user) => {
                   const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
                   if (tarjeta) {
                     tarjeta.classList.add("chat-silenciado-zona");
+
+                    // Inyectar el icono visual si no está presente en la tarjeta
+                    const contenedorHora = tarjeta.querySelector(".chat-cabecera");
+                    if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
+                      contenedorHora.insertAdjacentHTML("beforeend", `
+              <span class="indicador-silencio-neon" title="Chat silenciado">
+                <i data-lucide="bell-off"></i>
+              </span>
+            `);
+                      objetivosIconos.push(tarjeta);
+                    }
                   }
                 }
               });
+
+              // Renderizar los iconos de Lucide cargados
+              if (window.lucide && objetivosIconos.length > 0) {
+                window.lucide.createIcons({ targets: objetivosIconos });
+              }
             }
           });
 
