@@ -1232,8 +1232,8 @@ async function enviarMensajeNuevo() {
     const loTengoBloqueado = snapBloqueoPropio.exists() && snapBloqueoPropio.val() === true;
 
     if (meTieneBloqueado || loTengoBloqueado) {
-      const mensajeAviso = loTengoBloqueado 
-        ? "Has bloqueado a este usuario. Desbloquéalo para enviar mensajes." 
+      const mensajeAviso = loTengoBloqueado
+        ? "Has bloqueado a este usuario. Desbloquéalo para enviar mensajes."
         : "No puedes enviar mensajes a este usuario.";
 
       if (typeof mostrarAvisoPremium === "function") {
@@ -2005,10 +2005,11 @@ if (btnCorazonEstado) {
   });
 }
 
-const esfera1 = document.querySelector(".esfera-cyan");
-const esfera2 = document.querySelector(".esfera-morada");
-
+// Al hacer clic en la opción de Aura
 window.cambiarAura = function (nombreTema) {
+  const esfera1 = document.querySelector(".esfera-cyan");
+  const esfera2 = document.querySelector(".esfera-morada");
+
   if (esfera1 && esfera2) {
     esfera1.classList.remove("aura-cyan-morado", "aura-fuego", "aura-oceano", "aura-matrix");
     esfera2.classList.remove("aura-cyan-morado", "aura-fuego", "aura-oceano", "aura-matrix");
@@ -2016,9 +2017,36 @@ window.cambiarAura = function (nombreTema) {
     esfera1.classList.add(`aura-${nombreTema}`);
     esfera2.classList.add(`aura-${nombreTema}`);
 
+    // 💾 Guardar preferencia en memoria local
+    localStorage.setItem("movachat-aura", nombreTema);
+
+    // 🎨 Sincronizar el botón activo y la cápsula deslizante en la UI
+    const botones = Array.from(document.querySelectorAll(".opcion-aura"));
+    const indicador = document.getElementById("indicador-aura");
+
+    botones.forEach((btn, index) => {
+      const onclickAttr = btn.getAttribute("onclick") || "";
+      if (onclickAttr.includes(nombreTema)) {
+        botones.forEach(b => b.classList.remove("activa"));
+        btn.classList.add("activa");
+
+        if (indicador) {
+          indicador.style.transform = `translateX(${index * 100}%)`;
+        }
+      }
+    });
+
     mostrarAvisoPremium(`Aura cambiada al tema [ ${nombreTema.toUpperCase()} ] 🔮`, "🌌", "#00f2fe");
   }
 };
+
+// 🔄 Restaurar Aura al cargar la aplicación
+document.addEventListener("DOMContentLoaded", () => {
+  const auraGuardada = localStorage.getItem("movachat-aura");
+  if (auraGuardada && typeof cambiarAura === "function") {
+    cambiarAura(auraGuardada);
+  }
+});
 
 function mostrarAvisoPremium(mensaje, icono = "🔔", colorNeon = "#00f2fe") {
   const toast = document.getElementById("toast-premium");
@@ -3055,7 +3083,7 @@ if (btnCtxBloquear) {
 }
 
 // 🟢 VERIFICAR ESTADO DE BLOQUEO EN FIREBASE Y SINCRONIZAR INTERFAZ
-window.verificarEstadoBloqueo = async function(contactoUid) {
+window.verificarEstadoBloqueo = async function (contactoUid) {
   const usuarioActual = auth.currentUser;
   const miUid = usuarioActual ? usuarioActual.uid : null;
   if (!miUid || !contactoUid) return false;
@@ -3070,7 +3098,7 @@ window.verificarEstadoBloqueo = async function(contactoUid) {
       btnCtxBloquear.innerHTML = estaBloqueado
         ? `<i data-lucide="shield-check"></i> Desbloquear usuario`
         : `<i data-lucide="shield-alert"></i> Bloquear usuario`;
-      
+
       if (estaBloqueado) {
         btnCtxBloquear.classList.remove("texto-rojo");
         btnCtxBloquear.style.color = "#00f2fe";
