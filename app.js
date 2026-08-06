@@ -33,6 +33,7 @@ let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
 let listenerChatActivo = null;
 let listenerBloqueoActivo = null;
+let btnCtxSilenciar = null;
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -4403,7 +4404,6 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
       escucharMensajesChat(chatId);
     }
   }
-}
 
   // 🔕 ACTUALIZAR TEXTO DEL BOTÓN SILENCIAR SEGÚN EL ESTADO DEL CONTACTO
   btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
