@@ -2312,15 +2312,14 @@ window.actualizarBadgesNotificaciones = function () {
 // Crear alias global para sincronizar ambas llamadas
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
 
-// ========================================================
-// 🚀 2. ESCUCHAR MENSAJES CON CANDADO DE LECTURA DESDE FIREBASE
-// ========================================================
+// 🚀 ESCUCHAR ÚLTIMO MENSAJE Y SINCRONIZAR VISTA PREVIA (TENIENDO EN CUENTA EL VACIADO PERSONAL)
 function escucharUltimoMensajeContacto(miUid, contactoUid) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
   const lecturaRef = ref(db, `lecturas/${miUid}/${contactoUid}`);
+  const vaciadoRef = ref(db, `vaciados/${miUid}/${contactoUid}`);
 
-  onValue(mensajesRef, (snapshot) => {
+  onValue(mensajesRef, async (snapshot) => {
     const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
     const contenedorLista = document.getElementById("lista-chats-principal");
 
@@ -2330,80 +2329,107 @@ function escucharUltimoMensajeContacto(miUid, contactoUid) {
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
 
+    // 1. Obtener fecha del último vaciado personal del usuario
+    let timestampUltimoVaciado = 0;
+    try {
+      const snapVaciado = await get(vaciadoRef);
+      if (snapVaciado.exists()) {
+        timestampUltimoVaciado = snapVaciado.val();
+      }
+    } catch (err) {
+      console.error("Error al consultar fecha de vaciado para tarjeta:", err);
+    }
+
     if (snapshot.exists()) {
       const mensajes = snapshot.val();
       const keys = Object.keys(mensajes);
-      const ultimoMsgKey = keys[keys.length - 1];
-      const ultimoMsg = mensajes[ultimoMsgKey];
 
-      // Actualizar vista previa de texto y hora
-      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
-      if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
+      // 2. Filtrar únicamente los mensajes posteriores al vaciado personal
+      const mensajesValidosKeys = keys.filter((k) => {
+        const m = mensajes[k];
+        return (m.timestamp || 0) > timestampUltimoVaciado;
+      });
 
-      // Verificar si el chat está abierto en pantalla
-      const pantallaChat = document.getElementById("pantalla-chat-privado");
-      const estaAbierto = (window.contactoActivoUid === contactoUid) &&
-        pantallaChat &&
-        (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
+      if (mensajesValidosKeys.length > 0) {
+        // Hay mensajes tras el vaciado -> mostrar el último válido
+        const ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
+        const ultimoMsg = mensajes[ultimoMsgKey];
 
-      // 1. Si el chat está abierto, marcar lectura en la nube al instante
-      if (estaAbierto) {
-        set(lecturaRef, ultimoMsgKey);
+        if (elemTexto) elemTexto.textContent = ultimoMsg.texto || "📷 Adjunto";
+        if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
 
-        if (elemBadge) {
-          elemBadge.textContent = "0";
-          elemBadge.classList.add("oculto");
-        }
-        if (elemTexto) elemTexto.classList.remove("texto-resaltado");
+        // Verificar si la pantalla del chat está abierta actualmente
+        const pantallaChat = document.getElementById("pantalla-chat-privado");
+        const estaAbierto = (window.contactoActivoUid === contactoUid) &&
+          pantallaChat &&
+          (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
-        if (typeof window.actualizarBadgesNotificaciones === "function") {
-          window.actualizarBadgesNotificaciones();
-        }
-        return;
-      }
-
-      // 2. Si el chat está cerrado, comparar con la clave guardada en Firebase
-      get(lecturaRef).then((lecturaSnap) => {
-        const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
-        let nuevos = 0;
-        let empezarAContar = (ultimoLeidoKey === "");
-
-        keys.forEach((k) => {
-          if (k === ultimoLeidoKey) {
-            empezarAContar = true;
-            return;
-          }
-          if (empezarAContar) {
-            const m = mensajes[k];
-            const idEmisor = m.emisor || m.emisorUid;
-            if (idEmisor === contactoUid) nuevos++;
-          }
-        });
-
-        if (nuevos > 0) {
-          if (elemBadge) {
-            elemBadge.textContent = nuevos > 99 ? "99+" : nuevos.toString();
-            elemBadge.classList.remove("oculto");
-          }
-          if (elemTexto) elemTexto.classList.add("texto-resaltado");
-
-          // Sonar alerta solo si llegó en los últimos 4 segundos
-          const esReciente = (Date.now() - (ultimoMsg.timestamp || 0)) < 4000;
-          if (esReciente && typeof window.reproducirSonido === "function") {
-            window.reproducirSonido("recibido", contactoUid);
-          }
-        } else {
+        if (estaAbierto) {
+          set(lecturaRef, ultimoMsgKey);
           if (elemBadge) {
             elemBadge.textContent = "0";
             elemBadge.classList.add("oculto");
           }
           if (elemTexto) elemTexto.classList.remove("texto-resaltado");
-        }
+        } else {
+          // Comparar lecturas de mensajes no leídos posteriores al vaciado
+          get(lecturaRef).then((lecturaSnap) => {
+            const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
+            let nuevos = 0;
+            let empezarAContar = (ultimoLeidoKey === "");
 
-        if (typeof window.actualizarBadgesNotificaciones === "function") {
-          window.actualizarBadgesNotificaciones();
+            mensajesValidosKeys.forEach((k) => {
+              if (k === ultimoLeidoKey) {
+                empezarAContar = true;
+                return;
+              }
+              if (empezarAContar) {
+                const m = mensajes[k];
+                const idEmisor = m.emisor || m.emisorUid;
+                if (idEmisor === contactoUid) nuevos++;
+              }
+            });
+
+            if (nuevos > 0) {
+              if (elemBadge) {
+                elemBadge.textContent = nuevos > 99 ? "99+" : nuevos.toString();
+                elemBadge.classList.remove("oculto");
+              }
+              if (elemTexto) elemTexto.classList.add("texto-resaltado");
+            } else {
+              if (elemBadge) {
+                elemBadge.textContent = "0";
+                elemBadge.classList.add("oculto");
+              }
+              if (elemTexto) elemTexto.classList.remove("texto-resaltado");
+            }
+
+            if (typeof window.actualizarBadgesNotificaciones === "function") {
+              window.actualizarBadgesNotificaciones();
+            }
+          });
         }
-      });
+      } else {
+        // No hay mensajes posteriores al vaciado -> limpiar vista previa de la tarjeta
+        if (elemTexto) elemTexto.textContent = "Conversación vaciada";
+        if (elemHora) elemHora.textContent = "--:--";
+        if (elemBadge) {
+          elemBadge.textContent = "0";
+          elemBadge.classList.add("oculto");
+        }
+      }
+    } else {
+      // Si el chat en la base de datos está completamente vacío
+      if (elemTexto) elemTexto.textContent = "Conversación vaciada";
+      if (elemHora) elemHora.textContent = "--:--";
+      if (elemBadge) {
+        elemBadge.textContent = "0";
+        elemBadge.classList.add("oculto");
+      }
+    }
+
+    if (typeof window.actualizarBadgesNotificaciones === "function") {
+      window.actualizarBadgesNotificaciones();
     }
   });
 }
@@ -3128,7 +3154,7 @@ if (btnCancelarVaciar) {
   });
 }
 
-// 🗑️ Evento Aceptar Modal (Vaciar Chat INDIVIDUAL)
+// Evento Aceptar Modal (Vaciar Chat INDIVIDUAL)
 if (btnAceptarVaciar) {
   btnAceptarVaciar.addEventListener("click", async () => {
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -3140,17 +3166,36 @@ if (btnAceptarVaciar) {
     if (!miUid || !contactoUid) return;
 
     try {
-      // 1. Guardar la fecha/hora actual como punto de corte personal en Firebase
+      // 1. Guardar la marca de vaciado personal en Firebase
       const timestampVaciado = Date.now();
       await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
 
-      // 2. Limpiar visualmente el historial de tu pantalla
+      // 2. Limpiar visualmente la pantalla del chat
       const contenedorHistorial = document.querySelector(".historial-mensajes");
       if (contenedorHistorial) {
         contenedorHistorial.innerHTML = "";
       }
 
-      // 3. Notificación flotante de confirmación
+      // 3. Limpiar inmediatamente la tarjeta de la lista de chats principal
+      const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
+      if (tarjetaAmigoNodo) {
+        const elemTexto = tarjetaAmigoNodo.querySelector(".chat-texto");
+        const elemHora = tarjetaAmigoNodo.querySelector(".chat-hora");
+        const elemBadge = tarjetaAmigoNodo.querySelector(".badge-chat-no-leido") || tarjetaAmigoNodo.querySelector(".badge-mensaje");
+
+        if (elemTexto) elemTexto.textContent = "Conversación vaciada";
+        if (elemHora) elemHora.textContent = "--:--";
+        if (elemBadge) {
+          elemBadge.textContent = "0";
+          elemBadge.classList.add("oculto");
+        }
+      }
+
+      if (typeof window.actualizarBadgesNotificaciones === "function") {
+        window.actualizarBadgesNotificaciones();
+      }
+
+      // 4. Notificación de confirmación
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium(`Se ha limpiado tu historial con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
       }
