@@ -1189,7 +1189,7 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 let estaEnviandoMensaje = false;
 
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS)
 // ========================================================
 async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
@@ -1213,6 +1213,33 @@ async function enviarMensajeNuevo() {
 
   // Activar candado
   estaEnviandoMensaje = true;
+
+  // 🛡️ 1. VERIFICACIÓN DE BLOQUEO EN FIREBASE (AMBAS DIRECCIONES)
+  try {
+    // ¿El receptor te tiene bloqueado a ti?
+    const snapBloqueoReceptor = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
+    // ¿Tú tienes bloqueado al receptor?
+    const snapBloqueoPropio = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
+
+    const meTieneBloqueado = snapBloqueoReceptor.exists() && snapBloqueoReceptor.val() === true;
+    const loTengoBloqueado = snapBloqueoPropio.exists() && snapBloqueoPropio.val() === true;
+
+    if (meTieneBloqueado || loTengoBloqueado) {
+      const mensajeAviso = loTengoBloqueado 
+        ? "Has bloqueado a este usuario. Desbloquéalo para enviar mensajes." 
+        : "No puedes enviar mensajes a este usuario.";
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(mensajeAviso, "🚫", "#ff4b2b");
+      }
+
+      // Desactivar candado y salir
+      estaEnviandoMensaje = false;
+      return;
+    }
+  } catch (errBloqueo) {
+    console.error("Error al consultar bloqueos antes de enviar:", errBloqueo);
+  }
 
   const chatId = typeof obtenerChatId === "function"
     ? obtenerChatId(miUid, contactoUid)
@@ -4325,7 +4352,7 @@ if (inputChatPrivado) {
 
 let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (Con Auto-Destrucción y Renderizado Seguro)
+// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (CON FILTRO DE BLOQUEO)
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
   if (!contenedorHistorial) return;
@@ -4337,7 +4364,7 @@ function escucharMensajesChat(chatId) {
   if (typeof listenerChatActivo === "function") listenerChatActivo();
   if (typeof listenerConfigActivo === "function") listenerConfigActivo();
 
-  // 2. Escuchar el estado de mensajes temporales para actualizar el botón en vivo
+  // 2. Escuchar el estado de mensajes temporales
   listenerConfigActivo = onValue(configRef, (snapshot) => {
     const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
     if (btnCtxTemporales) {
@@ -4355,13 +4382,32 @@ function escucharMensajesChat(chatId) {
   let esCargaInicial = true;
 
   // 3. Escuchar mensajes en tiempo real
-  listenerChatActivo = onValue(mensajesRef, (snapshot) => {
+  listenerChatActivo = onValue(mensajesRef, async (snapshot) => {
     const elemHistorial = document.querySelector(".historial-mensajes");
     if (!elemHistorial) return;
 
     elemHistorial.innerHTML = ""; // Limpiar historial antes de redibujar
 
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = window.contactoActivoUid;
+
+    // 🛡️ VERIFICACIÓN DE BLOQUEO MUTUO
+    let estaBloqueadoElContacto = false;
+    let meTieneBloqueadoAMi = false;
+
+    if (miUid && contactoUid) {
+      try {
+        // ¿Yo lo bloqueé a él?
+        const snapYoBloquee = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
+        estaBloqueadoElContacto = snapYoBloquee.exists() && snapYoBloquee.val() === true;
+
+        // ¿Él me bloqueó a mí?
+        const snapElMeBloqueo = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
+        meTieneBloqueadoAMi = snapElMeBloqueo.exists() && snapElMeBloqueo.val() === true;
+      } catch (err) {
+        console.error("Error al consultar bloqueos en Firebase:", err);
+      }
+    }
 
     if (snapshot.exists()) {
       const mensajes = snapshot.val();
@@ -4370,7 +4416,15 @@ function escucharMensajesChat(chatId) {
         const msg = mensajes[msgId];
         if (!msg) return;
 
-        // A) LÓGICA DE MENSAJE EFÍMERO (Auto-eliminación en Firebase a los 10 segundos)
+        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
+        const esMio = idEmisorReal === miUid;
+
+        // 🛑 SI YO BLOQUEÉ AL OTRO Y EL MENSAJE ES DE ÉL -> IGNORAR Y NO RENDERIZAR
+        if (estaBloqueadoElContacto && !esMio) {
+          return; 
+        }
+
+        // A) LÓGICA DE MENSAJE EFÍMERO
         if (msg.esEfimero) {
           const transcurrido = Date.now() - (msg.timestamp || Date.now());
           const tiempoRestante = 10000 - transcurrido;
@@ -4385,13 +4439,11 @@ function escucharMensajesChat(chatId) {
           }
         }
 
-        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
-        const esMio = idEmisorReal === miUid;
-
         const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
         const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
 
-        if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo) {
+        // Notificaciones solo si no está bloqueado
+        if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto) {
           const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
           const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
           const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
@@ -4434,38 +4486,6 @@ function escucharMensajesChat(chatId) {
             </div>
             ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
             <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else if (msg.tipoAdjunto === 'video') {
-          estiloEspecialBurbuja = "padding: 10px;";
-          contenidoBurbuja = `
-            <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-              <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-              </svg>
-              <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-                <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
-              </div>
-              <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-              </div>
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else if (msg.tipoAdjunto === 'audio') {
-          contenidoBurbuja = `
-            <div class="reproductor-audio-burbuja">
-              <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
-              <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-                <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-              </div>
-              <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-              <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
-            </div>
-            <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
           `;
         } else {
           contenidoBurbuja = `
