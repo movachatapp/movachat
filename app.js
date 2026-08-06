@@ -1304,10 +1304,16 @@ async function enviarMensajeNuevo() {
     hora: horaFormateada,
     timestamp: Date.now(),
     esEfimero: esEfimero,
+    // ↪️ METADATOS DE REENVÍO
+    esReenviado: window.mensajeReenviadoActivo ? true : false,
+    autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
     tipoAdjunto: null,
     urlAdjunto: null,
     nombreDoc: null
   };
+
+  // Limpiar el estado de reenvío una vez armado el mensaje
+  window.mensajeReenviadoActivo = null;
 
   if (tieneAdjunto) {
     objetoMensaje.tipoAdjunto = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
@@ -1514,29 +1520,35 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // ↪️ OPCIÓN 3: REENVIAR (Te lleva a la lista de chats)
+    // ↪️ OPCIÓN 3: REENVIAR MENSAJE (Guarda texto, autor original y redirige)
     else if (accion === "reenviar") {
-      if (textoMensaje) {
-        // 1. Guardar en memoria global
-        window.textoPendienteReenviar = textoMensaje;
+      if (textoMensaje && nodoMensaje) {
+        // Identificar si el mensaje original era mío o del contacto
+        const esMio = nodoMensaje.classList.contains("enviado");
+        const elemNombreContacto = document.querySelector(".amigo-nombre-chat");
+        const nombreContacto = elemNombreContacto ? elemNombreContacto.textContent.trim() : "Contacto";
 
-        // 2. Cerrar el chat actual (Simular el botón de atrás)
+        const autorOriginal = esMio ? "Tú" : nombreContacto;
+
+        // Guardar el paquete completo de reenvío en memoria global
+        window.objetoPendienteReenviar = {
+          texto: textoMensaje,
+          autorOriginal: autorOriginal,
+          esReenviado: true
+        };
+
+        // Cerrar chat actual para ir a la lista de contactos
         const btnCerrarChat = document.getElementById("btn-cerrar-chat") || document.querySelector(".btn-volver");
         if (btnCerrarChat) {
           btnCerrarChat.click();
-        } else {
-          // Fallback manual por si no detecta el botón de volver
-          const pantallaChat = document.getElementById("pantalla-chat-privado");
-          if (pantallaChat) pantallaChat.style.display = "none";
         }
 
-        // 3. Avisar al usuario qué debe hacer
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Selecciona un chat para reenviar el mensaje.", "↪️", "#00f2fe");
+          mostrarAvisoPremium(`Mensaje de ${autorOriginal} listo. Selecciona el chat destino.`, "↪️", "#00f2fe");
         }
       } else {
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Este tipo de contenido no se puede reenviar directo.", "⚠️", "#ff4b2b");
+          mostrarAvisoPremium("Este tipo de contenido no se puede reenviar.", "⚠️", "#ff4b2b");
         }
       }
     }
@@ -4463,18 +4475,21 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     verificarEstadoBloqueo(uidTarget);
   }
 
-  // ↪️ VERIFICAR SI HAY UN TEXTO PENDIENTE DE REENVIAR
-  if (window.textoPendienteReenviar) {
+  // ↪️ VERIFICAR SI HAY UN PAQUETE DE REENVÍO PENDIENTE
+  if (window.objetoPendienteReenviar) {
     const cajaEntrada = document.getElementById("input-chat-privado") || (typeof inputChat !== "undefined" ? inputChat : null);
     if (cajaEntrada) {
-      cajaEntrada.value = window.textoPendienteReenviar;
+      cajaEntrada.value = window.objetoPendienteReenviar.texto;
       cajaEntrada.focus();
+
+      // Mantenemos la marca de reenvío activa para el próximo envío
+      window.mensajeReenviadoActivo = { ...window.objetoPendienteReenviar };
 
       if (typeof actualizarIconoBotonAccion === "function") {
         actualizarIconoBotonAccion();
       }
 
-      window.textoPendienteReenviar = null;
+      window.objetoPendienteReenviar = null; // Limpiar buffer de paso
     }
   }
 }
@@ -4642,8 +4657,21 @@ function escucharMensajesChat(chatId) {
           let contenidoBurbuja = "";
           let estiloEspecialBurbuja = "";
 
+          // ↪️ ETIQUETA VISUAL SI EL MENSAJE ES REENVIADO
+          let htmlReenviado = "";
+          if (msg.esReenviado) {
+            const autor = msg.autorOriginal || "Contacto";
+            htmlReenviado = `
+              <div class="mensaje-etiqueta-reenviado" style="font-size: 0.72rem; font-style: italic; color: rgba(255, 255, 255, 0.6); display: flex; align-items: center; gap: 4px; margin-bottom: 4px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 2px;">
+                <i data-lucide="forward" style="width: 12px; height: 12px; stroke: #00f2fe;"></i> 
+                <span>Reenviado de <b>${autor}</b></span>
+              </div>
+            `;
+          }
+
           if (msg.tipoAdjunto === 'foto') {
             contenidoBurbuja = `
+              ${htmlReenviado}
               <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
                 <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
               </div>
@@ -4652,6 +4680,7 @@ function escucharMensajesChat(chatId) {
             `;
           } else if (msg.tipoAdjunto === 'documento') {
             contenidoBurbuja = `
+              ${htmlReenviado}
               <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
                 <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
                 <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
@@ -4662,6 +4691,7 @@ function escucharMensajesChat(chatId) {
           } else if (msg.tipoAdjunto === 'video') {
             estiloEspecialBurbuja = "padding: 10px;";
             contenidoBurbuja = `
+              ${htmlReenviado}
               <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
                 <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
                   <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
@@ -4678,6 +4708,7 @@ function escucharMensajesChat(chatId) {
             `;
           } else if (msg.tipoAdjunto === 'audio') {
             contenidoBurbuja = `
+              ${htmlReenviado}
               <div class="reproductor-audio-burbuja">
                 <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
                 <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
@@ -4693,6 +4724,7 @@ function escucharMensajesChat(chatId) {
             `;
           } else {
             contenidoBurbuja = `
+              ${htmlReenviado}
               <p class="mensaje-texto">${msg.texto || ''}</p>
               <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
             `;
