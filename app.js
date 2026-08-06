@@ -3035,11 +3035,11 @@ document.addEventListener("touchmove", () => {
   if (typeof temporizadorLongPress !== "undefined") clearTimeout(temporizadorLongPress);
 });
 
-
 // ========================================================
-// 🔕 3: ACCIÓN DEL BOTÓN SILENCIAR DENTRO DEL MENÚ
+// 🔕 BOTÓN SILENCIAR CHAT (DETECCIÓN DE CLIC DIRECTA)
 // ========================================================
 document.addEventListener("click", async (e) => {
+  // Buscar si el elemento clickeado es el botón o está dentro de él
   const btnSilenciar = e.target.closest("#btn-ctx-silenciar");
   if (!btnSilenciar) return;
 
@@ -3049,9 +3049,14 @@ document.addEventListener("click", async (e) => {
   const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
   const contactoUid = window.contactoActivoUid;
 
-  if (!miUid || !contactoUid) return;
+  console.log("🔍 Clic en silenciar detectado - Mi UID:", miUid, "| Contacto UID:", contactoUid);
 
-  // Ocultar menú tras hacer clic
+  if (!miUid || !contactoUid) {
+    console.warn("⚠️ No se puede silenciar: Falta la ID de usuario o del contacto activo.");
+    return;
+  }
+
+  // Ocultar menú desplegable
   const menuCabecera = document.getElementById("menu-cabecera-chat") || document.getElementById("menu-tarjetas-chat");
   if (menuCabecera) menuCabecera.classList.add("oculto");
 
@@ -3061,6 +3066,7 @@ document.addEventListener("click", async (e) => {
 
   try {
     if (!estaSilenciado) {
+      // 🔕 Guardar silencio en Firebase
       await set(silencioRef, true);
       if (window.misSilenciadosSet) window.misSilenciadosSet.add(contactoUid);
 
@@ -3079,9 +3085,10 @@ document.addEventListener("click", async (e) => {
       }
 
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Chat silenciado", "🔕", "#ff4b2b");
+        mostrarAvisoPremium("Chat silenciado correctamente", "🔕", "#ff4b2b");
       }
     } else {
+      // 🔔 Quitar silencio en Firebase
       await set(silencioRef, null);
       if (window.misSilenciadosSet) window.misSilenciadosSet.delete(contactoUid);
 
@@ -3094,7 +3101,7 @@ document.addEventListener("click", async (e) => {
       }
 
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Notificaciones activadas", "🔔", "#00f2fe");
+        mostrarAvisoPremium("Notificaciones reactivadas", "🔔", "#00f2fe");
       }
     }
 
@@ -3102,7 +3109,7 @@ document.addEventListener("click", async (e) => {
       window.lucide.createIcons({ targets: [btnSilenciar, tarjetaNodo].filter(Boolean) });
     }
   } catch (err) {
-    console.error("Error al silenciar:", err);
+    console.error("❌ Error en Firebase al silenciar:", err);
   }
 });
 
