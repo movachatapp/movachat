@@ -1175,7 +1175,7 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 let estaEnviandoMensaje = false;
 
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO)
 // ========================================================
 async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
@@ -1229,6 +1229,17 @@ async function enviarMensajeNuevo() {
     return;
   }
 
+  // ⏳ VERIFICAR SI EL MODO TEMPORAL ESTÁ ACTIVO EN ESTE CHAT
+  let esEfimero = false;
+  try {
+    const tempSnap = await get(ref(db, `chats/${chatId}/config/temporales`));
+    if (tempSnap.exists()) {
+      esEfimero = tempSnap.val() === true;
+    }
+  } catch (err) {
+    console.error("Error verificando temporales:", err);
+  }
+
   // 🟢 CASO: NUEVO MENSAJE
   let objetoMensaje = {
     emisor: miUid,
@@ -1236,6 +1247,7 @@ async function enviarMensajeNuevo() {
     texto: texto,
     hora: horaFormateada,
     timestamp: Date.now(),
+    esEfimero: esEfimero,
     tipoAdjunto: null,
     urlAdjunto: null,
     nombreDoc: null
@@ -2805,35 +2817,42 @@ if (btnCtxSilenciar) {
   });
 }
 
-const chatsTemporalesBD = {};
+// ========================================================
+// ⏳ BOTÓN MENSAJES TEMPORALES (SINCRONIZADO EN FIREBASE)
+// ========================================================
 const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
 
 if (btnCtxTemporales) {
-  btnCtxTemporales.addEventListener("click", (e) => {
+  btnCtxTemporales.addEventListener("click", async (e) => {
     e.stopPropagation();
 
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = window.contactoActivoUid;
     const elemNombre = document.querySelector(".amigo-nombre-chat");
-    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : null;
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
-    if (!nombreAmigoActual) return;
-
+    if (!miUid || !contactoUid) return;
     if (menuCabecera) menuCabecera.classList.add("oculto");
 
-    if (!chatsTemporalesBD[nombreAmigoActual]) {
-      chatsTemporalesBD[nombreAmigoActual] = true;
-      btnCtxTemporales.innerHTML = `<i data-lucide="hourglass"></i> Mensajes normales`;
-      mostrarAvisoPremium(`Modo efímero activo con <b>${nombreAmigoActual}</b>. Los mensajes nuevos durarán 10s.`, "⏳", "#00f2fe");
-    } else {
-      chatsTemporalesBD[nombreAmigoActual] = false;
-      btnCtxTemporales.innerHTML = `<i data-lucide="hourglass"></i> Mensajes temporales`;
-      mostrarAvisoPremium(`Modo permanente restaurado con <b>${nombreAmigoActual}</b>.`, "📡", "#00f2fe");
-    }
+    const chatId = obtenerChatId(miUid, contactoUid);
+    const configRef = ref(db, `chats/${chatId}/config/temporales`);
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxTemporales
-    if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [btnCtxTemporales]
-      });
+    try {
+      const snap = await get(configRef);
+      const estaActivo = snap.exists() ? snap.val() : false;
+      const nuevoEstado = !estaActivo;
+
+      await set(configRef, nuevoEstado);
+
+      mostrarAvisoPremium(
+        nuevoEstado
+          ? `Modo efímero activo con <b>${nombreAmigoActual}</b>. Los mensajes durarán 10s.`
+          : `Modo permanente restaurado con <b>${nombreAmigoActual}</b>.`,
+        nuevoEstado ? "⏳" : "📡",
+        "#00f2fe"
+      );
+    } catch (err) {
+      console.error("Error al cambiar estado de mensajes temporales:", err);
     }
   });
 }
@@ -4188,27 +4207,40 @@ if (inputChatPrivado) {
   };
 }
 
-// Variable global para controlar el listener activo y no acumular duplicados
-let listenerChatActivo = null;
+let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes en tiempo real desde Firebase (Sin sonidos cruzados)
+// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (Con Auto-Destrucción)
 function escucharMensajesChat(chatId) {
   if (!historialMensajes) return;
 
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+  const configRef = ref(db, `chats/${chatId}/config/temporales`);
 
-  // 1. Apagar listener anterior si existía para evitar duplicación de eventos
-  if (listenerChatActivo) {
-    listenerChatActivo();
-  }
+  // 1. Limpiar listeners anteriores
+  if (listenerChatActivo) listenerChatActivo();
+  if (listenerConfigActivo) listenerConfigActivo();
 
-  // Variable para ignorar la descarga inicial de mensajes antiguos
+  // 2. Escuchar el estado de mensajes temporales para actualizar el botón en vivo
+  listenerConfigActivo = onValue(configRef, (snapshot) => {
+    const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
+    if (btnCtxTemporales) {
+      const estaActivo = snapshot.exists() && snapshot.val() === true;
+      btnCtxTemporales.innerHTML = estaActivo
+        ? `<i data-lucide="hourglass"></i> Mensajes normales`
+        : `<i data-lucide="hourglass"></i> Mensajes temporales`;
+
+      if (window.lucide) {
+        window.lucide.createIcons({ targets: [btnCtxTemporales] });
+      }
+    }
+  });
+
   let esCargaInicial = true;
 
-  // 2. Iniciar escucha limpia en tiempo real
+  // 3. Escuchar mensajes
   listenerChatActivo = onValue(mensajesRef, (snapshot) => {
     if (!historialMensajes) return;
-    historialMensajes.innerHTML = ""; // Limpiar historial antes de redibujar
+    historialMensajes.innerHTML = "";
 
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
@@ -4218,16 +4250,29 @@ function escucharMensajesChat(chatId) {
       Object.keys(mensajes).forEach((msgId) => {
         const msg = mensajes[msgId];
 
-        // A) Detección de emisor
+        // A) LÓGICA DE MENSAJE EFÍMERO (Auto-eliminación en Firebase a los 10 segundos)
+        if (msg.esEfimero) {
+          const transcurrido = Date.now() - (msg.timestamp || 0);
+          const tiempoRestante = 10000 - transcurrido;
+
+          if (tiempoRestante <= 0) {
+            // Eliminar de Firebase inmediatamente si ya pasaron los 10s
+            set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
+            return;
+          } else {
+            // Programar eliminación exacta en la nube
+            setTimeout(() => {
+              set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
+            }, tiempoRestante);
+          }
+        }
+
         const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
         const esMio = idEmisorReal === miUid;
 
-        // B) Control de tiempo: ¿El mensaje se envió hace menos de 4 segundos?
         const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
         const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
 
-        // 🔔 NOTIFICACIÓN Y SONIDO DE RECIBIDO:
-        // Pasa el ID del emisor para validar si el chat está silenciado antes de sonar
         if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo) {
           const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
           const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
@@ -4237,7 +4282,6 @@ function escucharMensajesChat(chatId) {
           reproducirSonido("recibido", idEmisorReal);
         }
 
-        // C) Formateador de hora seguro
         let horaFormateada = "00:00";
         if (msg.hora) {
           horaFormateada = msg.hora;
@@ -4247,32 +4291,29 @@ function escucharMensajesChat(chatId) {
         }
 
         const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
+        const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
+
         let contenidoBurbuja = "";
         let estiloEspecialBurbuja = "";
 
-        // 📸 Adjunto Imagen
         if (msg.tipoAdjunto === 'foto') {
           contenidoBurbuja = `
             <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
               <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
             </div>
             ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
           `;
-        }
-        // 📄 Adjunto Documento
-        else if (msg.tipoAdjunto === 'documento') {
+        } else if (msg.tipoAdjunto === 'documento') {
           contenidoBurbuja = `
             <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
               <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
               <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
             </div>
             ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
           `;
-        }
-        // 📹 Adjunto Video Circular
-        else if (msg.tipoAdjunto === 'video') {
+        } else if (msg.tipoAdjunto === 'video') {
           estiloEspecialBurbuja = "padding: 10px;";
           contenidoBurbuja = `
             <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
@@ -4287,11 +4328,9 @@ function escucharMensajesChat(chatId) {
               </div>
             </div>
             ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${horaFormateada}${textoEditadoHTML}</span>
+            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
           `;
-        }
-        // 🎙️ Adjunto Nota de Voz
-        else if (msg.tipoAdjunto === 'audio') {
+        } else if (msg.tipoAdjunto === 'audio') {
           contenidoBurbuja = `
             <div class="reproductor-audio-burbuja">
               <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
@@ -4304,20 +4343,17 @@ function escucharMensajesChat(chatId) {
               <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
               <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
             </div>
-            <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}${textoEditadoHTML}</span>
+            <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
           `;
-        }
-        // 💬 Mensaje de solo texto
-        else {
+        } else {
           contenidoBurbuja = `
             <p class="mensaje-texto">${msg.texto || ''}</p>
-            <span class="mensaje-hora">${horaFormateada}${textoEditadoHTML}</span>
+            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
           `;
         }
 
-        // Crear contenedor HTML de la burbuja
         const burbujaHTML = document.createElement("div");
-        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
+        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'} ${msg.esEfimero ? 'mensaje-efimero' : ''}`;
         burbujaHTML.setAttribute("data-msg-id", msgId);
         if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
         burbujaHTML.innerHTML = contenidoBurbuja;
@@ -4325,17 +4361,13 @@ function escucharMensajesChat(chatId) {
         historialMensajes.appendChild(burbujaHTML);
       });
 
-      // Renderizar iconos
       if (window.lucide) {
-        window.lucide.createIcons({
-          targets: [historialMensajes]
-        });
+        window.lucide.createIcons({ targets: [historialMensajes] });
       }
 
       historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
 
-    // Una vez procesado el historial inicial, desactivamos el escudo
     esCargaInicial = false;
   });
 }
