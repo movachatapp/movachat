@@ -242,6 +242,24 @@ onAuthStateChanged(auth, async (user) => {
             cargarContactosAprobados(user.uid);
           }
 
+          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP
+          const refSilenciados = ref(db, `silenciados/${user.uid}`);
+          onValue(refSilenciados, (snapshot) => {
+            if (snapshot.exists()) {
+              const silenciadosBD = snapshot.val();
+              Object.keys(silenciadosBD).forEach((contactoUid) => {
+                if (silenciadosBD[contactoUid]) {
+                  localStorage.setItem(`silenciado_${contactoUid}`, "true");
+
+                  const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
+                  if (tarjeta) {
+                    tarjeta.classList.add("chat-silenciado-zona");
+                  }
+                }
+              });
+            }
+          });
+
           // 🚀 4. Lógica de Panel Admin
           const btnAdmin = document.getElementById("btn-abrir-admin");
           const modalAdmin = document.getElementById("modal-admin");
@@ -4109,8 +4127,8 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
   if (btnCtxSilenciar && uidTarget) {
     const estaSilenciado = localStorage.getItem(`silenciado_${uidTarget}`) === "true";
-    btnCtxSilenciar.innerHTML = estaSilenciado 
-      ? `<i data-lucide="bell"></i> Activar notificaciones` 
+    btnCtxSilenciar.innerHTML = estaSilenciado
+      ? `<i data-lucide="bell"></i> Activar notificaciones`
       : `<i data-lucide="bell-off"></i> Silenciar chat`;
     if (window.lucide) window.lucide.createIcons({ targets: [btnCtxSilenciar] });
   }
