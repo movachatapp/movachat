@@ -2975,37 +2975,45 @@ function cargarMensajesChat(contactoUid) {
 // ========================================================
 // 🚫 SISTEMA DE BLOQUEAR Y DESBLOQUEAR USUARIO (FIREBASE)
 // ========================================================
+let accionBloqueoPendiente = 'bloquear';
+
 const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
+const modalBloquear = document.getElementById("modal-confirmar-bloquear");
+const modalBloquearTitulo = document.getElementById("modal-bloquear-titulo");
+const modalBloquearMensaje = document.getElementById("modal-bloquear-mensaje");
+const btnAceptarBloquear = document.getElementById("btn-aceptar-bloquear-modal");
+const btnCancelarBloquear = document.getElementById("btn-cancelar-bloquear-modal");
 
 if (btnCtxBloquear) {
-  btnCtxBloquear.addEventListener("click", (e) => {
+  btnCtxBloquear.addEventListener("click", async (e) => {
     e.stopPropagation();
-
-    const modalBloquear = document.getElementById("modal-confirmar-bloquear");
-    const modalBloquearTitulo = document.getElementById("modal-bloquear-titulo");
-    const modalBloquearMensaje = document.getElementById("modal-bloquear-mensaje");
-    const btnAceptarBloquear = document.getElementById("btn-aceptar-bloquear-modal");
 
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
     const contactoUid = window.contactoActivoUid || (typeof contactoSeleccionado !== "undefined" ? contactoSeleccionado : null);
     const elemNombre = document.querySelector(".amigo-nombre-chat");
     const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
-    // Ocultar menú desplegable de la cabecera
     if (menuCabecera) menuCabecera.classList.add("oculto");
+    if (!modalBloquear) return;
 
-    if (!modalBloquear) {
-      console.error("❌ No se encontró el elemento #modal-confirmar-bloquear en el HTML.");
-      return;
+    // 1️⃣ Configuración por defecto inmediata: Bloquear
+    accionBloqueoPendiente = 'bloquear';
+    if (modalBloquearTitulo) modalBloquearTitulo.textContent = "¿Bloquear usuario?";
+    if (modalBloquearMensaje) modalBloquearMensaje.innerHTML = `¿Seguro que deseas bloquear a <b>${nombreAmigo}</b>? No podrás enviarle mensajes.`;
+    if (btnAceptarBloquear) {
+      btnAceptarBloquear.textContent = "Bloquear";
+      btnAceptarBloquear.className = "btn-mova-peligro";
+      btnAceptarBloquear.style.borderColor = "";
+      btnAceptarBloquear.style.color = "";
     }
 
-    // 1️⃣ Mostrar el modal inmediatamente en pantalla
     modalBloquear.classList.remove("oculto");
 
-    // 2️⃣ Consultar Firebase en segundo plano para ajustar los textos
+    // 2️⃣ Verificar estado previo en Firebase en segundo plano
     if (miUid && contactoUid) {
-      const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
-      get(bloqueoRef).then((snap) => {
+      try {
+        const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
+        const snap = await get(bloqueoRef);
         const estaBloqueado = snap.exists() && snap.val() === true;
 
         if (estaBloqueado) {
@@ -3018,58 +3026,47 @@ if (btnCtxBloquear) {
             btnAceptarBloquear.style.borderColor = "#00f2fe";
             btnAceptarBloquear.style.color = "#00f2fe";
           }
-        } else {
-          accionBloqueoPendiente = 'bloquear';
-          if (modalBloquearTitulo) modalBloquearTitulo.textContent = "¿Bloquear usuario?";
-          if (modalBloquearMensaje) modalBloquearMensaje.innerHTML = `¿Seguro que deseas bloquear a <b>${nombreAmigo}</b>? No podrás enviarle mensajes.`;
-          if (btnAceptarBloquear) {
-            btnAceptarBloquear.textContent = "Bloquear";
-            btnAceptarBloquear.className = "btn-mova-peligro";
-            btnAceptarBloquear.style.borderColor = "";
-            btnAceptarBloquear.style.color = "";
-          }
         }
-      }).catch((err) => {
-        console.error("Error al consultar estado en Firebase:", err);
-      });
+      } catch (err) {
+        console.error("Error al verificar bloqueo en Firebase:", err);
+      }
     }
   });
 }
 
 // Evento Cancelar Modal
-const btnCancelarBloquear = document.getElementById("btn-cancelar-bloquear-modal");
-if (btnCancelarBloquear) {
+if (btnCancelarBloquear && modalBloquear) {
   btnCancelarBloquear.addEventListener("click", () => {
-    const modalBloquear = document.getElementById("modal-confirmar-bloquear");
-    if (modalBloquear) modalBloquear.classList.add("oculto");
+    modalBloquear.classList.add("oculto");
   });
 }
 
-// Evento Aceptar Modal (Guardar en Firebase)
-const btnAceptarBloquear = document.getElementById("btn-aceptar-bloquear-modal");
+// Evento Aceptar Modal (Escribir en Firebase)
 if (btnAceptarBloquear) {
   btnAceptarBloquear.addEventListener("click", async () => {
-    const modalBloquear = document.getElementById("modal-confirmar-bloquear");
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
     const contactoUid = window.contactoActivoUid || (typeof contactoSeleccionado !== "undefined" ? contactoSeleccionado : null);
     const elemNombre = document.querySelector(".amigo-nombre-chat");
     const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
     if (modalBloquear) modalBloquear.classList.add("oculto");
-    if (!miUid || !contactoUid) return;
+    if (!miUid || !contactoUid) {
+      console.warn("⚠️ No se pudo procesar el bloqueo: UID no disponible.", { miUid, contactoUid });
+      return;
+    }
 
     const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
 
     try {
       if (accionBloqueoPendiente === 'bloquear') {
         await set(bloqueoRef, true);
-        aplicarEstadoBloqueoInterfaz(true);
+        aplicarEstadoBloqueoInterfaz(true, contactoUid);
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium(`Has bloqueado a <b>${nombreAmigo}</b>.`, "⚠️", "#ff4b2b");
         }
       } else {
         await set(bloqueoRef, null);
-        aplicarEstadoBloqueoInterfaz(false);
+        aplicarEstadoBloqueoInterfaz(false, contactoUid);
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium(`Has desbloqueado a <b>${nombreAmigo}</b>.`, "📡", "#00f2fe");
         }
@@ -3080,9 +3077,12 @@ if (btnAceptarBloquear) {
   });
 }
 
-function aplicarEstadoBloqueoInterfaz(bloqueado) {
-  const contactoUid = window.contactoActivoUid;
+// Función para actualizar la interfaz visual de la conversación
+function aplicarEstadoBloqueoInterfaz(bloqueado, targetUid = null) {
+  const contactoUid = targetUid || window.contactoActivoUid || (typeof contactoSeleccionado !== "undefined" ? contactoSeleccionado : null);
   const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
+  const inputChat = document.getElementById("input-chat-privado");
+  const btnAccionChat = document.getElementById("btn-accion-chat");
 
   if (btnCtxBloquear) {
     btnCtxBloquear.innerHTML = bloqueado
