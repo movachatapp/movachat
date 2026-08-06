@@ -4492,3 +4492,73 @@ function actualizarEstadoEnFirebase(nuevoEstado) {
       .catch((err) => console.log("⚠️ Error guardando estado:", err));
   }
 }
+
+// 🔕 FUNCIÓN GLOBAL PARA SILENCIAR CHAT
+window.ejecutarSilenciarChat = async function() {
+  console.log("⚡ Ejecutando silenciar chat...");
+
+  const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
+  const contactoUid = window.contactoActivoUid;
+
+  if (!miUid || !contactoUid) {
+    alert("No se pudo detectar el usuario activo. miUid: " + miUid + " | contactoUid: " + contactoUid);
+    return;
+  }
+
+  // Ocultar menú contextual
+  const menuCabecera = document.getElementById("menu-cabecera-chat") || document.getElementById("menu-tarjetas-chat");
+  if (menuCabecera) menuCabecera.classList.add("oculto");
+
+  const estaSilenciado = window.misSilenciadosSet ? window.misSilenciadosSet.has(contactoUid) : false;
+  const silencioRef = ref(db, `silenciados/${miUid}/${contactoUid}`);
+  const tarjetaNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
+  const btnSilenciar = document.getElementById("btn-ctx-silenciar");
+
+  try {
+    if (!estaSilenciado) {
+      // 🔕 Guardar en Firebase
+      await set(silencioRef, true);
+      if (window.misSilenciadosSet) window.misSilenciadosSet.add(contactoUid);
+
+      if (btnSilenciar) btnSilenciar.innerHTML = `<i data-lucide="bell"></i> Activar notificaciones`;
+
+      if (tarjetaNodo) {
+        tarjetaNodo.classList.add("chat-silenciado-zona");
+        const contenedorHora = tarjetaNodo.querySelector(".chat-cabecera");
+        if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
+          contenedorHora.insertAdjacentHTML("beforeend", `
+            <span class="indicador-silencio-neon" title="Chat silenciado">
+              <i data-lucide="bell-off"></i>
+            </span>
+          `);
+        }
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Chat silenciado correctamente", "🔕", "#ff4b2b");
+      }
+    } else {
+      // 🔔 Reactivar en Firebase
+      await set(silencioRef, null);
+      if (window.misSilenciadosSet) window.misSilenciadosSet.delete(contactoUid);
+
+      if (btnSilenciar) btnSilenciar.innerHTML = `<i data-lucide="bell-off"></i> Silenciar chat`;
+
+      if (tarjetaNodo) {
+        tarjetaNodo.classList.remove("chat-silenciado-zona");
+        const iconoSilencio = tarjetaNodo.querySelector(".indicador-silencio-neon");
+        if (iconoSilencio) iconoSilencio.remove();
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Notificaciones reactivadas", "🔔", "#00f2fe");
+      }
+    }
+
+    if (window.lucide) {
+      window.lucide.createIcons({ targets: [btnSilenciar, tarjetaNodo].filter(Boolean) });
+    }
+  } catch (err) {
+    console.error("❌ Error en Firebase al cambiar silencio:", err);
+  }
+};
