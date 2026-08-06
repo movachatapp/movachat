@@ -32,6 +32,7 @@ let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
 let listenerChatActivo = null;
+let listenerBloqueoActivo = null;
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -4257,10 +4258,7 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// Crear alias para que ambas llamadas funcionen igual de bien
-window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
-
-// 🟢 Función unificada adaptada a tus selectores y limpia de duplicados (CON LIMPIEZA DE CONTADOR Y CAMPANITA)
+// 🟢 Función unificada adaptada a tus selectores (CON LIMPIEZA Y BLOQUEOS EN TIEMPO REAL)
 function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   let uidTarget, nombreTarget, fotoTarget;
 
@@ -4280,15 +4278,6 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   window.contactoActivoUid = uidTarget;
   if (typeof contactoSeleccionado !== "undefined") {
     contactoSeleccionado = uidTarget;
-  }
-
-  // Verificar si el contacto está bloqueado en Firebase
-  const miUidVerif = auth.currentUser ? auth.currentUser.uid : null;
-  if (miUidVerif && uidTarget) {
-    get(ref(db, `bloqueos/${miUidVerif}/${uidTarget}`)).then((snapBloqueo) => {
-      const estaBloqueado = snapBloqueo.exists() && snapBloqueo.val() === true;
-      aplicarEstadoBloqueoInterfaz(estaBloqueado);
-    });
   }
 
   // 1. 🧹 LIMPIAR EL CONTADOR Y EL BADGE DE LA TARJETA EN LA LISTA
@@ -4343,7 +4332,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   const menuTarjetas = document.getElementById("menu-tarjetas-chat");
   if (menuTarjetas) menuTarjetas.classList.add("oculto");
 
-  // 6. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
+  // 6. 🚀 NAVEGACIÓN DE PANTALLAS
   if (typeof encabezadoGlobal !== "undefined" && encabezadoGlobal) encabezadoGlobal.style.display = "none";
   if (typeof menuFlotanteGlobal !== "undefined" && menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
 
@@ -4360,20 +4349,43 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // 7. Conectar Firebase, verificar bloqueos cruzados y guardar lectura
+  // 7. Conectar Firebase con escucha EN TIEMPO REAL de bloqueos y lecturas
   const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
+
   if (miUid && uidTarget) {
     const chatId = obtenerChatId(miUid, uidTarget);
 
-    // 🛡️ VERIFICACIÓN DE BLOQUEO CON DISTINCIÓN DE AUTOR
-    get(ref(db, `bloqueos/${miUid}/${uidTarget}`)).then((snapMiBloqueo) => {
-      get(ref(db, `bloqueos/${uidTarget}/${miUid}`)).then((snapSuBloqueo) => {
-        const esMiBloqueo = snapMiBloqueo.exists() && snapMiBloqueo.val() === true;
-        const esSuBloqueo = snapSuBloqueo.exists() && snapSuBloqueo.val() === true;
+    // Cancelar la escucha de bloqueos del chat anterior
+    if (typeof listenerBloqueoActivo === "function") {
+      listenerBloqueoActivo();
+      listenerBloqueoActivo = null;
+    }
 
+    // 🛡️ ESCUCHA EN TIEMPO REAL (onValue) DE BLOQUEOS CRUZADOS
+    const refMiBloqueo = ref(db, `bloqueos/${miUid}/${uidTarget}`);
+    const refSuBloqueo = ref(db, `bloqueos/${uidTarget}/${miUid}`);
+
+    const unsubMi = onValue(refMiBloqueo, (snapMi) => {
+      get(refSuBloqueo).then((snapSu) => {
+        const esMiBloqueo = snapMi.exists() && snapMi.val() === true;
+        const esSuBloqueo = snapSu.exists() && snapSu.val() === true;
         aplicarEstadoBloqueoInterfaz({ esMiBloqueo, esSuBloqueo }, uidTarget);
       });
     });
+
+    const unsubSu = onValue(refSuBloqueo, (snapSu) => {
+      get(refMiBloqueo).then((snapMi) => {
+        const esMiBloqueo = snapMi.exists() && snapMi.val() === true;
+        const esSuBloqueo = snapSu.exists() && snapSu.val() === true;
+        aplicarEstadoBloqueoInterfaz({ esMiBloqueo, esSuBloqueo }, uidTarget);
+      });
+    });
+
+    // Guardar la función de limpieza para el próximo cambio de chat
+    listenerBloqueoActivo = () => {
+      unsubMi();
+      unsubSu();
+    };
 
     // ☁️ REGISTRAR LECTURA EN FIREBASE
     const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -4391,6 +4403,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
       escucharMensajesChat(chatId);
     }
   }
+}
 
   // 🔕 ACTUALIZAR TEXTO DEL BOTÓN SILENCIAR SEGÚN EL ESTADO DEL CONTACTO
   const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
