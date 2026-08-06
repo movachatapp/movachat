@@ -1514,21 +1514,25 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // ↪️ OPCIÓN 3: REENVIAR (Prepara el texto en el input para enviar a cualquier otro chat)
+    // ↪️ OPCIÓN 3: REENVIAR (Te lleva a la lista de chats)
     else if (accion === "reenviar") {
-      const inputRef = (typeof inputChatPrivado !== "undefined" && inputChatPrivado) ? inputChatPrivado : (typeof inputChat !== "undefined" ? inputChat : null);
+      if (textoMensaje) {
+        // 1. Guardar en memoria global
+        window.textoPendienteReenviar = textoMensaje;
 
-      if (textoMensaje && inputRef) {
-        inputRef.value = textoMensaje;
-        inputRef.focus();
-
-        // Actualizar el icono de la caja a botón de envío
-        if (typeof actualizarIconoBotonAccion === "function") {
-          actualizarIconoBotonAccion();
+        // 2. Cerrar el chat actual (Simular el botón de atrás)
+        const btnCerrarChat = document.getElementById("btn-cerrar-chat") || document.querySelector(".btn-volver");
+        if (btnCerrarChat) {
+          btnCerrarChat.click();
+        } else {
+          // Fallback manual por si no detecta el botón de volver
+          const pantallaChat = document.getElementById("pantalla-chat-privado");
+          if (pantallaChat) pantallaChat.style.display = "none";
         }
 
+        // 3. Avisar al usuario qué debe hacer
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Texto listo para reenviar. Elige o mantén el chat activo.", "↪️", "#00f2fe");
+          mostrarAvisoPremium("Selecciona un chat para reenviar el mensaje.", "↪️", "#00f2fe");
         }
       } else {
         if (typeof mostrarAvisoPremium === "function") {
@@ -4457,6 +4461,21 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   // 🛡️ VERIFICAR ESTADO DE BLOQUEO EN FIREBASE
   if (typeof verificarEstadoBloqueo === "function") {
     verificarEstadoBloqueo(uidTarget);
+  }
+
+  // ↪️ VERIFICAR SI HAY UN TEXTO PENDIENTE DE REENVIAR
+  if (window.textoPendienteReenviar) {
+    const cajaEntrada = document.getElementById("input-chat-privado") || (typeof inputChat !== "undefined" ? inputChat : null);
+    if (cajaEntrada) {
+      cajaEntrada.value = window.textoPendienteReenviar;
+      cajaEntrada.focus();
+
+      if (typeof actualizarIconoBotonAccion === "function") {
+        actualizarIconoBotonAccion();
+      }
+
+      window.textoPendienteReenviar = null;
+    }
   }
 }
 
