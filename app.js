@@ -1263,10 +1263,18 @@ async function enviarMensajeNuevo() {
         texto: texto,
         editado: true
       });
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Mensaje editado con éxito ✨", "✏️", "#00f2fe");
+      }
     } catch (e) {
       console.error("Error al editar en Firebase:", e);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("No se pudo guardar la edición.", "❌", "#ff4b2b");
+      }
     }
 
+    // Resetear variables de control de edición
     window.burbujaEnEdicion = null;
     window.mensajeEnEdicionId = null;
     if (inputChat) inputChat.value = "";
@@ -1432,23 +1440,104 @@ document.addEventListener("click", (e) => {
   if (menuCamaraPro && !menuCamaraPro.contains(e.target) && btnCamaraMovaPro && !btnCamaraMovaPro.contains(e.target)) menuCamaraPro.classList.add("oculto");
 });
 
+// Flotante Copiar, editar, reenviar y eliminar
 document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
-  boton.addEventListener("click", () => {
+  boton.addEventListener("click", async () => {
     const accion = boton.getAttribute("data-accion");
 
     const nodoMensaje = (typeof mensajeSeleccionadoNode !== "undefined") ? mensajeSeleccionadoNode : null;
     const nodoTexto = nodoMensaje ? nodoMensaje.querySelector(".mensaje-texto") : null;
-    const textoMensaje = nodoTexto ? nodoTexto.textContent : "";
+    const textoMensaje = nodoTexto ? nodoTexto.textContent.trim() : "";
     const msgId = nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null;
+    const esMio = nodoMensaje ? nodoMensaje.classList.contains("enviado") : false;
 
-    // 📋 OPCIÓN 1: COPIAR
-    if (accion === "copiar" && textoMensaje) {
-      navigator.clipboard.writeText(textoMensaje);
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Texto copiado al portapapeles 📋", "✨", "#00f2fe");
+    // 📋 OPCIÓN 1: COPIAR (Con soporte universal)
+    if (accion === "copiar") {
+      let textoACopiar = textoMensaje;
+
+      // Si no es un mensaje de texto puro, intentar copiar la URL de la foto/adjunto
+      if (!textoACopiar && nodoMensaje) {
+        const img = nodoMensaje.querySelector("img");
+        if (img) textoACopiar = img.src;
+      }
+
+      if (textoACopiar) {
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(textoACopiar);
+          } else {
+            const textArea = document.createElement("textarea");
+            textArea.value = textoACopiar;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textArea);
+          }
+
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Texto copiado al portapapeles 📋", "✨", "#00f2fe");
+          }
+        } catch (err) {
+          console.error("Error al copiar texto:", err);
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("No se pudo copiar el texto.", "❌", "#ff4b2b");
+          }
+        }
+      } else {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No hay contenido para copiar.", "⚠️", "#ff4b2b");
+        }
       }
     }
-    // 🗑️ OPCIÓN 2: ELIMINAR (De la pantalla y de Firebase)
+
+    // ✏️ OPCIÓN 2: EDITAR (Solo mensajes propios)
+    else if (accion === "editar") {
+      if (!esMio) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Solo puedes editar tus propios mensajes.", "⚠️", "#ff4b2b");
+        }
+      } else if (textoMensaje && typeof inputChat !== "undefined") {
+        inputChat.value = textoMensaje;
+        inputChat.focus();
+
+        window.burbujaEnEdicion = nodoMensaje;
+        window.mensajeEnEdicionId = msgId; // ID de Firebase para guardar edición
+
+        if (btnAccionChat) {
+          btnAccionChat.innerHTML = `<i data-lucide="check"></i>`;
+          if (window.lucide) {
+            window.lucide.createIcons({ targets: [btnAccionChat] });
+          }
+        }
+      }
+    }
+
+    // ↪️ OPCIÓN 3: REENVIAR (Prepara el texto en el input para enviar a cualquier otro chat)
+    else if (accion === "reenviar") {
+      const inputRef = (typeof inputChatPrivado !== "undefined" && inputChatPrivado) ? inputChatPrivado : (typeof inputChat !== "undefined" ? inputChat : null);
+
+      if (textoMensaje && inputRef) {
+        inputRef.value = textoMensaje;
+        inputRef.focus();
+
+        // Actualizar el icono de la caja a botón de envío
+        if (typeof actualizarIconoBotonAccion === "function") {
+          actualizarIconoBotonAccion();
+        }
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Texto listo para reenviar. Elige o mantén el chat activo.", "↪️", "#00f2fe");
+        }
+      } else {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Este tipo de contenido no se puede reenviar directo.", "⚠️", "#ff4b2b");
+        }
+      }
+    }
+
+    // 🗑️ OPCIÓN 4: ELIMINAR (De la pantalla y de Firebase)
     else if (accion === "eliminar" && nodoMensaje) {
       nodoMensaje.style.transition = "all 0.2s ease-out";
       nodoMensaje.style.opacity = "0";
@@ -1472,26 +1561,8 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
         set(mensajeRef, null).catch(err => console.error("Error al eliminar de Firebase:", err));
       }
     }
-    // ✏️ OPCIÓN 3: EDITAR
-    else if (accion === "editar" && textoMensaje && typeof inputChat !== "undefined") {
-      inputChat.value = textoMensaje;
-      inputChat.focus();
 
-      window.burbujaEnEdicion = nodoMensaje;
-      window.mensajeEnEdicionId = msgId; // 🚀 Guardamos el ID de Firebase para editarlo
-
-      if (btnAccionChat) {
-        btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-
-        // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono del botón de enviar
-        if (window.lucide) {
-          window.lucide.createIcons({
-            targets: [btnAccionChat]
-          });
-        }
-      }
-    }
-
+    // Ocultar menú contextual de mensajes al terminar
     if (typeof menuMensajes !== "undefined" && menuMensajes) {
       menuMensajes.classList.add("oculto");
     }
@@ -4411,6 +4482,26 @@ if (inputChatPrivado) {
       enviarMensajeNuevo();
     }
   };
+}
+
+// ⌨️ Cancelar edición al presionar la tecla Escape
+if (inputChatPrivado) {
+  inputChatPrivado.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && window.mensajeEnEdicionId) {
+      window.mensajeEnEdicionId = null;
+      window.burbujaEnEdicion = null;
+      inputChatPrivado.value = "";
+
+      // Restaurar el icono del botón (enviar / micrófono)
+      if (typeof actualizarIconoBotonAccion === "function") {
+        actualizarIconoBotonAccion();
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Edición cancelada.", "ℹ️", "#ff4b2b");
+      }
+    }
+  });
 }
 
 let listenerChatActivo = null;
