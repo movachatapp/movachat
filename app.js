@@ -1243,12 +1243,20 @@ async function enviarMensajeNuevo() {
     return;
   }
 
-  // ⏳ VERIFICAR SI EL MODO TEMPORAL ESTÁ ACTIVO EN ESTE CHAT
+  // ⏳ VERIFICAR DURACIÓN TEMPORAL CONFIGURADA EN FIREBASE
   let esEfimero = false;
+  let duracionEfimera = 0;
   try {
     const tempSnap = await get(ref(db, `chats/${chatId}/config/temporales`));
     if (tempSnap.exists()) {
-      esEfimero = tempSnap.val() === true;
+      const val = tempSnap.val();
+      if (typeof val === "number" && val > 0) {
+        esEfimero = true;
+        duracionEfimera = val;
+      } else if (val === true) {
+        esEfimero = true;
+        duracionEfimera = 10000; // Por defecto 10 segundos
+      }
     }
   } catch (err) {
     console.error("Error verificando temporales:", err);
@@ -1262,9 +1270,7 @@ async function enviarMensajeNuevo() {
     hora: horaFormateada,
     timestamp: Date.now(),
     esEfimero: esEfimero,
-    tipoAdjunto: null,
-    urlAdjunto: null,
-    nombreDoc: null
+    duracionEfimera: duracionEfimera,
   };
 
   if (tieneAdjunto) {
@@ -2832,44 +2838,59 @@ if (btnCtxSilenciar) {
 }
 
 // ========================================================
-// ⏳ BOTÓN MENSAJES TEMPORALES (SINCRONIZADO EN FIREBASE)
+// ⏳ CONTROL DEL MODAL DE MENSAJES TEMPORALES
 // ========================================================
 const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
+const modalTemporal = document.getElementById("modal-selector-temporal");
+const btnCerrarTemporal = document.getElementById("btn-cerrar-temporal-modal");
 
-if (btnCtxTemporales) {
-  btnCtxTemporales.addEventListener("click", async (e) => {
+if (btnCtxTemporales && modalTemporal) {
+  btnCtxTemporales.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (menuCabecera) menuCabecera.classList.add("oculto");
+    modalTemporal.classList.remove("oculto");
+  });
+}
 
+if (btnCerrarTemporal && modalTemporal) {
+  btnCerrarTemporal.addEventListener("click", () => {
+    modalTemporal.classList.add("oculto");
+  });
+}
+
+// Escuchar clics en las opciones de tiempo
+document.querySelectorAll(".btn-opcion-tiempo").forEach((btn) => {
+  btn.addEventListener("click", async () => {
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
     const contactoUid = window.contactoActivoUid;
     const elemNombre = document.querySelector(".amigo-nombre-chat");
-    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+    const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
     if (!miUid || !contactoUid) return;
-    if (menuCabecera) menuCabecera.classList.add("oculto");
 
+    const tiempoMs = parseInt(btn.getAttribute("data-tiempo"), 10);
     const chatId = obtenerChatId(miUid, contactoUid);
     const configRef = ref(db, `chats/${chatId}/config/temporales`);
 
     try {
-      const snap = await get(configRef);
-      const estaActivo = snap.exists() ? snap.val() : false;
-      const nuevoEstado = !estaActivo;
+      await set(configRef, tiempoMs > 0 ? tiempoMs : null);
+      if (modalTemporal) modalTemporal.classList.add("oculto");
 
-      await set(configRef, nuevoEstado);
+      let mensajeAviso = "";
+      if (tiempoMs === 10000) mensajeAviso = `Mensajes efímeros configurados a <b>10 Segundos</b> con ${nombreAmigo}.`;
+      else if (tiempoMs === 60000) mensajeAviso = `Mensajes efímeros configurados a <b>1 Minuto</b> con ${nombreAmigo}.`;
+      else if (tiempoMs === 300000) mensajeAviso = `Mensajes efímeros configurados a <b>5 Minutos</b> con ${nombreAmigo}.`;
+      else if (tiempoMs === 600000) mensajeAviso = `Mensajes efímeros configurados a <b>10 Minutos</b> con ${nombreAmigo}.`;
+      else mensajeAviso = `Modo permanente restaurado con <b>${nombreAmigo}</b>.`;
 
-      mostrarAvisoPremium(
-        nuevoEstado
-          ? `Modo efímero activo con <b>${nombreAmigoActual}</b>. Los mensajes durarán 10s.`
-          : `Modo permanente restaurado con <b>${nombreAmigoActual}</b>.`,
-        nuevoEstado ? "⏳" : "📡",
-        "#00f2fe"
-      );
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(mensajeAviso, tiempoMs > 0 ? "⏳" : "📡", "#00f2fe");
+      }
     } catch (err) {
-      console.error("Error al cambiar estado de mensajes temporales:", err);
+      console.error("Error al actualizar tiempo efímero:", err);
     }
   });
-}
+});
 
 function aplicarRelojArenaEfecto(burbujaNodo) {
   const nombreAmigoActual = document.querySelector(".amigo-nombre-chat")?.textContent;
@@ -3068,7 +3089,7 @@ if (btnCancelarVaciar) {
   });
 }
 
-// Evento Aceptar Modal
+// Evento Aceptar Modal (Vaciar Chat Solo Para Mí)
 if (btnAceptarVaciar) {
   btnAceptarVaciar.addEventListener("click", async () => {
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -3084,25 +3105,22 @@ if (btnAceptarVaciar) {
       : [miUid, contactoUid].sort().join("_");
 
     try {
-      // 1. Borrar todos los mensajes en la base de datos de Firebase
-      const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
-      await set(mensajesRef, null);
+      // 1. Guardar marca de tiempo de vaciado individual en Firebase
+      const vaciadoRef = ref(db, `chats/${chatId}/vaciadoPor/${miUid}`);
+      await set(vaciadoRef, Date.now());
 
-      // 2. Limpiar visualmente la pantalla del chat
+      // 2. Limpiar visualmente la pantalla del usuario local
       const contenedorHistorial = document.querySelector(".historial-mensajes");
       if (contenedorHistorial) {
         contenedorHistorial.innerHTML = "";
       }
 
-      // 3. Notificación de confirmación
+      // 3. Notificación
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Se ha vaciado el chat con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
+        mostrarAvisoPremium(`Has vaciado la conversación con <b>${nombreAmigoActual}</b> para ti.`, "🗑️", "#ff4b2b");
       }
     } catch (err) {
-      console.error("Error al vaciar el chat en Firebase:", err);
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("No se pudo vaciar el chat. Inténtalo de nuevo.", "❌", "#ff4b2b");
-      }
+      console.error("Error al vaciar chat local:", err);
     }
   });
 }
@@ -4270,13 +4288,16 @@ if (inputChatPrivado) {
 
 let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (Con Auto-Destrucción y Renderizado Seguro)
+// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (Con Auto-Destrucción y Vaciar Chat Local)
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
   if (!contenedorHistorial) return;
 
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
   const configRef = ref(db, `chats/${chatId}/config/temporales`);
+
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  const vaciadoRef = miUid ? ref(db, `chats/${chatId}/vaciadoPor/${miUid}`) : null;
 
   // 1. Limpiar listeners anteriores de forma segura
   if (typeof listenerChatActivo === "function") listenerChatActivo();
@@ -4286,7 +4307,8 @@ function escucharMensajesChat(chatId) {
   listenerConfigActivo = onValue(configRef, (snapshot) => {
     const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
     if (btnCtxTemporales) {
-      const estaActivo = snapshot.exists() && snapshot.val() === true;
+      const val = snapshot.exists() ? snapshot.val() : null;
+      const estaActivo = (typeof val === "number" && val > 0) || val === true;
       btnCtxTemporales.innerHTML = estaActivo
         ? `<i data-lucide="hourglass"></i> Mensajes normales`
         : `<i data-lucide="hourglass"></i> Mensajes temporales`;
@@ -4299,144 +4321,162 @@ function escucharMensajesChat(chatId) {
 
   let esCargaInicial = true;
 
-  // 3. Escuchar mensajes en tiempo real
-  listenerChatActivo = onValue(mensajesRef, (snapshot) => {
-    const elemHistorial = document.querySelector(".historial-mensajes");
-    if (!elemHistorial) return;
+  // 3. Procesar los mensajes filtrando la fecha de vaciado local
+  const procesarMensajes = (tiempoVaciadoLocal = 0) => {
+    listenerChatActivo = onValue(mensajesRef, (snapshot) => {
+      const elemHistorial = document.querySelector(".historial-mensajes");
+      if (!elemHistorial) return;
 
-    elemHistorial.innerHTML = ""; // Limpiar historial antes de redibujar
+      elemHistorial.innerHTML = ""; // Limpiar historial antes de redibujar
 
-    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+      if (snapshot.exists()) {
+        const mensajes = snapshot.val();
 
-    if (snapshot.exists()) {
-      const mensajes = snapshot.val();
+        Object.keys(mensajes).forEach((msgId) => {
+          const msg = mensajes[msgId];
+          if (!msg) return;
 
-      Object.keys(mensajes).forEach((msgId) => {
-        const msg = mensajes[msgId];
-        if (!msg) return;
+          // 🛑 FILTRO DE VACIAR CHAT SOLO PARA MÍ
+          if (msg.timestamp && msg.timestamp <= tiempoVaciadoLocal) {
+            return; // No muestra los mensajes anteriores a la fecha de vaciado
+          }
 
-        // A) LÓGICA DE MENSAJE EFÍMERO (Auto-eliminación en Firebase a los 10 segundos)
-        if (msg.esEfimero) {
-          const transcurrido = Date.now() - (msg.timestamp || Date.now());
-          const tiempoRestante = 10000 - transcurrido;
+          // A) LÓGICA DE MENSAJE EFÍMERO (Auto-eliminación con tiempo dinámico)
+          if (msg.esEfimero) {
+            const duracion = msg.duracionEfimera || 10000;
+            const transcurrido = Date.now() - (msg.timestamp || Date.now());
+            const tiempoRestante = duracion - transcurrido;
 
-          if (tiempoRestante <= 0) {
-            set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
-            return;
-          } else {
-            setTimeout(() => {
+            if (tiempoRestante <= 0) {
               set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
-            }, tiempoRestante);
+              return;
+            } else {
+              setTimeout(() => {
+                set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
+              }, tiempoRestante);
+            }
           }
-        }
 
-        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
-        const esMio = idEmisorReal === miUid;
+          const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
+          const esMio = idEmisorReal === miUid;
 
-        const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
-        const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
+          const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
+          const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
 
-        if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo) {
-          const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
-          const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
-          const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
+          if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo) {
+            const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
+            const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
+            const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
 
-          if (typeof notificarNuevoMensaje === "function") {
-            notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+            if (typeof notificarNuevoMensaje === "function") {
+              notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+            }
+            if (typeof reproducirSonido === "function") {
+              reproducirSonido("recibido", idEmisorReal);
+            }
           }
-          if (typeof reproducirSonido === "function") {
-            reproducirSonido("recibido", idEmisorReal);
+
+          let horaFormateada = "00:00";
+          if (msg.hora) {
+            horaFormateada = msg.hora;
+          } else if (msg.fecha || msg.timestamp) {
+            const fechaObj = new Date(msg.fecha || msg.timestamp);
+            horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           }
+
+          const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
+          const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
+
+          let contenidoBurbuja = "";
+          let estiloEspecialBurbuja = "";
+
+          if (msg.tipoAdjunto === 'foto') {
+            contenidoBurbuja = `
+              <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
+                <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
+              </div>
+              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          } else if (msg.tipoAdjunto === 'documento') {
+            contenidoBurbuja = `
+              <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+                <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
+                <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
+              </div>
+              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          } else if (msg.tipoAdjunto === 'video') {
+            estiloEspecialBurbuja = "padding: 10px;";
+            contenidoBurbuja = `
+              <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
+                <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+                  <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
+                </svg>
+                <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
+                  <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+                </div>
+                <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
+                  <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+                </div>
+              </div>
+              ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+              <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          } else if (msg.tipoAdjunto === 'audio') {
+            contenidoBurbuja = `
+              <div class="reproductor-audio-burbuja">
+                <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+                <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
+                  <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                </div>
+                <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
+                <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
+              </div>
+              <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          } else {
+            contenidoBurbuja = `
+              <p class="mensaje-texto">${msg.texto || ''}</p>
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+            `;
+          }
+
+          const burbujaHTML = document.createElement("div");
+          burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'} ${msg.esEfimero ? 'mensaje-efimero' : ''}`;
+          burbujaHTML.setAttribute("data-msg-id", msgId);
+          if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
+          burbujaHTML.innerHTML = contenidoBurbuja;
+
+          elemHistorial.appendChild(burbujaHTML);
+        });
+
+        if (window.lucide) {
+          window.lucide.createIcons({ targets: [elemHistorial] });
         }
 
-        let horaFormateada = "00:00";
-        if (msg.hora) {
-          horaFormateada = msg.hora;
-        } else if (msg.fecha || msg.timestamp) {
-          const fechaObj = new Date(msg.fecha || msg.timestamp);
-          horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
-        const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
-
-        let contenidoBurbuja = "";
-        let estiloEspecialBurbuja = "";
-
-        if (msg.tipoAdjunto === 'foto') {
-          contenidoBurbuja = `
-            <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
-              <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else if (msg.tipoAdjunto === 'documento') {
-          contenidoBurbuja = `
-            <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
-              <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
-              <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else if (msg.tipoAdjunto === 'video') {
-          estiloEspecialBurbuja = "padding: 10px;";
-          contenidoBurbuja = `
-            <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-              <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-              </svg>
-              <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-                <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
-              </div>
-              <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-              </div>
-            </div>
-            ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else if (msg.tipoAdjunto === 'audio') {
-          contenidoBurbuja = `
-            <div class="reproductor-audio-burbuja">
-              <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
-              <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-                <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-                <span class="onda-barra"></span><span class="onda-barra"></span>
-              </div>
-              <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-              <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
-            </div>
-            <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        } else {
-          contenidoBurbuja = `
-            <p class="mensaje-texto">${msg.texto || ''}</p>
-            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-          `;
-        }
-
-        const burbujaHTML = document.createElement("div");
-        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'} ${msg.esEfimero ? 'mensaje-efimero' : ''}`;
-        burbujaHTML.setAttribute("data-msg-id", msgId);
-        if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
-        burbujaHTML.innerHTML = contenidoBurbuja;
-
-        elemHistorial.appendChild(burbujaHTML);
-      });
-
-      if (window.lucide) {
-        window.lucide.createIcons({ targets: [elemHistorial] });
+        elemHistorial.scrollTop = elemHistorial.scrollHeight;
       }
 
-      elemHistorial.scrollTop = elemHistorial.scrollHeight;
-    }
+      esCargaInicial = false;
+    });
+  };
 
-    esCargaInicial = false;
-  });
+  // Consultar fecha de vaciado local en Firebase antes de renderizar
+  if (vaciadoRef) {
+    get(vaciadoRef).then((vaciadoSnap) => {
+      const tiempoVaciadoLocal = vaciadoSnap.exists() ? vaciadoSnap.val() : 0;
+      procesarMensajes(tiempoVaciadoLocal);
+    }).catch(() => {
+      procesarMensajes(0);
+    });
+  } else {
+    procesarMensajes(0);
+  }
 }
 
 // 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía

@@ -666,6 +666,36 @@
     </div>
   </div>
 
+  <!-- ⏳ MODAL SELECTOR DE TIEMPO TEMPORAL -->
+  <div id="modal-selector-temporal" class="modal-overlay oculto">
+    <div class="modal-cristal" style="max-width: 320px;">
+      <div class="modal-header">
+        <h3><i data-lucide="hourglass" style="color:#00f2fe; width:18px; height:18px;"></i> Mensajes Temporales</h3>
+        <button class="btn-cerrar-icono" id="btn-cerrar-temporal-modal"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+        <p style="font-size:12px; color:rgba(255,255,255,0.7); text-align:center; margin-bottom:5px;">
+          Selecciona la duración de autodestrucción de los mensajes en este chat:
+        </p>
+        <button class="btn-opcion-tiempo" data-tiempo="10000"
+          style="padding:12px; background:rgba(255,255,255,0.05); border:1px solid rgba(0,242,254,0.3); border-radius:12px; color:white; font-weight:bold; cursor:pointer;">⚡
+          10 Segundos</button>
+        <button class="btn-opcion-tiempo" data-tiempo="60000"
+          style="padding:12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:white; font-weight:bold; cursor:pointer;">⏱️
+          1 Minuto</button>
+        <button class="btn-opcion-tiempo" data-tiempo="300000"
+          style="padding:12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:white; font-weight:bold; cursor:pointer;">⏳
+          5 Minutos</button>
+        <button class="btn-opcion-tiempo" data-tiempo="600000"
+          style="padding:12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:12px; color:white; font-weight:bold; cursor:pointer;">⌛
+          10 Minutos</button>
+        <button class="btn-opcion-tiempo" data-tiempo="0"
+          style="padding:12px; background:rgba(255,75,43,0.1); border:1px solid rgba(255,75,43,0.3); border-radius:12px; color:#ff4b2b; font-weight:bold; cursor:pointer;">🚫
+          Desactivar</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="app.js?v=2"></script>
   <script>
     lucide.createIcons();
