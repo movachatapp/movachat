@@ -696,6 +696,21 @@
     </div>
   </div>
 
+  <!-- 🚫 MODAL CONFIRMACIÓN BLOQUEAR USUARIO -->
+  <div id="modal-confirmar-bloquear" class="modal-mova-overlay oculto">
+    <div class="modal-mova-caja">
+      <div class="modal-mova-icono">🚫</div>
+      <h3 class="modal-mova-titulo" id="modal-bloquear-titulo">¿Bloquear usuario?</h3>
+      <p class="modal-mova-texto" id="modal-bloquear-mensaje">
+        No podrás enviar ni recibir mensajes de este contacto mientras esté bloqueado.
+      </p>
+      <div class="modal-mova-botones">
+        <button id="btn-cancelar-bloquear-modal" class="btn-mova-secundario">Cancelar</button>
+        <button id="btn-aceptar-bloquear-modal" class="btn-mova-peligro">Bloquear</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="app.js?v=2"></script>
   <script>
     lucide.createIcons();
