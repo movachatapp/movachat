@@ -3899,7 +3899,7 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
 // Variable global para guardar el contacto seleccionado actualmente
 let contactoSeleccionado = null;
 
-// 🟢 Función para cargar los contactos y escuchar mensajes no leídos en tiempo real
+// 🟢 Función para cargar los contactos y escuchar mensajes no leídos en tiempo real (CON DETECCIÓN DE SILENCIADO)
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
@@ -3928,28 +3928,35 @@ function cargarContactosAprobados(usuarioActualUid) {
             itemContacto.dataset.uid = uid;
             itemContacto.id = `tarjeta-chat-${uid}`;
 
+            // 🔕 VERIFICAR SI ESTE CONTACTO ESTÁ SILENCIADO
+            const estaSilenciado = localStorage.getItem(`silenciado_${uid}`) === "true";
+            if (estaSilenciado) {
+              itemContacto.classList.add("chat-silenciado-zona");
+            }
+
             const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
 
             const foto = usuario.fotoUrl
               ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
               : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
 
-            // 🎨 Calculemos el color del puntito LED según el estado de ESTE usuario
+            // Color del puntito LED
             const estadoDelContacto = usuario.estadoConexion || usuario.estadoPresencia || usuario.estado || "online";
-            let colorLed = "#00f2fe"; // Azul Cyan (En línea / Disponible por defecto)
+            let colorLed = "#00f2fe";
             let sombraLed = "0 0 8px #00f2fe";
 
             if (estadoDelContacto === "ocupado") {
-              colorLed = "#ef4444"; // Rojo (Ocupado)
+              colorLed = "#ef4444";
               sombraLed = "0 0 8px #ef4444";
             } else if (estadoDelContacto === "offline" || estadoDelContacto === "invisible") {
-              colorLed = "#888888"; // Gris (Invisible / Desconectado)
+              colorLed = "#888888";
               sombraLed = "0 0 8px #888888";
             }
 
             itemContacto.dataset.mensajesNoLeidos = "0";
             itemContacto.dataset.forzarReiniciar = "false";
 
+            // Inyectar HTML incluyendo la campanita si está silenciado
             itemContacto.innerHTML = `
               <div class="chat-avatar-caja">
                 ${foto}
@@ -3959,6 +3966,11 @@ function cargarContactosAprobados(usuarioActualUid) {
                 <div class="chat-cabecera">
                   <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
                   <span class="chat-hora">--:--</span>
+                  ${estaSilenciado ? `
+                    <span class="indicador-silencio-neon" title="Chat silenciado">
+                      <i data-lucide="bell-off"></i>
+                    </span>
+                  ` : ''}
                 </div>
                 <div class="chat-mensaje-caja">
                   <p class="chat-texto">${usuario.estadoTexto || usuario.estado || "¡Disponible en MovaChat!"}</p>
@@ -3967,17 +3979,15 @@ function cargarContactosAprobados(usuarioActualUid) {
               </div>
             `;
 
-            // Evento de clic en la tarjeta del contacto (REINICIA TARJETA Y CAMPANITA)
+            // Evento de clic en la tarjeta del contacto
             itemContacto.addEventListener("click", (e) => {
               e.stopPropagation();
 
               const uidContacto = usuario.uid || uid;
 
-              // Guardar globalmente cuál chat está activo
               contactoSeleccionado = uidContacto;
               window.contactoActivoUid = uidContacto;
 
-              // 1. Limpiar la tarjeta local
               itemContacto.dataset.mensajesNoLeidos = "0";
               itemContacto.dataset.forzarReiniciar = "true";
 
@@ -3992,12 +4002,10 @@ function cargarContactosAprobados(usuarioActualUid) {
                 elemTexto.classList.remove("texto-resaltado");
               }
 
-              // 2. 🔔 RECALCULAR EL TOTAL DE LA CAMPANITA GENERAL
               if (typeof actualizarCampanitaGlobal === "function") {
                 actualizarCampanitaGlobal();
               }
 
-              // 3. Seleccionar tarjeta y abrir chat
               document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
               itemContacto.classList.add("activo");
 
@@ -4011,12 +4019,16 @@ function cargarContactosAprobados(usuarioActualUid) {
 
             contenedorContactos.appendChild(itemContacto);
 
-            // 🚀 Escuchar el último mensaje de este contacto para marcar "No leído"
             if (typeof escucharUltimoMensajeContacto === "function") {
               escucharUltimoMensajeContacto(usuarioActualUid, uid);
             }
           }
         });
+
+        // Renderizar iconos de Lucide (incluyendo las campanas silenciadas)
+        if (window.lucide) {
+          window.lucide.createIcons({ targets: [contenedorContactos] });
+        }
       }
     } catch (e) {
       console.error("Error al cargar la lista de contactos:", e);
