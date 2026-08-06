@@ -2735,60 +2735,6 @@ if (btnCancelarBusquedaInterna) {
   });
 }
 
-// ========================================================
-// 🔕 BOTÓN SILENCIAR CHAT (CONECTADO A FIREBASE)
-// ========================================================
-const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
-
-if (btnCtxSilenciar) {
-  btnCtxSilenciar.addEventListener("click", async (e) => {
-    e.stopPropagation();
-
-    const miUid = auth.currentUser ? auth.currentUser.uid : null;
-    const contactoUid = window.contactoActivoUid;
-    const elemNombreCabecera = document.querySelector(".amigo-nombre-chat");
-    const nombreAmigo = elemNombreCabecera ? elemNombreCabecera.textContent.trim() : "este usuario";
-
-    if (!miUid || !contactoUid) return;
-
-    // Ocultar el menú desplegable de la cabecera
-    const menuCabecera = document.getElementById("menu-cabecera-chat");
-    if (menuCabecera) menuCabecera.classList.add("oculto");
-
-    const estaSilenciado = window.misSilenciadosSet ? window.misSilenciadosSet.has(contactoUid) : false;
-    const silencioRef = ref(db, `silenciados/${miUid}/${contactoUid}`);
-    const tarjetaNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
-
-    if (!estaSilenciado) {
-      // Guardar en Firebase (Silenciar)
-      await set(silencioRef, true);
-      btnCtxSilenciar.innerHTML = `<i data-lucide="bell"></i> Activar notificaciones`;
-
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Has silenciado las alertas de <b>${nombreAmigo}</b>.`, "🔕", "#ff4b2b");
-      }
-    } else {
-      // Eliminar de Firebase (Reactivar)
-      await set(silencioRef, null);
-      btnCtxSilenciar.innerHTML = `<i data-lucide="bell-off"></i> Silenciar chat`;
-
-      if (tarjetaNodo) {
-        tarjetaNodo.classList.remove("chat-silenciado-zona");
-        const iconoSilencio = tarjetaNodo.querySelector(".indicador-silencio-neon");
-        if (iconoSilencio) iconoSilencio.remove();
-      }
-
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Alertas reactivadas para <b>${nombreAmigo}</b>.`, "🔔", "#00f2fe");
-      }
-    }
-
-    if (window.lucide) {
-      window.lucide.createIcons({ targets: [btnCtxSilenciar] });
-    }
-  });
-}
-
 const chatsTemporalesBD = {};
 const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
 
@@ -3050,7 +2996,11 @@ const btnCtxFijar = document.getElementById("btn-ctx-fijar");
 const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
-// 1️⃣ EVENTO Clic Derecho en PC (Directo a nivel de document)
+// ========================================================
+// 📱 1 Y 2: ABRIR EL MENÚ CONTEXTUAL (TU CÓDIGO ACTUAL)
+// ========================================================
+
+// Clic Derecho en PC
 document.addEventListener("contextmenu", (e) => {
   const tarjeta = e.target.closest(".tarjeta-chat");
   if (tarjeta) {
@@ -3060,7 +3010,10 @@ document.addEventListener("contextmenu", (e) => {
   }
 });
 
-// 2️⃣ EVENTO Long Press para Móviles y Emulador F12
+// Long Press para Móviles
+let temporizadorLongPress = null;
+let bloquarClickFantasma = false;
+
 document.addEventListener("touchstart", (e) => {
   const tarjeta = e.target.closest(".tarjeta-chat");
   if (tarjeta) {
@@ -3079,6 +3032,77 @@ document.addEventListener("touchstart", (e) => {
 
 document.addEventListener("touchend", () => clearTimeout(temporizadorLongPress));
 document.addEventListener("touchmove", () => clearTimeout(temporizadorLongPress));
+
+
+// ========================================================
+// 🔕 3: ACCIÓN DEL BOTÓN SILENCIAR DENTRO DEL MENÚ
+// ========================================================
+document.addEventListener("click", async (e) => {
+  const btnSilenciar = e.target.closest("#btn-ctx-silenciar");
+  if (!btnSilenciar) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
+  const contactoUid = window.contactoActivoUid;
+
+  if (!miUid || !contactoUid) return;
+
+  // Ocultar menú tras hacer clic
+  const menuCabecera = document.getElementById("menu-cabecera-chat") || document.getElementById("menu-tarjetas-chat");
+  if (menuCabecera) menuCabecera.classList.add("oculto");
+
+  const estaSilenciado = window.misSilenciadosSet ? window.misSilenciadosSet.has(contactoUid) : false;
+  const silencioRef = ref(db, `silenciados/${miUid}/${contactoUid}`);
+  const tarjetaNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
+
+  try {
+    if (!estaSilenciado) {
+      await set(silencioRef, true);
+      if (window.misSilenciadosSet) window.misSilenciadosSet.add(contactoUid);
+
+      btnSilenciar.innerHTML = `<i data-lucide="bell"></i> Activar notificaciones`;
+
+      if (tarjetaNodo) {
+        tarjetaNodo.classList.add("chat-silenciado-zona");
+        const contenedorHora = tarjetaNodo.querySelector(".chat-cabecera");
+        if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
+          contenedorHora.insertAdjacentHTML("beforeend", `
+            <span class="indicador-silencio-neon" title="Chat silenciado">
+              <i data-lucide="bell-off"></i>
+            </span>
+          `);
+        }
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Chat silenciado", "🔕", "#ff4b2b");
+      }
+    } else {
+      await set(silencioRef, null);
+      if (window.misSilenciadosSet) window.misSilenciadosSet.delete(contactoUid);
+
+      btnSilenciar.innerHTML = `<i data-lucide="bell-off"></i> Silenciar chat`;
+
+      if (tarjetaNodo) {
+        tarjetaNodo.classList.remove("chat-silenciado-zona");
+        const iconoSilencio = tarjetaNodo.querySelector(".indicador-silencio-neon");
+        if (iconoSilencio) iconoSilencio.remove();
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Notificaciones activadas", "🔔", "#00f2fe");
+      }
+    }
+
+    if (window.lucide) {
+      window.lucide.createIcons({ targets: [btnSilenciar, tarjetaNodo].filter(Boolean) });
+    }
+  } catch (err) {
+    console.error("Error al silenciar:", err);
+  }
+});
 
 // 3️⃣ Abrir y Posicionar Menú (Cálculo Relativo + Límites de Seguridad)
 function abrirMenuContextualMova(x, y, tarjeta) {
