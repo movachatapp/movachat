@@ -2977,6 +2977,15 @@ function cargarMensajesChat(contactoUid) {
 // ========================================================
 let accionBloqueoPendiente = 'bloquear';
 
+// Función auxiliar para obtener el UID activo sin importar su formato
+function obtenerUidContactoActivo() {
+  let uid = window.contactoActivoUid || (typeof contactoSeleccionado !== "undefined" ? contactoSeleccionado : null);
+  if (uid && typeof uid === 'object') {
+    return uid.uid || uid.id || null;
+  }
+  return uid;
+}
+
 const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
 const modalBloquear = document.getElementById("modal-confirmar-bloquear");
 const modalBloquearTitulo = document.getElementById("modal-bloquear-titulo");
@@ -2984,19 +2993,24 @@ const modalBloquearMensaje = document.getElementById("modal-bloquear-mensaje");
 const btnAceptarBloquear = document.getElementById("btn-aceptar-bloquear-modal");
 const btnCancelarBloquear = document.getElementById("btn-cancelar-bloquear-modal");
 
+// 1️⃣ Abrir modal
 if (btnCtxBloquear) {
-  btnCtxBloquear.addEventListener("click", async (e) => {
+  btnCtxBloquear.onclick = async (e) => {
     e.stopPropagation();
 
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
-    const contactoUid = window.contactoActivoUid || (typeof contactoSeleccionado !== "undefined" ? contactoSeleccionado : null);
+    const contactoUid = obtenerUidContactoActivo();
     const elemNombre = document.querySelector(".amigo-nombre-chat");
     const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
     if (menuCabecera) menuCabecera.classList.add("oculto");
-    if (!modalBloquear) return;
 
-    // 1️⃣ Configuración por defecto inmediata: Bloquear
+    if (!contactoUid) {
+      alert("⚠️ No se detectó el contacto activo. Cierra el chat y vuelve a entrar.");
+      return;
+    }
+
+    // Configuración por defecto: Bloquear
     accionBloqueoPendiente = 'bloquear';
     if (modalBloquearTitulo) modalBloquearTitulo.textContent = "¿Bloquear usuario?";
     if (modalBloquearMensaje) modalBloquearMensaje.innerHTML = `¿Seguro que deseas bloquear a <b>${nombreAmigo}</b>? No podrás enviarle mensajes.`;
@@ -3007,16 +3021,13 @@ if (btnCtxBloquear) {
       btnAceptarBloquear.style.color = "";
     }
 
-    modalBloquear.classList.remove("oculto");
+    if (modalBloquear) modalBloquear.classList.remove("oculto");
 
-    // 2️⃣ Verificar estado previo en Firebase en segundo plano
+    // Consultar estado previo en Firebase
     if (miUid && contactoUid) {
       try {
-        const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
-        const snap = await get(bloqueoRef);
-        const estaBloqueado = snap.exists() && snap.val() === true;
-
-        if (estaBloqueado) {
+        const snap = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
+        if (snap.exists() && snap.val() === true) {
           accionBloqueoPendiente = 'desbloquear';
           if (modalBloquearTitulo) modalBloquearTitulo.textContent = "¿Desbloquear usuario?";
           if (modalBloquearMensaje) modalBloquearMensaje.innerHTML = `¿Deseas desbloquear a <b>${nombreAmigo}</b> para volver a chatear?`;
@@ -3028,58 +3039,61 @@ if (btnCtxBloquear) {
           }
         }
       } catch (err) {
-        console.error("Error al verificar bloqueo en Firebase:", err);
+        console.error("Error consultando estado de bloqueo:", err);
       }
     }
-  });
+  };
 }
 
-// Evento Cancelar Modal
+// 2️⃣ Cancelar
 if (btnCancelarBloquear && modalBloquear) {
-  btnCancelarBloquear.addEventListener("click", () => {
+  btnCancelarBloquear.onclick = () => {
     modalBloquear.classList.add("oculto");
-  });
+  };
 }
 
-// Evento Aceptar Modal (Escribir en Firebase)
+// 3️⃣ Confirmar Bloqueo / Desbloqueo
 if (btnAceptarBloquear) {
-  btnAceptarBloquear.addEventListener("click", async () => {
+  btnAceptarBloquear.onclick = async () => {
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
-    const contactoUid = window.contactoActivoUid || (typeof contactoSeleccionado !== "undefined" ? contactoSeleccionado : null);
+    const contactoUid = obtenerUidContactoActivo();
     const elemNombre = document.querySelector(".amigo-nombre-chat");
     const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
     if (modalBloquear) modalBloquear.classList.add("oculto");
+
     if (!miUid || !contactoUid) {
-      console.warn("⚠️ No se pudo procesar el bloqueo: UID no disponible.", { miUid, contactoUid });
+      console.error("❌ Fallo de IDs:", { miUid, contactoUid });
+      alert("Error: No se pudo identificar al usuario.");
       return;
     }
 
-    const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
+    const esBloqueo = (accionBloqueoPendiente === 'bloquear');
 
-    try {
-      if (accionBloqueoPendiente === 'bloquear') {
-        await set(bloqueoRef, true);
-        aplicarEstadoBloqueoInterfaz(true, contactoUid);
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Has bloqueado a <b>${nombreAmigo}</b>.`, "⚠️", "#ff4b2b");
-        }
-      } else {
-        await set(bloqueoRef, null);
-        aplicarEstadoBloqueoInterfaz(false, contactoUid);
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Has desbloqueado a <b>${nombreAmigo}</b>.`, "📡", "#00f2fe");
-        }
-      }
-    } catch (err) {
-      console.error("❌ Error al guardar bloqueo en Firebase:", err);
+    // APLICACIÓN INMEDIATA EN INTERFAZ
+    aplicarEstadoBloqueoInterfaz(esBloqueo, contactoUid);
+
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(
+        esBloqueo ? `Has bloqueado a <b>${nombreAmigo}</b>.` : `Has desbloqueado a <b>${nombreAmigo}</b>.`,
+        esBloqueo ? "⚠️" : "📡",
+        esBloqueo ? "#ff4b2b" : "#00f2fe"
+      );
     }
-  });
+
+    // GUARDAR EN FIREBASE
+    try {
+      const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
+      await set(bloqueoRef, esBloqueo ? true : null);
+    } catch (err) {
+      console.error("❌ Error escribiendo bloqueo en Firebase:", err);
+    }
+  };
 }
 
-// Función para actualizar la interfaz visual de la conversación
+// 4️⃣ Función de Interfaz
 function aplicarEstadoBloqueoInterfaz(bloqueado, targetUid = null) {
-  const contactoUid = targetUid || window.contactoActivoUid || (typeof contactoSeleccionado !== "undefined" ? contactoSeleccionado : null);
+  const contactoUid = targetUid || obtenerUidContactoActivo();
   const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
   const inputChat = document.getElementById("input-chat-privado");
   const btnAccionChat = document.getElementById("btn-accion-chat");
