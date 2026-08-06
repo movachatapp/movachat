@@ -548,6 +548,20 @@ if (contenedorChats) {
 if (btnOpcionesChat) {
   btnOpcionesChat.addEventListener("click", (e) => {
     e.stopPropagation();
+
+    // 🔕 VERIFICAR Y ACTUALIZAR TEXTO DEL BOTÓN SILENCIAR ANTES DE MOSTRAR EL MENÚ
+    const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
+    if (btnCtxSilenciar && window.contactoActivoUid) {
+      const estaSilenciado = localStorage.getItem(`silenciado_${window.contactoActivoUid}`) === "true";
+      btnCtxSilenciar.innerHTML = estaSilenciado
+        ? `<i data-lucide="bell"></i> Activar notificaciones`
+        : `<i data-lucide="bell-off"></i> Silenciar chat`;
+
+      if (window.lucide) {
+        window.lucide.createIcons({ targets: [btnCtxSilenciar] });
+      }
+    }
+
     menuCabecera.classList.toggle("oculto");
     menuAdjuntar.classList.add("oculto");
     menuCamaraPro.classList.add("oculto");
