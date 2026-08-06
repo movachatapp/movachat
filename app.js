@@ -1211,6 +1211,28 @@ async function enviarMensajeNuevo() {
     return;
   }
 
+  // 🛡️ CORTE REAL: Verificar bloqueo cruzado en Firebase antes de enviar
+  try {
+    const snapMiBloqueo = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
+    const snapSuBloqueo = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
+
+    if (snapMiBloqueo.exists() && snapMiBloqueo.val() === true) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Has bloqueado a este contacto. Desbloquéalo para chatear.", "🚫", "#ff4b2b");
+      }
+      return;
+    }
+
+    if (snapSuBloqueo.exists() && snapSuBloqueo.val() === true) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Este usuario te ha bloqueado. No puedes enviarle mensajes.", "🚫", "#ff4b2b");
+      }
+      return;
+    }
+  } catch (err) {
+    console.error("Error verificando bloqueos antes de enviar:", err);
+  }
+
   // Activar candado
   estaEnviandoMensaje = true;
 
@@ -4310,10 +4332,28 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // 7. Conectar Firebase de forma limpia y guardar lectura en la nube
+  // 7. Conectar Firebase de forma limpia, verificar bloqueos y guardar lectura en la nube
   const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
   if (miUid && uidTarget) {
     const chatId = obtenerChatId(miUid, uidTarget);
+
+    // 🛡️ VERIFICACIÓN DE BLOQUEOS EN AMBAS DIRECCIONES
+    get(ref(db, `bloqueos/${miUid}/${uidTarget}`)).then((snapMiBloqueo) => {
+      get(ref(db, `bloqueos/${uidTarget}/${miUid}`)).then((snapSuBloqueo) => {
+        const bloqueadoPorMi = snapMiBloqueo.exists() && snapMiBloqueo.val() === true;
+        const bloqueadoPorEl = snapSuBloqueo.exists() && snapSuBloqueo.val() === true;
+
+        if (bloqueadoPorMi || bloqueadoPorEl) {
+          aplicarEstadoBloqueoInterfaz(true, uidTarget);
+          if (bloqueadoPorEl) {
+            const inputChatPriv = document.getElementById("input-chat-privado");
+            if (inputChatPriv) inputChatPriv.placeholder = "Este usuario te ha bloqueado.";
+          }
+        } else {
+          aplicarEstadoBloqueoInterfaz(false, uidTarget);
+        }
+      });
+    });
 
     // ☁️ REGISTRAR EN FIREBASE EL ÚLTIMO MENSAJE VISTO
     const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
