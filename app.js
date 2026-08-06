@@ -31,9 +31,6 @@ let segundosRestantes = 10;
 let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
-let listenerChatActivo = null;
-let listenerBloqueoActivo = null;
-let btnCtxSilenciar = null;
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -553,7 +550,7 @@ if (btnOpcionesChat) {
     e.stopPropagation();
 
     // 🔕 VERIFICAR Y ACTUALIZAR TEXTO DEL BOTÓN SILENCIAR ANTES DE MOSTRAR EL MENÚ
-    btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
+    const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
     if (btnCtxSilenciar && window.contactoActivoUid) {
       const estaSilenciado = localStorage.getItem(`silenciado_${window.contactoActivoUid}`) === "true";
       btnCtxSilenciar.innerHTML = estaSilenciado
@@ -1214,28 +1211,6 @@ async function enviarMensajeNuevo() {
     return;
   }
 
-  // 🛡️ CORTE REAL: Verificar bloqueo cruzado en Firebase antes de enviar
-  try {
-    const snapMiBloqueo = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
-    const snapSuBloqueo = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
-
-    if (snapMiBloqueo.exists() && snapMiBloqueo.val() === true) {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Has bloqueado a este contacto. Desbloquéalo para chatear.", "🚫", "#ff4b2b");
-      }
-      return;
-    }
-
-    if (snapSuBloqueo.exists() && snapSuBloqueo.val() === true) {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Este usuario te ha bloqueado. No puedes enviarle mensajes.", "🚫", "#ff4b2b");
-      }
-      return;
-    }
-  } catch (err) {
-    console.error("Error verificando bloqueos antes de enviar:", err);
-  }
-
   // Activar candado
   estaEnviandoMensaje = true;
 
@@ -1268,20 +1243,12 @@ async function enviarMensajeNuevo() {
     return;
   }
 
-  // ⏳ VERIFICAR DURACIÓN TEMPORAL CONFIGURADA EN FIREBASE
+  // ⏳ VERIFICAR SI EL MODO TEMPORAL ESTÁ ACTIVO EN ESTE CHAT
   let esEfimero = false;
-  let duracionEfimera = 0;
   try {
     const tempSnap = await get(ref(db, `chats/${chatId}/config/temporales`));
     if (tempSnap.exists()) {
-      const val = tempSnap.val();
-      if (typeof val === "number" && val > 0) {
-        esEfimero = true;
-        duracionEfimera = val;
-      } else if (val === true) {
-        esEfimero = true;
-        duracionEfimera = 10000; // Por defecto 10 segundos
-      }
+      esEfimero = tempSnap.val() === true;
     }
   } catch (err) {
     console.error("Error verificando temporales:", err);
@@ -1295,7 +1262,9 @@ async function enviarMensajeNuevo() {
     hora: horaFormateada,
     timestamp: Date.now(),
     esEfimero: esEfimero,
-    duracionEfimera: duracionEfimera,
+    tipoAdjunto: null,
+    urlAdjunto: null,
+    nombreDoc: null
   };
 
   if (tieneAdjunto) {
@@ -2799,7 +2768,7 @@ if (btnCancelarBusquedaInterna) {
 // ========================================================
 // 🔕 BOTÓN SILENCIAR CHAT (CON PERSISTENCIA REAL POR UID)
 // ========================================================
-btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
+const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
 
 if (btnCtxSilenciar) {
   btnCtxSilenciar.addEventListener("click", (e) => {
@@ -2863,59 +2832,44 @@ if (btnCtxSilenciar) {
 }
 
 // ========================================================
-// ⏳ CONTROL DEL MODAL DE MENSAJES TEMPORALES
+// ⏳ BOTÓN MENSAJES TEMPORALES (SINCRONIZADO EN FIREBASE)
 // ========================================================
 const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
-const modalTemporal = document.getElementById("modal-selector-temporal");
-const btnCerrarTemporal = document.getElementById("btn-cerrar-temporal-modal");
 
-if (btnCtxTemporales && modalTemporal) {
-  btnCtxTemporales.addEventListener("click", (e) => {
+if (btnCtxTemporales) {
+  btnCtxTemporales.addEventListener("click", async (e) => {
     e.stopPropagation();
-    if (menuCabecera) menuCabecera.classList.add("oculto");
-    modalTemporal.classList.remove("oculto");
-  });
-}
 
-if (btnCerrarTemporal && modalTemporal) {
-  btnCerrarTemporal.addEventListener("click", () => {
-    modalTemporal.classList.add("oculto");
-  });
-}
-
-// Escuchar clics en las opciones de tiempo
-document.querySelectorAll(".btn-opcion-tiempo").forEach((btn) => {
-  btn.addEventListener("click", async () => {
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
     const contactoUid = window.contactoActivoUid;
     const elemNombre = document.querySelector(".amigo-nombre-chat");
-    const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
     if (!miUid || !contactoUid) return;
+    if (menuCabecera) menuCabecera.classList.add("oculto");
 
-    const tiempoMs = parseInt(btn.getAttribute("data-tiempo"), 10);
     const chatId = obtenerChatId(miUid, contactoUid);
     const configRef = ref(db, `chats/${chatId}/config/temporales`);
 
     try {
-      await set(configRef, tiempoMs > 0 ? tiempoMs : null);
-      if (modalTemporal) modalTemporal.classList.add("oculto");
+      const snap = await get(configRef);
+      const estaActivo = snap.exists() ? snap.val() : false;
+      const nuevoEstado = !estaActivo;
 
-      let mensajeAviso = "";
-      if (tiempoMs === 10000) mensajeAviso = `Mensajes efímeros configurados a <b>10 Segundos</b> con ${nombreAmigo}.`;
-      else if (tiempoMs === 60000) mensajeAviso = `Mensajes efímeros configurados a <b>1 Minuto</b> con ${nombreAmigo}.`;
-      else if (tiempoMs === 300000) mensajeAviso = `Mensajes efímeros configurados a <b>5 Minutos</b> con ${nombreAmigo}.`;
-      else if (tiempoMs === 600000) mensajeAviso = `Mensajes efímeros configurados a <b>10 Minutos</b> con ${nombreAmigo}.`;
-      else mensajeAviso = `Modo permanente restaurado con <b>${nombreAmigo}</b>.`;
+      await set(configRef, nuevoEstado);
 
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(mensajeAviso, tiempoMs > 0 ? "⏳" : "📡", "#00f2fe");
-      }
+      mostrarAvisoPremium(
+        nuevoEstado
+          ? `Modo efímero activo con <b>${nombreAmigoActual}</b>. Los mensajes durarán 10s.`
+          : `Modo permanente restaurado con <b>${nombreAmigoActual}</b>.`,
+        nuevoEstado ? "⏳" : "📡",
+        "#00f2fe"
+      );
     } catch (err) {
-      console.error("Error al actualizar tiempo efímero:", err);
+      console.error("Error al cambiar estado de mensajes temporales:", err);
     }
   });
-});
+}
 
 function aplicarRelojArenaEfecto(burbujaNodo) {
   const nombreAmigoActual = document.querySelector(".amigo-nombre-chat")?.textContent;
@@ -2997,180 +2951,83 @@ function cargarMensajesChat(contactoUid) {
   });
 }
 
-// ========================================================
-// 🚫 SISTEMA DE BLOQUEAR Y DESBLOQUEAR USUARIO (FIREBASE)
-// ========================================================
-let accionBloqueoPendiente = 'bloquear';
-
-// Función auxiliar para obtener el UID activo sin importar su formato
-function obtenerUidContactoActivo() {
-  let uid = window.contactoActivoUid || (typeof contactoSeleccionado !== "undefined" ? contactoSeleccionado : null);
-  if (uid && typeof uid === 'object') {
-    return uid.uid || uid.id || null;
-  }
-  return uid;
-}
-
+const chatsBloqueadosBD = {};
 const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
-const modalBloquear = document.getElementById("modal-confirmar-bloquear");
-const modalBloquearTitulo = document.getElementById("modal-bloquear-titulo");
-const modalBloquearMensaje = document.getElementById("modal-bloquear-mensaje");
-const btnAceptarBloquear = document.getElementById("btn-aceptar-bloquear-modal");
-const btnCancelarBloquear = document.getElementById("btn-cancelar-bloquear-modal");
 
-// 1️⃣ Abrir modal
 if (btnCtxBloquear) {
-  btnCtxBloquear.onclick = async (e) => {
+  btnCtxBloquear.addEventListener("click", (e) => {
     e.stopPropagation();
 
-    const miUid = auth.currentUser ? auth.currentUser.uid : null;
-    const contactoUid = obtenerUidContactoActivo();
     const elemNombre = document.querySelector(".amigo-nombre-chat");
-    const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : null;
+
+    if (!nombreAmigoActual) return;
 
     if (menuCabecera) menuCabecera.classList.add("oculto");
 
-    if (!contactoUid) {
-      alert("⚠️ No se detectó el contacto activo. Cierra el chat y vuelve a entrar.");
-      return;
-    }
-
-    // Configuración por defecto: Bloquear
-    accionBloqueoPendiente = 'bloquear';
-    if (modalBloquearTitulo) modalBloquearTitulo.textContent = "¿Bloquear usuario?";
-    if (modalBloquearMensaje) modalBloquearMensaje.innerHTML = `¿Seguro que deseas bloquear a <b>${nombreAmigo}</b>? No podrás enviarle mensajes.`;
-    if (btnAceptarBloquear) {
-      btnAceptarBloquear.textContent = "Bloquear";
-      btnAceptarBloquear.className = "btn-mova-peligro";
-      btnAceptarBloquear.style.borderColor = "";
-      btnAceptarBloquear.style.color = "";
-    }
-
-    if (modalBloquear) modalBloquear.classList.remove("oculto");
-
-    // Consultar estado previo en Firebase
-    if (miUid && contactoUid) {
-      try {
-        const snap = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
-        if (snap.exists() && snap.val() === true) {
-          accionBloqueoPendiente = 'desbloquear';
-          if (modalBloquearTitulo) modalBloquearTitulo.textContent = "¿Desbloquear usuario?";
-          if (modalBloquearMensaje) modalBloquearMensaje.innerHTML = `¿Deseas desbloquear a <b>${nombreAmigo}</b> para volver a chatear?`;
-          if (btnAceptarBloquear) {
-            btnAceptarBloquear.textContent = "Desbloquear";
-            btnAceptarBloquear.className = "btn-mova-secundario";
-            btnAceptarBloquear.style.borderColor = "#00f2fe";
-            btnAceptarBloquear.style.color = "#00f2fe";
-          }
-        }
-      } catch (err) {
-        console.error("Error consultando estado de bloqueo:", err);
+    let tarjetaAmigoNodo = null;
+    document.querySelectorAll(".lista-chats .tarjeta-chat").forEach(tarjeta => {
+      const elemNombreTarjeta = tarjeta.querySelector(".chat-nombre");
+      if (elemNombreTarjeta && elemNombreTarjeta.textContent.trim() === nombreAmigoActual) {
+        tarjetaAmigoNodo = tarjeta;
       }
-    }
-  };
-}
+    });
 
-// 2️⃣ Cancelar
-if (btnCancelarBloquear && modalBloquear) {
-  btnCancelarBloquear.onclick = () => {
-    modalBloquear.classList.add("oculto");
-  };
-}
+    if (!chatsBloqueadosBD[nombreAmigoActual]) {
+      chatsBloqueadosBD[nombreAmigoActual] = true;
 
-// 3️⃣ Confirmar Bloqueo / Desbloqueo
-if (btnAceptarBloquear) {
-  btnAceptarBloquear.onclick = async () => {
-    const miUid = auth.currentUser ? auth.currentUser.uid : null;
-    const contactoUid = obtenerUidContactoActivo();
-    const elemNombre = document.querySelector(".amigo-nombre-chat");
-    const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+      btnCtxBloquear.innerHTML = `<i data-lucide="shield-check"></i> Desbloquear usuario`;
+      btnCtxBloquear.classList.remove("texto-rojo");
+      btnCtxBloquear.style.color = "#00f2fe";
 
-    if (modalBloquear) modalBloquear.classList.add("oculto");
+      if (inputChat) {
+        inputChat.disabled = true;
+        inputChat.placeholder = "Has bloqueado a este usuario.";
+        inputChat.style.opacity = "0.5";
+      }
+      if (btnAccionChat) {
+        btnAccionChat.style.pointerEvents = "none";
+        btnAccionChat.style.opacity = "0.3";
+      }
 
-    if (!miUid || !contactoUid) return;
+      if (tarjetaAmigoNodo) {
+        tarjetaAmigoNodo.style.opacity = "0.4";
+        tarjetaAmigoNodo.style.filter = "grayscale(100%)";
+      }
 
-    const esBloqueo = (accionBloqueoPendiente === 'bloquear');
-
-    // Comprobar si el otro usuario me tenía bloqueado previamente para mantener la UI ajustada
-    let esSuBloqueo = false;
-    try {
-      const snapSuBloqueo = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
-      esSuBloqueo = snapSuBloqueo.exists() && snapSuBloqueo.val() === true;
-    } catch (e) {}
-
-    // APLICACIÓN INMEDIATA CON AUTORÍA CORRECTA
-    aplicarEstadoBloqueoInterfaz({ esMiBloqueo: esBloqueo, esSuBloqueo }, contactoUid);
-
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(
-        esBloqueo ? `Has bloqueado a <b>${nombreAmigo}</b>.` : `Has desbloqueado a <b>${nombreAmigo}</b>.`,
-        esBloqueo ? "⚠️" : "📡",
-        esBloqueo ? "#ff4b2b" : "#00f2fe"
-      );
-    }
-
-    // GUARDAR O ELIMINAR EN FIREBASE DE MI NODO
-    try {
-      const bloqueoRef = ref(db, `bloqueos/${miUid}/${contactoUid}`);
-      await set(bloqueoRef, esBloqueo ? true : null);
-    } catch (err) {
-      console.error("❌ Error escribiendo bloqueo en Firebase:", err);
-    }
-  };
-}
-
-// 4️⃣ Función de Interfaz con diferenciación de autor del bloqueo
-function aplicarEstadoBloqueoInterfaz(estado, targetUid = null) {
-  let esMiBloqueo = false;
-  let esSuBloqueo = false;
-
-  if (typeof estado === "object" && estado !== null) {
-    esMiBloqueo = !!estado.esMiBloqueo;
-    esSuBloqueo = !!estado.esSuBloqueo;
-  } else {
-    esMiBloqueo = !!estado;
-  }
-
-  const contactoUid = targetUid || (typeof obtenerUidContactoActivo === "function" ? obtenerUidContactoActivo() : window.contactoActivoUid);
-  const tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
-  const inputChat = document.getElementById("input-chat-privado");
-  const btnAccionChat = document.getElementById("btn-accion-chat");
-  const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
-
-  // A) Botón del menú: Muestra "Desbloquear usuario" a quien ejecutó el bloqueo
-  if (btnCtxBloquear) {
-    btnCtxBloquear.innerHTML = esMiBloqueo
-      ? `<i data-lucide="shield-check"></i> Desbloquear usuario`
-      : `<i data-lucide="shield-alert"></i> Bloquear usuario`;
-
-    btnCtxBloquear.style.color = esMiBloqueo ? "#00f2fe" : "";
-    if (window.lucide) window.lucide.createIcons({ targets: [btnCtxBloquear] });
-  }
-
-  // B) Campo de texto: SOLO SE DESHABILITA SI "A MÍ ME BLOQUEARON" (esSuBloqueo)
-  if (inputChat) {
-    inputChat.disabled = esSuBloqueo;
-    if (esMiBloqueo) {
-      inputChat.placeholder = "Has bloqueado a este contacto.";
-    } else if (esSuBloqueo) {
-      inputChat.placeholder = "Este usuario te ha bloqueado.";
+      mostrarAvisoPremium(`Usuario <b>${nombreAmigoActual}</b> ha sido bloqueado con éxito.`, "⚠️", "#ff4b2b");
     } else {
-      inputChat.placeholder = "Escribe un mensaje privado...";
+      chatsBloqueadosBD[nombreAmigoActual] = false;
+
+      btnCtxBloquear.innerHTML = `<i data-lucide="shield-alert"></i> Bloquear usuario`;
+      btnCtxBloquear.classList.add("texto-rojo");
+      btnCtxBloquear.style.color = "";
+
+      if (inputChat) {
+        inputChat.disabled = false;
+        inputChat.placeholder = "Escribe un mensaje privado...";
+        inputChat.style.opacity = "1";
+      }
+      if (btnAccionChat) {
+        btnAccionChat.style.pointerEvents = "auto";
+        btnAccionChat.style.opacity = "1";
+      }
+
+      if (tarjetaAmigoNodo) {
+        tarjetaAmigoNodo.style.opacity = "1";
+        tarjetaAmigoNodo.style.filter = "none";
+      }
+
+      mostrarAvisoPremium(`Has desbloqueado a <b>${nombreAmigoActual}</b>. Conexión restaurada.`, "📡", "#00f2fe");
     }
-    inputChat.style.opacity = esSuBloqueo ? "0.5" : "1";
-  }
 
-  // C) Botón de enviar / nota de voz: SOLO SE DESHABILITA SI "A MÍ ME BLOQUEARON"
-  if (btnAccionChat) {
-    btnAccionChat.style.pointerEvents = esSuBloqueo ? "none" : "auto";
-    btnAccionChat.style.opacity = esSuBloqueo ? "0.3" : "1";
-  }
-
-  // D) Tarjeta en la lista principal (efecto visual de gris únicamente para quien bloqueó)
-  if (tarjetaContacto) {
-    tarjetaContacto.style.opacity = esMiBloqueo ? "0.4" : "1";
-    tarjetaContacto.style.filter = esMiBloqueo ? "grayscale(100%)" : "none";
-  }
+    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxBloquear
+    if (window.lucide) {
+      window.lucide.createIcons({
+        targets: [btnCtxBloquear]
+      });
+    }
+  });
 }
 
 // ========================================================
@@ -3211,7 +3068,7 @@ if (btnCancelarVaciar) {
   });
 }
 
-// Evento Aceptar Modal (Vaciar Chat Solo Para Mí)
+// Evento Aceptar Modal
 if (btnAceptarVaciar) {
   btnAceptarVaciar.addEventListener("click", async () => {
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -3227,22 +3084,25 @@ if (btnAceptarVaciar) {
       : [miUid, contactoUid].sort().join("_");
 
     try {
-      // 1. Guardar marca de tiempo de vaciado individual en Firebase
-      const vaciadoRef = ref(db, `chats/${chatId}/vaciadoPor/${miUid}`);
-      await set(vaciadoRef, Date.now());
+      // 1. Borrar todos los mensajes en la base de datos de Firebase
+      const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+      await set(mensajesRef, null);
 
-      // 2. Limpiar visualmente la pantalla del usuario local
+      // 2. Limpiar visualmente la pantalla del chat
       const contenedorHistorial = document.querySelector(".historial-mensajes");
       if (contenedorHistorial) {
         contenedorHistorial.innerHTML = "";
       }
 
-      // 3. Notificación
+      // 3. Notificación de confirmación
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Has vaciado la conversación con <b>${nombreAmigoActual}</b> para ti.`, "🗑️", "#ff4b2b");
+        mostrarAvisoPremium(`Se ha vaciado el chat con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
       }
     } catch (err) {
-      console.error("Error al vaciar chat local:", err);
+      console.error("Error al vaciar el chat en Firebase:", err);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("No se pudo vaciar el chat. Inténtalo de nuevo.", "❌", "#ff4b2b");
+      }
     }
   });
 }
@@ -4256,7 +4116,10 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
-// 🟢 Función unificada adaptada a tus selectores (CON LIMPIEZA Y BLOQUEOS EN TIEMPO REAL)
+// Crear alias para que ambas llamadas funcionen igual de bien
+window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
+
+// 🟢 Función unificada adaptada a tus selectores y limpia de duplicados (CON LIMPIEZA DE CONTADOR Y CAMPANITA)
 function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   let uidTarget, nombreTarget, fotoTarget;
 
@@ -4330,7 +4193,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   const menuTarjetas = document.getElementById("menu-tarjetas-chat");
   if (menuTarjetas) menuTarjetas.classList.add("oculto");
 
-  // 6. 🚀 NAVEGACIÓN DE PANTALLAS
+  // 6. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
   if (typeof encabezadoGlobal !== "undefined" && encabezadoGlobal) encabezadoGlobal.style.display = "none";
   if (typeof menuFlotanteGlobal !== "undefined" && menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
 
@@ -4347,45 +4210,12 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // 7. Conectar Firebase con escucha EN TIEMPO REAL de bloqueos y lecturas
+  // 7. Conectar Firebase de forma limpia y guardar lectura en la nube
   const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
-
   if (miUid && uidTarget) {
     const chatId = obtenerChatId(miUid, uidTarget);
 
-    // Cancelar la escucha de bloqueos del chat anterior
-    if (typeof listenerBloqueoActivo === "function") {
-      listenerBloqueoActivo();
-      listenerBloqueoActivo = null;
-    }
-
-    // 🛡️ ESCUCHA EN TIEMPO REAL (onValue) DE BLOQUEOS CRUZADOS
-    const refMiBloqueo = ref(db, `bloqueos/${miUid}/${uidTarget}`);
-    const refSuBloqueo = ref(db, `bloqueos/${uidTarget}/${miUid}`);
-
-    const unsubMi = onValue(refMiBloqueo, (snapMi) => {
-      get(refSuBloqueo).then((snapSu) => {
-        const esMiBloqueo = snapMi.exists() && snapMi.val() === true;
-        const esSuBloqueo = snapSu.exists() && snapSu.val() === true;
-        aplicarEstadoBloqueoInterfaz({ esMiBloqueo, esSuBloqueo }, uidTarget);
-      });
-    });
-
-    const unsubSu = onValue(refSuBloqueo, (snapSu) => {
-      get(refMiBloqueo).then((snapMi) => {
-        const esMiBloqueo = snapMi.exists() && snapMi.val() === true;
-        const esSuBloqueo = snapSu.exists() && snapSu.val() === true;
-        aplicarEstadoBloqueoInterfaz({ esMiBloqueo, esSuBloqueo }, uidTarget);
-      });
-    });
-
-    // Guardar la función de limpieza para el próximo cambio de chat
-    listenerBloqueoActivo = () => {
-      unsubMi();
-      unsubSu();
-    };
-
-    // ☁️ REGISTRAR LECTURA EN FIREBASE
+    // ☁️ REGISTRAR EN FIREBASE EL ÚLTIMO MENSAJE VISTO
     const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
     get(mensajesRef).then((snapshot) => {
       if (snapshot.exists()) {
@@ -4393,6 +4223,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
         const keys = Object.keys(mensajes);
         const ultimoMsgKey = keys[keys.length - 1];
 
+        // Escribe el ID del último mensaje en el nodo 'lecturas'
         set(ref(db, `lecturas/${miUid}/${uidTarget}`), ultimoMsgKey);
       }
     }).catch(err => console.error("Error al registrar lectura:", err));
@@ -4403,7 +4234,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   }
 
   // 🔕 ACTUALIZAR TEXTO DEL BOTÓN SILENCIAR SEGÚN EL ESTADO DEL CONTACTO
-  btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
+  const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
   if (btnCtxSilenciar && uidTarget) {
     const estaSilenciado = localStorage.getItem(`silenciado_${uidTarget}`) === "true";
     btnCtxSilenciar.innerHTML = estaSilenciado
@@ -4439,16 +4270,13 @@ if (inputChatPrivado) {
 
 let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (Con Auto-Destrucción y Vaciar Chat Local)
+// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (Con Auto-Destrucción y Renderizado Seguro)
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
   if (!contenedorHistorial) return;
 
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
   const configRef = ref(db, `chats/${chatId}/config/temporales`);
-
-  const miUid = auth.currentUser ? auth.currentUser.uid : null;
-  const vaciadoRef = miUid ? ref(db, `chats/${chatId}/vaciadoPor/${miUid}`) : null;
 
   // 1. Limpiar listeners anteriores de forma segura
   if (typeof listenerChatActivo === "function") listenerChatActivo();
@@ -4458,8 +4286,7 @@ function escucharMensajesChat(chatId) {
   listenerConfigActivo = onValue(configRef, (snapshot) => {
     const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
     if (btnCtxTemporales) {
-      const val = snapshot.exists() ? snapshot.val() : null;
-      const estaActivo = (typeof val === "number" && val > 0) || val === true;
+      const estaActivo = snapshot.exists() && snapshot.val() === true;
       btnCtxTemporales.innerHTML = estaActivo
         ? `<i data-lucide="hourglass"></i> Mensajes normales`
         : `<i data-lucide="hourglass"></i> Mensajes temporales`;
@@ -4472,162 +4299,144 @@ function escucharMensajesChat(chatId) {
 
   let esCargaInicial = true;
 
-  // 3. Procesar los mensajes filtrando la fecha de vaciado local
-  const procesarMensajes = (tiempoVaciadoLocal = 0) => {
-    listenerChatActivo = onValue(mensajesRef, (snapshot) => {
-      const elemHistorial = document.querySelector(".historial-mensajes");
-      if (!elemHistorial) return;
+  // 3. Escuchar mensajes en tiempo real
+  listenerChatActivo = onValue(mensajesRef, (snapshot) => {
+    const elemHistorial = document.querySelector(".historial-mensajes");
+    if (!elemHistorial) return;
 
-      elemHistorial.innerHTML = ""; // Limpiar historial antes de redibujar
+    elemHistorial.innerHTML = ""; // Limpiar historial antes de redibujar
 
-      if (snapshot.exists()) {
-        const mensajes = snapshot.val();
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
-        Object.keys(mensajes).forEach((msgId) => {
-          const msg = mensajes[msgId];
-          if (!msg) return;
+    if (snapshot.exists()) {
+      const mensajes = snapshot.val();
 
-          // 🛑 FILTRO DE VACIAR CHAT SOLO PARA MÍ
-          if (msg.timestamp && msg.timestamp <= tiempoVaciadoLocal) {
-            return; // No muestra los mensajes anteriores a la fecha de vaciado
-          }
+      Object.keys(mensajes).forEach((msgId) => {
+        const msg = mensajes[msgId];
+        if (!msg) return;
 
-          // A) LÓGICA DE MENSAJE EFÍMERO (Auto-eliminación con tiempo dinámico)
-          if (msg.esEfimero) {
-            const duracion = msg.duracionEfimera || 10000;
-            const transcurrido = Date.now() - (msg.timestamp || Date.now());
-            const tiempoRestante = duracion - transcurrido;
+        // A) LÓGICA DE MENSAJE EFÍMERO (Auto-eliminación en Firebase a los 10 segundos)
+        if (msg.esEfimero) {
+          const transcurrido = Date.now() - (msg.timestamp || Date.now());
+          const tiempoRestante = 10000 - transcurrido;
 
-            if (tiempoRestante <= 0) {
-              set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
-              return;
-            } else {
-              setTimeout(() => {
-                set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
-              }, tiempoRestante);
-            }
-          }
-
-          const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
-          const esMio = idEmisorReal === miUid;
-
-          const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
-          const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
-
-          if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo) {
-            const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
-            const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
-            const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
-
-            if (typeof notificarNuevoMensaje === "function") {
-              notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
-            }
-            if (typeof reproducirSonido === "function") {
-              reproducirSonido("recibido", idEmisorReal);
-            }
-          }
-
-          let horaFormateada = "00:00";
-          if (msg.hora) {
-            horaFormateada = msg.hora;
-          } else if (msg.fecha || msg.timestamp) {
-            const fechaObj = new Date(msg.fecha || msg.timestamp);
-            horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          }
-
-          const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
-          const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
-
-          let contenidoBurbuja = "";
-          let estiloEspecialBurbuja = "";
-
-          if (msg.tipoAdjunto === 'foto') {
-            contenidoBurbuja = `
-              <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
-                <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
-              </div>
-              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-            `;
-          } else if (msg.tipoAdjunto === 'documento') {
-            contenidoBurbuja = `
-              <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
-                <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
-                <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
-              </div>
-              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-            `;
-          } else if (msg.tipoAdjunto === 'video') {
-            estiloEspecialBurbuja = "padding: 10px;";
-            contenidoBurbuja = `
-              <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-                <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                  <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-                </svg>
-                <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-                  <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
-                </div>
-                <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                  <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-                </div>
-              </div>
-              ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-            `;
-          } else if (msg.tipoAdjunto === 'audio') {
-            contenidoBurbuja = `
-              <div class="reproductor-audio-burbuja">
-                <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
-                <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-                  <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
-                  <span class="onda-barra"></span><span class="onda-barra"></span>
-                  <span class="onda-barra"></span><span class="onda-barra"></span>
-                  <span class="onda-barra"></span><span class="onda-barra"></span>
-                </div>
-                <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-                <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
-              </div>
-              <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-            `;
+          if (tiempoRestante <= 0) {
+            set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
+            return;
           } else {
-            contenidoBurbuja = `
-              <p class="mensaje-texto">${msg.texto || ''}</p>
-              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
-            `;
+            setTimeout(() => {
+              set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
+            }, tiempoRestante);
           }
-
-          const burbujaHTML = document.createElement("div");
-          burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'} ${msg.esEfimero ? 'mensaje-efimero' : ''}`;
-          burbujaHTML.setAttribute("data-msg-id", msgId);
-          if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
-          burbujaHTML.innerHTML = contenidoBurbuja;
-
-          elemHistorial.appendChild(burbujaHTML);
-        });
-
-        if (window.lucide) {
-          window.lucide.createIcons({ targets: [elemHistorial] });
         }
 
-        elemHistorial.scrollTop = elemHistorial.scrollHeight;
+        const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
+        const esMio = idEmisorReal === miUid;
+
+        const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
+        const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
+
+        if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo) {
+          const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
+          const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
+          const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
+
+          if (typeof notificarNuevoMensaje === "function") {
+            notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+          }
+          if (typeof reproducirSonido === "function") {
+            reproducirSonido("recibido", idEmisorReal);
+          }
+        }
+
+        let horaFormateada = "00:00";
+        if (msg.hora) {
+          horaFormateada = msg.hora;
+        } else if (msg.fecha || msg.timestamp) {
+          const fechaObj = new Date(msg.fecha || msg.timestamp);
+          horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
+        const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
+
+        let contenidoBurbuja = "";
+        let estiloEspecialBurbuja = "";
+
+        if (msg.tipoAdjunto === 'foto') {
+          contenidoBurbuja = `
+            <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
+              <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
+            </div>
+            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        } else if (msg.tipoAdjunto === 'documento') {
+          contenidoBurbuja = `
+            <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
+              <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
+              <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
+            </div>
+            ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        } else if (msg.tipoAdjunto === 'video') {
+          estiloEspecialBurbuja = "padding: 10px;";
+          contenidoBurbuja = `
+            <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
+              <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+                <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
+              </svg>
+              <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
+                <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+              </div>
+              <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
+                <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+              </div>
+            </div>
+            ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+            <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        } else if (msg.tipoAdjunto === 'audio') {
+          contenidoBurbuja = `
+            <div class="reproductor-audio-burbuja">
+              <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+              <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
+                <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
+                <span class="onda-barra"></span><span class="onda-barra"></span>
+                <span class="onda-barra"></span><span class="onda-barra"></span>
+                <span class="onda-barra"></span><span class="onda-barra"></span>
+              </div>
+              <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
+              <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
+            </div>
+            <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        } else {
+          contenidoBurbuja = `
+            <p class="mensaje-texto">${msg.texto || ''}</p>
+            <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+          `;
+        }
+
+        const burbujaHTML = document.createElement("div");
+        burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'} ${msg.esEfimero ? 'mensaje-efimero' : ''}`;
+        burbujaHTML.setAttribute("data-msg-id", msgId);
+        if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
+        burbujaHTML.innerHTML = contenidoBurbuja;
+
+        elemHistorial.appendChild(burbujaHTML);
+      });
+
+      if (window.lucide) {
+        window.lucide.createIcons({ targets: [elemHistorial] });
       }
 
-      esCargaInicial = false;
-    });
-  };
+      elemHistorial.scrollTop = elemHistorial.scrollHeight;
+    }
 
-  // Consultar fecha de vaciado local en Firebase antes de renderizar
-  if (vaciadoRef) {
-    get(vaciadoRef).then((vaciadoSnap) => {
-      const tiempoVaciadoLocal = vaciadoSnap.exists() ? vaciadoSnap.val() : 0;
-      procesarMensajes(tiempoVaciadoLocal);
-    }).catch(() => {
-      procesarMensajes(0);
-    });
-  } else {
-    procesarMensajes(0);
-  }
+    esCargaInicial = false;
+  });
 }
 
 // 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
