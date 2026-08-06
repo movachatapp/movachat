@@ -3031,12 +3031,16 @@ if (btnCtxBloquear) {
 }
 
 // ========================================================
-// 🗑️ BOTÓN VACIAR CHAT (BORRADO DEFINITIVO EN FIREBASE)
+// 🗑️ BOTÓN VACIAR CHAT (CON MODAL Y BORRADO EN FIREBASE)
 // ========================================================
 const btnCtxVaciar = document.getElementById("btn-ctx-vaciar");
+const modalVaciar = document.getElementById("modal-confirmar-vaciar");
+const modalTexto = document.getElementById("modal-vaciar-mensaje");
+const btnAceptarVaciar = document.getElementById("btn-aceptar-vaciar-modal");
+const btnCancelarVaciar = document.getElementById("btn-cancelar-vaciar-modal");
 
 if (btnCtxVaciar) {
-  btnCtxVaciar.addEventListener("click", async (e) => {
+  btnCtxVaciar.addEventListener("click", (e) => {
     e.stopPropagation();
 
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -3047,9 +3051,33 @@ if (btnCtxVaciar) {
     if (!miUid || !contactoUid) return;
     if (menuCabecera) menuCabecera.classList.add("oculto");
 
-    const confirmacion = confirm(`¿Estás seguro de que deseas vaciar toda la conversación con ${nombreAmigoActual}? Esta acción no se puede deshacer.`);
-    
-    if (!confirmacion) return;
+    if (modalTexto) {
+      modalTexto.innerHTML = `¿Estás seguro de que deseas vaciar la conversación con <b>${nombreAmigoActual}</b>? Esta acción es irreversible.`;
+    }
+
+    if (modalVaciar) {
+      modalVaciar.classList.remove("oculto");
+    }
+  });
+}
+
+// Evento Cancelar Modal
+if (btnCancelarVaciar) {
+  btnCancelarVaciar.addEventListener("click", () => {
+    if (modalVaciar) modalVaciar.classList.add("oculto");
+  });
+}
+
+// Evento Aceptar Modal
+if (btnAceptarVaciar) {
+  btnAceptarVaciar.addEventListener("click", async () => {
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = window.contactoActivoUid;
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+    if (modalVaciar) modalVaciar.classList.add("oculto");
+    if (!miUid || !contactoUid) return;
 
     const chatId = typeof obtenerChatId === "function"
       ? obtenerChatId(miUid, contactoUid)

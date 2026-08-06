@@ -2843,3 +2843,99 @@ body {
 .oculto {
   display: none !important;
 }
+
+/* 🔮 MODAL PERSONALIZADO MOVACHAT */
+.modal-mova-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.modal-mova-overlay.oculto {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.modal-mova-caja {
+  background: #0f172a;
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  box-shadow: 0 0 25px rgba(0, 242, 254, 0.2), 0 0 50px rgba(0, 0, 0, 0.8);
+  border-radius: 16px;
+  padding: 24px;
+  width: 90%;
+  max-width: 380px;
+  text-align: center;
+  animation: modalEntrada 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes modalEntrada {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.modal-mova-icono {
+  font-size: 2.5rem;
+  margin-bottom: 10px;
+}
+
+.modal-mova-titulo {
+  color: #fff;
+  font-size: 1.25rem;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.modal-mova-texto {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-bottom: 20px;
+}
+
+.modal-mova-botones {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.btn-mova-secundario {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 500;
+  flex: 1;
+  transition: all 0.2s ease;
+}
+
+.btn-mova-secundario:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-mova-peligro {
+  background: linear-gradient(135deg, #ff4b2b, #ff416c);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  flex: 1;
+  box-shadow: 0 0 12px rgba(255, 75, 43, 0.4);
+  transition: all 0.2s ease;
+}
+
+.btn-mova-peligro:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 18px rgba(255, 75, 43, 0.6);
+}

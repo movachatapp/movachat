@@ -86,7 +86,7 @@
         <button class="icono-btn" id="btn-buscador-encabezado" aria-label="Buscar">
           <i data-lucide="search"></i>
         </button>
-        
+
         <!-- 🔔 CAMPANITA DE ALERTAS CON ID Y CLASES UNIFICADAS -->
         <button class="icono-btn" id="btn-campanita-alertas" style="position: relative;" aria-label="Notificaciones">
           <i data-lucide="bell"></i>
@@ -139,7 +139,8 @@
       <!-- FILTROS DE CHAT UNIFICADOS -->
       <div class="caja-filtros">
         <button class="filtro-btn activo" id="btn-filtro-todos">Todos</button>
-        <button class="filtro-btn" id="btn-filtro-noleidos">No leídos <span class="badge-filtro badge-chat-no-leido">0</span></button>
+        <button class="filtro-btn" id="btn-filtro-noleidos">No leídos <span
+            class="badge-filtro badge-chat-no-leido">0</span></button>
       </div>
 
       <div class="lista-chats" id="lista-chats-principal">
@@ -586,7 +587,8 @@
   <div id="modal-camara-circular" class="oculto"
     style="position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
 
-    <p style="color: white; font-size: 0.9rem; margin-bottom: 15px; font-weight: 600;">Cámara Circular Mova (Máx 10s)</p>
+    <p style="color: white; font-size: 0.9rem; margin-bottom: 15px; font-weight: 600;">Cámara Circular Mova (Máx 10s)
+    </p>
 
     <div
       style="position: relative; width: 220px; height: 220px; border-radius: 50%; overflow: hidden; border: 3px solid #00f2fe; box-shadow: 0 0 20px rgba(0,242,254,0.4);">
@@ -646,6 +648,21 @@
         <p style="color: #aaa; font-size: 0.9rem; text-align: center;">Cargando solicitudes...</p>
       </div>
 
+    </div>
+  </div>
+
+  <!-- 🗑️ MODAL CONFIRMACIÓN VACIAR CHAT MOVACHAT -->
+  <div id="modal-confirmar-vaciar" class="modal-mova-overlay oculto">
+    <div class="modal-mova-caja">
+      <div class="modal-mova-icono">🗑️</div>
+      <h3 class="modal-mova-titulo">¿Vaciar conversación?</h3>
+      <p class="modal-mova-texto" id="modal-vaciar-mensaje">
+        Esta acción borrará permanentemente el historial con este usuario.
+      </p>
+      <div class="modal-mova-botones">
+        <button id="btn-cancelar-vaciar-modal" class="btn-mova-secundario">Cancelar</button>
+        <button id="btn-aceptar-vaciar-modal" class="btn-mova-peligro">Vaciar Chat</button>
+      </div>
     </div>
   </div>
 
