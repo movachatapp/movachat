@@ -4209,16 +4209,17 @@ if (inputChatPrivado) {
 
 let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (Con Auto-Destrucción)
+// 📌 Escuchar mensajes y configuración en tiempo real desde Firebase (Con Auto-Destrucción y Renderizado Seguro)
 function escucharMensajesChat(chatId) {
-  if (!historialMensajes) return;
+  const contenedorHistorial = document.querySelector(".historial-mensajes");
+  if (!contenedorHistorial) return;
 
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
   const configRef = ref(db, `chats/${chatId}/config/temporales`);
 
-  // 1. Limpiar listeners anteriores
-  if (listenerChatActivo) listenerChatActivo();
-  if (listenerConfigActivo) listenerConfigActivo();
+  // 1. Limpiar listeners anteriores de forma segura
+  if (typeof listenerChatActivo === "function") listenerChatActivo();
+  if (typeof listenerConfigActivo === "function") listenerConfigActivo();
 
   // 2. Escuchar el estado de mensajes temporales para actualizar el botón en vivo
   listenerConfigActivo = onValue(configRef, (snapshot) => {
@@ -4237,10 +4238,12 @@ function escucharMensajesChat(chatId) {
 
   let esCargaInicial = true;
 
-  // 3. Escuchar mensajes
+  // 3. Escuchar mensajes en tiempo real
   listenerChatActivo = onValue(mensajesRef, (snapshot) => {
-    if (!historialMensajes) return;
-    historialMensajes.innerHTML = "";
+    const elemHistorial = document.querySelector(".historial-mensajes");
+    if (!elemHistorial) return;
+
+    elemHistorial.innerHTML = ""; // Limpiar historial antes de redibujar
 
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
@@ -4249,18 +4252,17 @@ function escucharMensajesChat(chatId) {
 
       Object.keys(mensajes).forEach((msgId) => {
         const msg = mensajes[msgId];
+        if (!msg) return;
 
         // A) LÓGICA DE MENSAJE EFÍMERO (Auto-eliminación en Firebase a los 10 segundos)
         if (msg.esEfimero) {
-          const transcurrido = Date.now() - (msg.timestamp || 0);
+          const transcurrido = Date.now() - (msg.timestamp || Date.now());
           const tiempoRestante = 10000 - transcurrido;
 
           if (tiempoRestante <= 0) {
-            // Eliminar de Firebase inmediatamente si ya pasaron los 10s
             set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
             return;
           } else {
-            // Programar eliminación exacta en la nube
             setTimeout(() => {
               set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
             }, tiempoRestante);
@@ -4278,8 +4280,12 @@ function escucharMensajesChat(chatId) {
           const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
           const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
 
-          notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
-          reproducirSonido("recibido", idEmisorReal);
+          if (typeof notificarNuevoMensaje === "function") {
+            notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+          }
+          if (typeof reproducirSonido === "function") {
+            reproducirSonido("recibido", idEmisorReal);
+          }
         }
 
         let horaFormateada = "00:00";
@@ -4358,14 +4364,14 @@ function escucharMensajesChat(chatId) {
         if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
         burbujaHTML.innerHTML = contenidoBurbuja;
 
-        historialMensajes.appendChild(burbujaHTML);
+        elemHistorial.appendChild(burbujaHTML);
       });
 
       if (window.lucide) {
-        window.lucide.createIcons({ targets: [historialMensajes] });
+        window.lucide.createIcons({ targets: [elemHistorial] });
       }
 
-      historialMensajes.scrollTop = historialMensajes.scrollHeight;
+      elemHistorial.scrollTop = elemHistorial.scrollHeight;
     }
 
     esCargaInicial = false;
