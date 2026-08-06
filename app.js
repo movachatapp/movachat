@@ -552,7 +552,7 @@ if (btnOpcionesChat) {
     e.stopPropagation();
 
     // 🔕 VERIFICAR Y ACTUALIZAR TEXTO DEL BOTÓN SILENCIAR ANTES DE MOSTRAR EL MENÚ
-    const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
+    btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
     if (btnCtxSilenciar && window.contactoActivoUid) {
       const estaSilenciado = localStorage.getItem(`silenciado_${window.contactoActivoUid}`) === "true";
       btnCtxSilenciar.innerHTML = estaSilenciado
@@ -2798,7 +2798,7 @@ if (btnCancelarBusquedaInterna) {
 // ========================================================
 // 🔕 BOTÓN SILENCIAR CHAT (CON PERSISTENCIA REAL POR UID)
 // ========================================================
-const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
+btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
 
 if (btnCtxSilenciar) {
   btnCtxSilenciar.addEventListener("click", (e) => {
@@ -4406,7 +4406,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
 }
 
   // 🔕 ACTUALIZAR TEXTO DEL BOTÓN SILENCIAR SEGÚN EL ESTADO DEL CONTACTO
-  const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
+  btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
   if (btnCtxSilenciar && uidTarget) {
     const estaSilenciado = localStorage.getItem(`silenciado_${uidTarget}`) === "true";
     btnCtxSilenciar.innerHTML = estaSilenciado
