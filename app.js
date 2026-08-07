@@ -1304,7 +1304,7 @@ async function enviarMensajeNuevo() {
     hora: horaFormateada,
     timestamp: Date.now(),
     esEfimero: esEfimero,
-    // ↪️ METADATOS DE REENVÍO
+    // ↪️ METADATOS DE REENVÍO (Lee la variable global)
     esReenviado: window.mensajeReenviadoActivo ? true : false,
     autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
     tipoAdjunto: null,
@@ -1312,8 +1312,10 @@ async function enviarMensajeNuevo() {
     nombreDoc: null
   };
 
-  // Limpiar el estado de reenvío una vez armado el mensaje
+  // 🧹 Limpiar la barra visual de reenvío y la variable tras armar el objeto
   window.mensajeReenviadoActivo = null;
+  const vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
+  if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
 
   if (tieneAdjunto) {
     objetoMensaje.tipoAdjunto = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
@@ -4478,18 +4480,50 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   // ↪️ VERIFICAR SI HAY UN PAQUETE DE REENVÍO PENDIENTE
   if (window.objetoPendienteReenviar) {
     const cajaEntrada = document.getElementById("input-chat-privado") || (typeof inputChat !== "undefined" ? inputChat : null);
+    
+    window.mensajeReenviadoActivo = { ...window.objetoPendienteReenviar };
+    window.objetoPendienteReenviar = null;
+
     if (cajaEntrada) {
-      cajaEntrada.value = window.objetoPendienteReenviar.texto;
+      cajaEntrada.value = window.mensajeReenviadoActivo.texto;
       cajaEntrada.focus();
 
-      // Mantenemos la marca de reenvío activa para el próximo envío
-      window.mensajeReenviadoActivo = { ...window.objetoPendienteReenviar };
+      // Banner flotante elegante
+      let vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
+      if (!vistaPreviaReenvio) {
+        vistaPreviaReenvio = document.createElement("div");
+        vistaPreviaReenvio.id = "vista-previa-reenvio";
+        vistaPreviaReenvio.style.cssText = "display: flex; align-items: center; justify-content: space-between; background: rgba(0, 242, 254, 0.12); border-left: 3px solid #00f2fe; padding: 6px 12px; margin-bottom: 6px; border-radius: 6px; font-size: 0.8rem; color: #fff;";
+        
+        const contenedorInput = cajaEntrada.parentElement;
+        if (contenedorInput && contenedorInput.parentNode) {
+          contenedorInput.parentNode.insertBefore(vistaPreviaReenvio, contenedorInput);
+        }
+      }
+
+      vistaPreviaReenvio.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+          <i data-lucide="forward" style="width: 14px; height: 14px; stroke: #00f2fe;"></i>
+          <span>Reenviando mensaje de <b>${window.mensajeReenviadoActivo.autorOriginal}</b></span>
+        </div>
+        <i data-lucide="x" id="btn-cancelar-reenvio" style="width: 16px; height: 16px; cursor: pointer; opacity: 0.8;"></i>
+      `;
+
+      if (window.lucide) window.lucide.createIcons({ targets: [vistaPreviaReenvio] });
+
+      const btnCancelar = document.getElementById("btn-cancelar-reenvio");
+      if (btnCancelar) {
+        btnCancelar.onclick = () => {
+          window.mensajeReenviadoActivo = null;
+          cajaEntrada.value = "";
+          if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
+          if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
+        };
+      }
 
       if (typeof actualizarIconoBotonAccion === "function") {
         actualizarIconoBotonAccion();
       }
-
-      window.objetoPendienteReenviar = null; // Limpiar buffer de paso
     }
   }
 }
