@@ -573,7 +573,7 @@
     </nav>
   </div>
 
-  <!-- 🔕 MODAL SILENCIAR CHAT CON TIEMPOS -->
+  <!-- 🔕 MODAL SILENCIAR CHAT CON TIEMPOS Y BOTÓN DESACTIVAR -->
 <div class="modal-overlay oculto" id="modal-silenciar-chat">
   <div class="modal-cristal">
     <div class="modal-header">
@@ -582,8 +582,13 @@
     </div>
 
     <div class="modal-body" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
-      <p class="modal-label">Elige durante cuánto tiempo deseas silenciar esta conversación:</p>
-      
+      <p class="modal-label" id="label-estado-silencio">Elige durante cuánto tiempo deseas silenciar esta conversación:</p>
+
+      <!-- 🔔 BOTÓN PARA ACTIVAR/DESACTIVAR SILENCIO DIRECTAMENTE -->
+      <button id="btn-desactivar-silencio-modal" class="btn-primario oculto" style="background: rgba(0, 242, 254, 0.15); border: 1px solid #00f2fe; color: #00f2fe; justify-content: flex-start; gap: 10px; font-weight: bold; margin-bottom: 5px;">
+        🔔 Reactivar notificaciones ahora
+      </button>
+
       <button class="btn-primario btn-opcion-mute" data-tiempo="1m" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); justify-content: flex-start; gap: 10px;">
         ⏱️ 1 minuto
       </button>

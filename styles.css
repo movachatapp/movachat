@@ -3265,3 +3265,52 @@ body.tema-claro .btn-emoji {
   background: rgba(226, 232, 240, 0.8) !important;
   color: #334155 !important;
 }
+
+/* ========================================== */
+/* 🔕 MODAL SILENCIAR CHAT & ESTADOS NEÓN    */
+/* ========================================== */
+
+/* Ajustes específicos para las opciones dentro del modal de silenciar */
+#modal-silenciar-chat .btn-opcion-mute {
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#modal-silenciar-chat .btn-opcion-mute:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(0, 242, 254, 0.4) !important;
+  transform: translateX(4px);
+}
+
+#modal-silenciar-chat .btn-opcion-mute:active {
+  transform: scale(0.97);
+}
+
+/* Botón de desactivar silencio (reactivar notificaciones) */
+#btn-desactivar-silencio-modal {
+  transition: all 0.25s ease;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.25);
+}
+
+#btn-desactivar-silencio-modal:hover {
+  background: rgba(0, 242, 254, 0.25) !important;
+  box-shadow: 0 0 18px rgba(0, 242, 254, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Compatibilidad del modal en Tema Claro */
+body.tema-claro #modal-silenciar-chat .btn-opcion-mute {
+  background: rgba(255, 255, 255, 0.7) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #0f172a !important;
+}
+
+body.tema-claro #modal-silenciar-chat .btn-opcion-mute:hover {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: #0284c7 !important;
+}
+
+body.tema-claro #btn-desactivar-silencio-modal {
+  background: rgba(2, 132, 199, 0.15) !important;
+  border-color: #0284c7 !important;
+  color: #0284c7 !important;
+}
