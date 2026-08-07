@@ -3754,9 +3754,7 @@ const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
 // 1️⃣ EVENTO Clic Derecho en PC (Directo a nivel de document)
 document.addEventListener("contextmenu", (e) => {
-  // Busca cualquiera de los selectores posibles de tarjetas de chat
-  const tarjeta = e.target.closest(".tarjeta-chat, .item-contacto-fila, .tarjeta-conversacion-item, .item-chat");
-  
+  const tarjeta = e.target.closest(".tarjeta-chat");
   if (tarjeta) {
     e.preventDefault();
     e.stopPropagation();
@@ -3766,8 +3764,7 @@ document.addEventListener("contextmenu", (e) => {
 
 // 2️⃣ EVENTO Long Press para Móviles y Emulador F12
 document.addEventListener("touchstart", (e) => {
-  const tarjeta = e.target.closest(".tarjeta-chat, .item-contacto-fila, .tarjeta-conversacion-item, .item-chat");
-  
+  const tarjeta = e.target.closest(".tarjeta-chat");
   if (tarjeta) {
     temporizadorLongPress = setTimeout(() => {
       const touch = e.touches[0];
@@ -3777,6 +3774,7 @@ document.addEventListener("touchstart", (e) => {
       setTimeout(() => {
         bloquarClickFantasma = false;
       }, 400);
+
     }, 450);
   }
 }, { passive: true });
@@ -3868,33 +3866,64 @@ if (btnCtxCerrar) {
   };
 }
 
-// 📌 Lógica para Fijar / Desfijar Chat
-function alternarFijarChat(tarjeta) {
+// 📌 Lógica para Fijar / Desfijar Chat conectada a Firebase
+async function alternarFijarChat(tarjeta) {
   if (!tarjeta) return;
+
+  const usuarioActual = auth.currentUser;
+  const miUid = usuarioActual ? usuarioActual.uid : null;
+  const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
+
+  if (!miUid || !contactoUid) return;
 
   const cabecera = tarjeta.querySelector(".chat-cabecera");
   let pinIcono = tarjeta.querySelector(".indicador-pin-neon");
+  const esFijado = tarjeta.classList.contains("tarjeta-fijada");
 
-  if (tarjeta.classList.contains("tarjeta-fijada")) {
-    tarjeta.classList.remove("tarjeta-fijada");
-    tarjeta.style.order = "";
-    if (pinIcono) pinIcono.remove();
-  } else {
-    tarjeta.classList.add("tarjeta-fijada");
-    tarjeta.style.order = "-1";
+  const fijadoRef = ref(db, `fijados/${miUid}/${contactoUid}`);
 
-    if (!pinIcono && cabecera) {
-      cabecera.insertAdjacentHTML(
-        "beforeend",
-        `<span class="indicador-pin-neon"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>`
-      );
+  try {
+    if (esFijado) {
+      // 1. Quitar fijado en Firebase
+      await set(fijadoRef, null);
+      localStorage.removeItem(`fijado_${contactoUid}`);
 
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el pin recién insertado dentro de cabecera
-      if (window.lucide) {
-        window.lucide.createIcons({
-          targets: [cabecera]
-        });
+      tarjeta.classList.remove("tarjeta-fijada");
+      tarjeta.style.order = "";
+      if (pinIcono) pinIcono.remove();
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Chat desfijado", "📌", "#00f2fe");
       }
+    } else {
+      // 2. Guardar fijado en Firebase
+      await set(fijadoRef, true);
+      localStorage.setItem(`fijado_${contactoUid}`, "true");
+
+      tarjeta.classList.add("tarjeta-fijada");
+      tarjeta.style.order = "-1";
+
+      if (!pinIcono && cabecera) {
+        cabecera.insertAdjacentHTML(
+          "beforeend",
+          `<span class="indicador-pin-neon"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>`
+        );
+
+        if (window.lucide) {
+          window.lucide.createIcons({
+            targets: [cabecera]
+          });
+        }
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Chat fijado arriba 📌", "📌", "#00f2fe");
+      }
+    }
+  } catch (error) {
+    console.error("Error al actualizar fijado en Firebase:", error);
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Error al guardar fijado.", "❌", "#ff4b2b");
     }
   }
 }
@@ -4144,11 +4173,11 @@ if (btnGuardarContacto) {
   };
 }
 
-// 🔍 4. AUTOCOMPLETADO GLOBAL DE CONTACTOS EN TIEMPO REAL (OPTIMIZADO CON DEBOUNCE)
+// 🔍 4. AUTOCOMPLETADO GLOBAL DE CONTACTOS EN TIEMPO REAL
 const cajaSugerencias = document.getElementById("sugerencias-busqueda-contactos");
 
 if (inputNuevoContacto && cajaSugerencias) {
-  inputNuevoContacto.addEventListener("input", crearDebounce(async (e) => {
+  inputNuevoContacto.addEventListener("input", async (e) => {
     const textoConsulta = e.target.value.trim().toLowerCase();
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
@@ -4223,7 +4252,7 @@ if (inputNuevoContacto && cajaSugerencias) {
     } catch (err) {
       console.error("Error buscando usuarios en Firebase:", err);
     }
-  }, 300)); // Espera 300ms después de escribir para no saturar el teléfono
+  });
 
   document.addEventListener("click", (e) => {
     if (!inputNuevoContacto.contains(e.target) && !cajaSugerencias.contains(e.target)) {
@@ -4785,140 +4814,153 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
 // Variable global para guardar el contacto seleccionado actualmente
 let contactoSeleccionado = null;
 
-// 🟢 Función para cargar los contactos y escuchar mensajes no leídos en tiempo real (CON DETECCIÓN DE SILENCIADO)
+// 🟢 Cargar contactos aprobados escuchando fijados en tiempo real
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
 
   const usuariosRef = ref(db, 'usuarios');
+  const fijadosRef = ref(db, `fijados/${usuarioActualUid}`);
 
-  onValue(usuariosRef, (snapshot) => {
-    try {
-      const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+  // Escuchar fijados en tiempo real
+  onValue(fijadosRef, (snapFijados) => {
+    const fijadosBD = snapFijados.exists() ? snapFijados.val() : {};
 
-      // Limpiar lista anterior preservando "Mi Estado"
-      contenedorContactos.innerHTML = "";
-      if (tarjetaMiEstado) {
-        contenedorContactos.appendChild(tarjetaMiEstado);
-      }
+    onValue(usuariosRef, (snapshot) => {
+      try {
+        const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
 
-      if (snapshot.exists()) {
-        const usuarios = snapshot.val();
+        contenedorContactos.innerHTML = "";
+        if (tarjetaMiEstado) {
+          contenedorContactos.appendChild(tarjetaMiEstado);
+        }
 
-        Object.keys(usuarios).forEach((uid) => {
-          const usuario = usuarios[uid];
+        if (snapshot.exists()) {
+          const usuarios = snapshot.val();
 
-          if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
-            const itemContacto = document.createElement("div");
-            itemContacto.className = "tarjeta-chat contacto-item";
-            itemContacto.dataset.uid = uid;
-            itemContacto.id = `tarjeta-chat-${uid}`;
+          Object.keys(usuarios).forEach((uid) => {
+            const usuario = usuarios[uid];
 
-            // 🔕 VERIFICAR SI ESTE CONTACTO ESTÁ SILENCIADO
-            const estaSilenciado = localStorage.getItem(`silenciado_${uid}`) === "true";
-            if (estaSilenciado) {
-              itemContacto.classList.add("chat-silenciado-zona");
-            }
+            if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
+              const itemContacto = document.createElement("div");
+              itemContacto.className = "tarjeta-chat contacto-item";
+              itemContacto.dataset.uid = uid;
+              itemContacto.id = `tarjeta-chat-${uid}`;
 
-            const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
+              // 📌 VERIFICAR SI ESTÁ FIJADO EN FIREBASE
+              const esFijado = fijadosBD[uid] === true || localStorage.getItem(`fijado_${uid}`) === "true";
+              if (esFijado) {
+                itemContacto.classList.add("tarjeta-fijada");
+                itemContacto.style.order = "-1";
+              }
 
-            const foto = usuario.fotoUrl
-              ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
-              : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
+              // 🔕 VERIFICAR SI ESTÁ SILENCIADO
+              const estaSilenciado = localStorage.getItem(`silenciado_${uid}`) === "true";
+              if (estaSilenciado) {
+                itemContacto.classList.add("chat-silenciado-zona");
+              }
 
-            // Color del puntito LED
-            const estadoDelContacto = usuario.estadoConexion || usuario.estadoPresencia || usuario.estado || "online";
-            let colorLed = "#00f2fe";
-            let sombraLed = "0 0 8px #00f2fe";
+              const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
 
-            if (estadoDelContacto === "ocupado") {
-              colorLed = "#ef4444";
-              sombraLed = "0 0 8px #ef4444";
-            } else if (estadoDelContacto === "offline" || estadoDelContacto === "invisible") {
-              colorLed = "#888888";
-              sombraLed = "0 0 8px #888888";
-            }
+              const foto = usuario.fotoUrl
+                ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
+                : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
 
-            itemContacto.dataset.mensajesNoLeidos = "0";
-            itemContacto.dataset.forzarReiniciar = "false";
+              const estadoDelContacto = usuario.estadoConexion || usuario.estadoPresencia || usuario.estado || "online";
+              let colorLed = "#00f2fe";
+              let sombraLed = "0 0 8px #00f2fe";
 
-            // Inyectar HTML incluyendo la campanita si está silenciado
-            itemContacto.innerHTML = `
-              <div class="chat-avatar-caja">
-                ${foto}
-                <span class="punto-online-chat" style="background-color: ${colorLed}; box-shadow: ${sombraLed};"></span>
-              </div>
-              <div class="chat-info">
-                <div class="chat-cabecera">
-                  <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
-                  <span class="chat-hora">--:--</span>
-                  ${estaSilenciado ? `
-                    <span class="indicador-silencio-neon" title="Chat silenciado">
-                      <i data-lucide="bell-off"></i>
-                    </span>
-                  ` : ''}
-                </div>
-                <div class="chat-mensaje-caja">
-                  <p class="chat-texto">${usuario.estadoTexto || usuario.estado || "¡Disponible en MovaChat!"}</p>
-                  <div class="badge-chat-no-leido badge-mensaje oculto">0</div>
-                </div>
-              </div>
-            `;
-
-            // Evento de clic en la tarjeta del contacto
-            itemContacto.addEventListener("click", (e) => {
-              e.stopPropagation();
-
-              const uidContacto = usuario.uid || uid;
-
-              contactoSeleccionado = uidContacto;
-              window.contactoActivoUid = uidContacto;
+              if (estadoDelContacto === "ocupado") {
+                colorLed = "#ef4444";
+                sombraLed = "0 0 8px #ef4444";
+              } else if (estadoDelContacto === "offline" || estadoDelContacto === "invisible") {
+                colorLed = "#888888";
+                sombraLed = "0 0 8px #888888";
+              }
 
               itemContacto.dataset.mensajesNoLeidos = "0";
-              itemContacto.dataset.forzarReiniciar = "true";
+              itemContacto.dataset.forzarReiniciar = "false";
 
-              const badge = itemContacto.querySelector(".badge-chat-no-leido");
-              const elemTexto = itemContacto.querySelector(".chat-texto");
+              itemContacto.innerHTML = `
+                <div class="chat-avatar-caja">
+                  ${foto}
+                  <span class="punto-online-chat" style="background-color: ${colorLed}; box-shadow: ${sombraLed};"></span>
+                </div>
+                <div class="chat-info">
+                  <div class="chat-cabecera">
+                    <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
+                    <span class="chat-hora">--:--</span>
+                    ${esFijado ? `
+                      <span class="indicador-pin-neon" title="Chat fijado">
+                        <i data-lucide="pin" style="width:14px; height:14px;"></i>
+                      </span>
+                    ` : ''}
+                    ${estaSilenciado ? `
+                      <span class="indicador-silencio-neon" title="Chat silenciado">
+                        <i data-lucide="bell-off"></i>
+                      </span>
+                    ` : ''}
+                  </div>
+                  <div class="chat-mensaje-caja">
+                    <p class="chat-texto">${usuario.estadoTexto || usuario.estado || "¡Disponible en MovaChat!"}</p>
+                    <div class="badge-chat-no-leido badge-mensaje oculto">0</div>
+                  </div>
+                </div>
+              `;
 
-              if (badge) {
-                badge.textContent = "0";
-                badge.classList.add("oculto");
+              itemContacto.addEventListener("click", (e) => {
+                e.stopPropagation();
+
+                const uidContacto = usuario.uid || uid;
+
+                contactoSeleccionado = uidContacto;
+                window.contactoActivoUid = uidContacto;
+
+                itemContacto.dataset.mensajesNoLeidos = "0";
+                itemContacto.dataset.forzarReiniciar = "true";
+
+                const badge = itemContacto.querySelector(".badge-chat-no-leido");
+                const elemTexto = itemContacto.querySelector(".chat-texto");
+
+                if (badge) {
+                  badge.textContent = "0";
+                  badge.classList.add("oculto");
+                }
+                if (elemTexto) {
+                  elemTexto.classList.remove("texto-resaltado");
+                }
+
+                if (typeof actualizarCampanitaGlobal === "function") {
+                  actualizarCampanitaGlobal();
+                }
+
+                document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
+                itemContacto.classList.add("activo");
+
+                const nombreContacto = usuario.nombre || "Usuario";
+                const fotoContacto = usuario.fotoUrl || "";
+
+                if (typeof abrirChatConUsuario === "function") {
+                  abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+                }
+              });
+
+              contenedorContactos.appendChild(itemContacto);
+
+              if (typeof escucharUltimoMensajeContacto === "function") {
+                escucharUltimoMensajeContacto(usuarioActualUid, uid);
               }
-              if (elemTexto) {
-                elemTexto.classList.remove("texto-resaltado");
-              }
-
-              if (typeof actualizarCampanitaGlobal === "function") {
-                actualizarCampanitaGlobal();
-              }
-
-              document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
-              itemContacto.classList.add("activo");
-
-              const nombreContacto = usuario.nombre || "Usuario";
-              const fotoContacto = usuario.fotoUrl || "";
-
-              if (typeof abrirChatConUsuario === "function") {
-                abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
-              }
-            });
-
-            contenedorContactos.appendChild(itemContacto);
-
-            if (typeof escucharUltimoMensajeContacto === "function") {
-              escucharUltimoMensajeContacto(usuarioActualUid, uid);
             }
-          }
-        });
+          });
 
-        // Renderizar iconos de Lucide (incluyendo las campanas silenciadas)
-        if (window.lucide) {
-          window.lucide.createIcons({ targets: [contenedorContactos] });
+          if (window.lucide) {
+            window.lucide.createIcons({ targets: [contenedorContactos] });
+          }
         }
+      } catch (e) {
+        console.error("Error al cargar la lista de contactos:", e);
       }
-    } catch (e) {
-      console.error("Error al cargar la lista de contactos:", e);
-    }
+    });
   });
 }
 
