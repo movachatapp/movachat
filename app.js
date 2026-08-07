@@ -1919,15 +1919,23 @@ function asignarEventosMenuCabecera() {
 
       // --- OPCIONES PANTALLA PRINCIPAL ---
       if (accion === "mi-perfil") {
-        // Busca el botón de Perfil en la barra de navegación inferior y lo presiona
-        const btnPerfilNav = document.getElementById("btn-nav-perfil") ||
-          document.getElementById("btn-perfil") ||
-          document.querySelector('.nav-item[data-target="pantalla-perfil"]');
+        // Busca cualquier elemento dentro de la barra inferior que contenga el texto "Perfil"
+        const elementosNav = document.querySelectorAll(".barra-navegacion *, footer *");
+        const btnPerfilInferior = Array.from(elementosNav).find((el) =>
+          el.textContent && el.textContent.trim().toLowerCase() === "perfil"
+        );
 
-        if (btnPerfilNav) {
-          btnPerfilNav.click();
-        } else if (typeof cargarPerfilUsuario === "function") {
-          cargarPerfilUsuario();
+        if (btnPerfilInferior) {
+          btnPerfilInferior.click();
+        } else {
+          // Si no lo halla por texto, alterna las pantallas directamente
+          const pantallaPerfil = document.getElementById("pantalla-perfil") || document.querySelector(".pantalla-perfil");
+          const pantallaChats = document.getElementById("pantalla-chats") || document.querySelector(".pantalla-chats");
+
+          if (pantallaPerfil && pantallaChats) {
+            pantallaChats.style.display = "none";
+            pantallaPerfil.style.display = "flex";
+          }
         }
       }
 

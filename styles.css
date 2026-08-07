@@ -2999,29 +2999,65 @@ body {
 }
 
 /* ========================================================
-   ☀️ ESTILOS PARA TEMA CLARO
+   ☀️ TEMA CLARO COMPLETO (Textos e Iconos Visibles)
    ======================================================== */
 body.tema-claro {
-  background-color: #f0f2f5 !important;
-  color: #1c1e21 !important;
+  background-color: #edf2f7 !important;
+  color: #1a202c !important;
 }
 
-body.tema-claro .pantalla-chats,
+/* 1. Cabecera, Título e Iconos Superiores */
 body.tema-claro .cabecera-app,
-body.tema-claro .tarjeta-chat,
-body.tema-claro .menu-desplegable,
-body.tema-claro .barra-navegacion {
+body.tema-claro .titulo-app {
+  color: #1a202c !important;
+}
+
+body.tema-claro .icono-btn,
+body.tema-claro [data-lucide],
+body.tema-claro svg {
+  color: #2d3748 !important;
+  stroke: #2d3748 !important;
+}
+
+/* 2. Buscador e Inputs */
+body.tema-claro .caja-busqueda,
+body.tema-claro .input-busqueda,
+body.tema-claro input {
   background-color: #ffffff !important;
-  color: #1c1e21 !important;
-  border-color: #e4e6eb !important;
+  color: #1a202c !important;
+  border-color: #cbd5e0 !important;
+}
+
+body.tema-claro input::placeholder {
+  color: #a0aec0 !important;
+}
+
+/* 3. Tarjetas de Chat, Nombres de Contactos y Mensajes */
+body.tema-claro .item-chat,
+body.tema-claro .tarjeta-chat,
+body.tema-claro .tarjeta-estado {
+  background-color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
 }
 
 body.tema-claro .nombre-contacto,
-body.tema-claro .titulo-app,
-body.tema-claro .opcion-cabecera-item span {
-  color: #050505 !important;
+body.tema-claro .nombre-usuario,
+body.tema-claro .titulo-estado,
+body.tema-claro h3,
+body.tema-claro h4,
+body.tema-claro span {
+  color: #1a202c !important;
 }
 
-body.tema-claro .ultimo-mensaje {
-  color: #65676b !important;
+body.tema-claro .ultimo-mensaje,
+body.tema-claro .subtitulo,
+body.tema-claro p {
+  color: #718096 !important;
+}
+
+/* 4. Menú Desplegable y Barra Inferior de Navegación */
+body.tema-claro .menu-desplegable,
+body.tema-claro .barra-navegacion {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
 }
