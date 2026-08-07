@@ -5197,3 +5197,62 @@ if (btnVolverChat) {
     mostrarEncabezadoPrincipal();
   });
 }
+
+// ========================================================
+// 🔕 LÓGICA DE SILENCIAR CHAT CON MODAL TEMPORAL
+// ========================================================
+const btnSilenciarMenu = document.getElementById("btn-silenciar-chat") || 
+                         document.querySelector('[data-accion="silenciar"]');
+const modalSilenciar = document.getElementById("modal-silenciar-chat");
+const btnCancelarSilencio = document.getElementById("btn-cancelar-silencio");
+const btnConfirmarSilencio = document.getElementById("btn-confirmar-silencio");
+
+// 1. Abrir Modal al presionar en el menú
+if (btnSilenciarMenu && modalSilenciar) {
+  btnSilenciarMenu.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    // Ocultar el menú de 3 puntos
+    const menuCtx = document.getElementById("menu-contextual-chat") || document.querySelector(".menu-contextual");
+    if (menuCtx) menuCtx.classList.add("oculto");
+
+    // Mostrar modal
+    modalSilenciar.classList.remove("oculto");
+  });
+}
+
+// 2. Cerrar Modal
+if (btnCancelarSilencio && modalSilenciar) {
+  btnCancelarSilencio.addEventListener("click", () => {
+    modalSilenciar.classList.add("oculto");
+  });
+}
+
+// 3. Confirmar Elección
+if (btnConfirmarSilencio && modalSilenciar) {
+  btnConfirmarSilencio.addEventListener("click", () => {
+    const seleccion = document.querySelector('input[name="tiempo_silencio"]:checked');
+    const tiempo = seleccion ? seleccion.value : "30m";
+
+    // Calcular fecha exacta de expiración
+    let expiraEn = null;
+    const ahora = new Date();
+
+    if (tiempo === "30m") expiraEn = new Date(ahora.getTime() + 30 * 60000);
+    else if (tiempo === "1h") expiraEn = new Date(ahora.getTime() + 60 * 60000);
+    else if (tiempo === "24h") expiraEn = new Date(ahora.getTime() + 24 * 60 * 60000);
+    else if (tiempo === "siempre") expiraEn = "indefinido";
+
+    // Guardar preferencia (puedes vincularlo a Firebase o localStorage)
+    const chatActivoId = window.contactoActivoUid || "chat_actual";
+    localStorage.setItem(`silenciado_${chatActivoId}`, expiraEn ? expiraEn.toString() : "");
+
+    modalSilenciar.classList.add("oculto");
+
+    // Feedback visual
+    const textoTiempo = tiempo === "siempre" ? "indefinidamente" : `por ${tiempo}`;
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(`Chat silenciado ${textoTiempo} 🔕`, "🔇", "#00f2fe");
+    }
+  });
+}

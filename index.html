@@ -666,6 +666,41 @@
     </div>
   </div>
 
+  <!-- 🔕 MODAL FLOTANTE: SILENCIAR CHAT -->
+<div id="modal-silenciar-chat" class="modal-mova-overlay oculto">
+  <div class="modal-mova-caja modal-silenciar-caja">
+    <div class="modal-mova-icono">🔕</div>
+    <h3 class="modal-mova-titulo">Silenciar notificaciones</h3>
+    <p class="modal-mova-texto">Selecciona por cuánto tiempo deseas pausar las alertas de este chat:</p>
+
+    <!-- Opciones de tiempo -->
+    <div class="contenedor-opciones-silencio">
+      <label class="opcion-tiempo-silencio activo">
+        <input type="radio" name="tiempo_silencio" value="30m" checked>
+        <span class="chip-tiempo">30 minutos</span>
+      </label>
+      <label class="opcion-tiempo-silencio">
+        <input type="radio" name="tiempo_silencio" value="1h">
+        <span class="chip-tiempo">1 hora</span>
+      </label>
+      <label class="opcion-tiempo-silencio">
+        <input type="radio" name="tiempo_silencio" value="24h">
+        <span class="chip-tiempo">24 horas</span>
+      </label>
+      <label class="opcion-tiempo-silencio">
+        <input type="radio" name="tiempo_silencio" value="siempre">
+        <span class="chip-tiempo">Siempre</span>
+      </label>
+    </div>
+
+    <!-- Botones de Acción -->
+    <div class="modal-mova-botones" style="margin-top: 20px;">
+      <button id="btn-cancelar-silencio" class="btn-mova-secundario">Cancelar</button>
+      <button id="btn-confirmar-silencio" class="btn-principal" style="margin-top: 0;">Silenciar</button>
+    </div>
+  </div>
+</div>
+
   <script type="module" src="app.js?v=2"></script>
   <script>
     lucide.createIcons();

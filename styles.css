@@ -3265,3 +3265,71 @@ body.tema-claro .btn-emoji {
   background: rgba(226, 232, 240, 0.8) !important;
   color: #334155 !important;
 }
+
+/* ========================================================
+   🔕 MODAL SILENCIAR CHAT GLASSMORPHISM
+   ======================================================== */
+.modal-silenciar-caja {
+  max-width: 340px !important;
+  background: rgba(15, 20, 35, 0.92) !important;
+  backdrop-filter: blur(25px) !important;
+  -webkit-backdrop-filter: blur(25px) !important;
+  border: 1px solid rgba(0, 242, 254, 0.25) !important;
+}
+
+body.tema-claro .modal-silenciar-caja {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(148, 163, 184, 0.4) !important;
+}
+
+.contenedor-opciones-silencio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.opcion-tiempo-silencio {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+body.tema-claro .opcion-tiempo-silencio {
+  background: rgba(241, 245, 249, 0.8);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.opcion-tiempo-silencio input[type="radio"] {
+  display: none; /* Ocultar el radiobutton original */
+}
+
+.chip-tiempo {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  width: 100%;
+  text-align: left;
+}
+
+body.tema-claro .chip-tiempo {
+  color: #0f172a;
+}
+
+/* Estado Seleccionado */
+.opcion-tiempo-silencio:has(input:checked),
+.opcion-tiempo-silencio.activo {
+  background: rgba(0, 242, 254, 0.12) !important;
+  border-color: #00f2fe !important;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);
+}
+
+.opcion-tiempo-silencio:has(input:checked) .chip-tiempo {
+  color: #00f2fe !important;
+  font-weight: 700;
+}
