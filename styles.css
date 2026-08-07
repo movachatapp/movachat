@@ -3266,51 +3266,116 @@ body.tema-claro .btn-emoji {
   color: #334155 !important;
 }
 
-/* ========================================== */
-/* 🔕 MODAL SILENCIAR CHAT & ESTADOS NEÓN    */
-/* ========================================== */
+/* ========================================================
+   🔕 MODAL SILENCIAR NOTIFICACIONES POR TIEMPO (GLASSMORPHISM)
+   ======================================================== */
 
-/* Ajustes específicos para las opciones dentro del modal de silenciar */
-#modal-silenciar-chat .btn-opcion-mute {
-  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+.modal-silenciar-caja {
+  max-width: 340px !important;
 }
 
-#modal-silenciar-chat .btn-opcion-mute:hover {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border-color: rgba(0, 242, 254, 0.4) !important;
-  transform: translateX(4px);
+.opciones-tiempo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
-#modal-silenciar-chat .btn-opcion-mute:active {
-  transform: scale(0.97);
+.btn-opcion-tiempo {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px 10px;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-/* Botón de desactivar silencio (reactivar notificaciones) */
-#btn-desactivar-silencio-modal {
-  transition: all 0.25s ease;
-  box-shadow: 0 0 12px rgba(0, 242, 254, 0.25);
+.btn-opcion-tiempo small {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.45);
 }
 
-#btn-desactivar-silencio-modal:hover {
-  background: rgba(0, 242, 254, 0.25) !important;
-  box-shadow: 0 0 18px rgba(0, 242, 254, 0.4);
+.btn-opcion-tiempo:hover {
+  background: rgba(0, 242, 254, 0.12);
+  border-color: rgba(0, 242, 254, 0.4);
+  color: #00f2fe;
   transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.2);
 }
 
-/* Compatibilidad del modal en Tema Claro */
-body.tema-claro #modal-silenciar-chat .btn-opcion-mute {
-  background: rgba(255, 255, 255, 0.7) !important;
+.btn-opcion-tiempo:hover small {
+  color: rgba(0, 242, 254, 0.8);
+}
+
+.btn-opcion-tiempo.tiempo-siempre {
+  grid-column: span 2;
+  background: rgba(127, 0, 255, 0.08);
+  border-color: rgba(127, 0, 255, 0.25);
+}
+
+.btn-opcion-tiempo.tiempo-siempre:hover {
+  background: rgba(127, 0, 255, 0.22);
+  border-color: #7f00ff;
+  color: #ffffff;
+  box-shadow: 0 4px 15px rgba(127, 0, 255, 0.35);
+}
+
+.btn-opcion-tiempo.activo {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(127, 0, 255, 0.25)) !important;
+  border-color: #00f2fe !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.35) !important;
+}
+
+.btn-desactivar-silencio {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #00f2fe, #4facfe);
+  color: #0b0c10;
+  font-weight: 700;
+  font-size: 13.5px;
+  border-radius: 12px;
+  margin-top: 5px;
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
+}
+
+/* --- INTEGRACIÓN CON TEMA CLARO --- */
+body.tema-claro .modal-silenciar-caja {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+}
+
+body.tema-claro .btn-opcion-tiempo {
+  background: rgba(241, 245, 249, 0.8) !important;
   border-color: rgba(148, 163, 184, 0.3) !important;
   color: #0f172a !important;
 }
 
-body.tema-claro #modal-silenciar-chat .btn-opcion-mute:hover {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border-color: #0284c7 !important;
+body.tema-claro .btn-opcion-tiempo small {
+  color: #64748b !important;
 }
 
-body.tema-claro #btn-desactivar-silencio-modal {
-  background: rgba(2, 132, 199, 0.15) !important;
+body.tema-claro .btn-opcion-tiempo:hover {
+  background: rgba(2, 132, 199, 0.12) !important;
   border-color: #0284c7 !important;
   color: #0284c7 !important;
+}
+
+body.tema-claro .btn-opcion-tiempo.tiempo-siempre {
+  background: rgba(124, 58, 237, 0.08) !important;
+  border-color: rgba(124, 58, 237, 0.25) !important;
+}
+
+body.tema-claro .btn-opcion-tiempo.activo {
+  background: rgba(2, 132, 199, 0.2) !important;
+  border-color: #0284c7 !important;
+  color: #0f172a !important;
 }
