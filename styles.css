@@ -2980,60 +2980,20 @@ body {
   stroke: #00f2fe;
 }
 
-/* ========================================================
-   ↪️ ESTILOS PARA MENSAJE REENVIADO
-   ======================================================== */
-
-/* 1. Etiqueta superior dentro de la burbuja */
-.mensaje-etiqueta-reenviado {
-  font-size: 0.72rem;
-  font-style: italic;
-  color: rgba(255, 255, 255, 0.65);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-bottom: 6px;
-  padding-bottom: 3px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.mensaje-etiqueta-reenviado b {
-  color: #00f2fe;
-  font-weight: 600;
-}
-
-/* 2. Banner flotante sobre la caja de texto antes de enviar */
+/* ↪️ BANNER FLOTANTE SOBRE LA BARRA DE ENTRADA */
 #vista-previa-reenvio {
+  width: calc(100% - 24px);
+  margin: 0 auto 8px auto;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(0, 242, 254, 0.08);
+  background: rgba(0, 242, 254, 0.12);
   border-left: 3px solid #00f2fe;
   padding: 8px 12px;
-  margin-bottom: 8px;
   border-radius: 8px;
   font-size: 0.82rem;
   color: #ffffff;
   backdrop-filter: blur(8px);
   animation: fadeInDown 0.2s ease-out;
-}
-
-#btn-cancelar-reenvio {
-  transition: transform 0.2s ease, opacity 0.2s ease;
-}
-
-#btn-cancelar-reenvio:hover {
-  transform: scale(1.15);
-  opacity: 1;
-}
-
-@keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }

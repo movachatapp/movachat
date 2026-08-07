@@ -4493,20 +4493,23 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
       if (!vistaPreviaReenvio) {
         vistaPreviaReenvio = document.createElement("div");
         vistaPreviaReenvio.id = "vista-previa-reenvio";
-        vistaPreviaReenvio.style.cssText = "display: flex; align-items: center; justify-content: space-between; background: rgba(0, 242, 254, 0.12); border-left: 3px solid #00f2fe; padding: 6px 12px; margin-bottom: 6px; border-radius: 6px; font-size: 0.8rem; color: #fff;";
+
+        // 🎯 Buscar el contenedor principal del pie de chat para ponerse justo arriba
+        const pieDeChat = cajaEntrada.closest(".footer-chat") || cajaEntrada.closest(".caja-input-privado") || cajaEntrada.parentElement.parentElement;
         
-        const contenedorInput = cajaEntrada.parentElement;
-        if (contenedorInput && contenedorInput.parentNode) {
-          contenedorInput.parentNode.insertBefore(vistaPreviaReenvio, contenedorInput);
+        if (pieDeChat && pieDeChat.parentNode) {
+          pieDeChat.parentNode.insertBefore(vistaPreviaReenvio, pieDeChat);
+        } else if (cajaEntrada.parentElement) {
+          cajaEntrada.parentElement.insertBefore(vistaPreviaReenvio, cajaEntrada);
         }
       }
 
       vistaPreviaReenvio.innerHTML = `
         <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
-          <i data-lucide="forward" style="width: 14px; height: 14px; stroke: #00f2fe;"></i>
+          <i data-lucide="forward" style="width: 14px; height: 14px; stroke: #00f2fe; flex-shrink: 0;"></i>
           <span>Reenviando mensaje de <b>${window.mensajeReenviadoActivo.autorOriginal}</b></span>
         </div>
-        <i data-lucide="x" id="btn-cancelar-reenvio" style="width: 16px; height: 16px; cursor: pointer; opacity: 0.8;"></i>
+        <i data-lucide="x" id="btn-cancelar-reenvio" style="width: 16px; height: 16px; cursor: pointer; opacity: 0.8; flex-shrink: 0;"></i>
       `;
 
       if (window.lucide) window.lucide.createIcons({ targets: [vistaPreviaReenvio] });
