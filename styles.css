@@ -2999,182 +2999,269 @@ body {
 }
 
 /* ========================================================
-   💎 TEMA CLARO PREMIUM: GLASSMORPHISM & ALTO CONTRASTE
+   💎 TEMA CLARO PREMIUM MOVACHAT (MÁXIMO GLASSMORPHISM)
    ======================================================== */
 
-/* 1. Fondo General y Estructura Base */
+/* 1. Fondo Cristal Helado y Mantenimiento de Neones Organicos */
 body.tema-claro {
-  background: #e2e8f0 !important;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
-    radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.12) 0px, transparent 50%) !important;
+  background-color: #dbe2ef !important;
   color: #0f172a !important;
 }
 
-/* Evita que la barra inferior solape el contenido final de las pantallas */
-body.tema-claro .pantalla,
-body.tema-claro #pantalla-perfil,
-body.tema-claro #pantalla-chats,
-body.tema-claro .contenedor-principal {
-  padding-bottom: 110px !important;
+body.tema-claro .contenedor-chat {
+  background: rgba(241, 245, 249, 0.55) !important;
+  backdrop-filter: blur(40px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
+  border-color: rgba(255, 255, 255, 0.6) !important;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12), inset 0 1px 2px rgba(255, 255, 255, 0.8) !important;
 }
 
-/* 2. Cabecera, Títulos e Iconos Globale */
-body.tema-claro .cabecera-app,
-body.tema-claro .titulo-app,
-body.tema-claro h1, 
-body.tema-claro h2, 
-body.tema-claro h3, 
-body.tema-claro h4, 
-body.tema-claro h5, 
-body.tema-claro h6 {
+body.tema-claro .esfera-cyan {
+  background: rgba(0, 180, 216, 0.22) !important;
+}
+
+body.tema-claro .esfera-morada {
+  background: rgba(114, 9, 183, 0.18) !important;
+}
+
+/* 2. Encabezado de Inicio */
+body.tema-claro .encabezado-inicio {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25) !important;
+  box-shadow: 0 4px 15px -5px rgba(0, 180, 216, 0.12) !important;
+}
+
+body.tema-claro .icono-btn {
+  color: #334155 !important;
+}
+
+body.tema-claro .icono-btn:hover {
+  color: #0077b6 !important;
+}
+
+/* 3. Buscador y Filtros de Chats */
+body.tema-claro .caja-buscador {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+}
+
+body.tema-claro .caja-buscador:focus-within {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 12px rgba(2, 132, 199, 0.2) !important;
+}
+
+body.tema-claro .icono-buscador {
+  color: #64748b !important;
+}
+
+body.tema-claro .input-buscador {
+  color: #0f172a !important;
+}
+
+body.tema-claro .input-buscador::placeholder {
+  color: #64748b !important;
+}
+
+body.tema-claro .filtro-btn {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  color: #475569 !important;
+}
+
+body.tema-claro .filtro-btn.activo {
+  background: rgba(2, 132, 199, 0.12) !important;
+  color: #0284c7 !important;
+  border-color: rgba(2, 132, 199, 0.4) !important;
+}
+
+/* 4. Tarjetas de Chat y Lista Bento */
+body.tema-claro .tarjeta-chat,
+body.tema-claro #tarjeta-mi-estado-propio {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03) !important;
+}
+
+body.tema-claro .tarjeta-chat:hover {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(148, 163, 184, 0.5) !important;
+}
+
+body.tema-claro .chat-nombre {
+  color: #0f172a !important;
+}
+
+body.tema-claro .chat-hora {
+  color: #64748b !important;
+}
+
+body.tema-claro .chat-texto {
+  color: #475569 !important;
+}
+
+body.tema-claro .texto-resaltado {
+  color: #0f172a !important;
+}
+
+/* 5. Pantalla de Perfil */
+body.tema-claro .perfil-nombre {
+  color: #0f172a !important;
+}
+
+body.tema-claro .perfil-nombre:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+}
+
+body.tema-claro .btn-estado-sutil {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  color: #334155 !important;
+}
+
+body.tema-claro .btn-estado-sutil:hover {
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #0f172a !important;
+}
+
+body.tema-claro .caja-aura,
+body.tema-claro .caja-ajustes,
+body.tema-claro .caja-comunidad {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04) !important;
+}
+
+body.tema-claro .caja-aura h3,
+body.tema-claro .caja-ajustes h3,
+body.tema-claro .caja-comunidad h3 {
+  color: #0f172a !important;
+  opacity: 1 !important;
+  font-weight: 600 !important;
+}
+
+body.tema-claro .ajuste-info {
+  color: #1e293b !important;
+}
+
+body.tema-claro .ajuste-info i,
+body.tema-claro .ajuste-info svg {
+  color: #64748b !important;
+}
+
+body.tema-claro .selector-aura-pastilla {
+  background: rgba(226, 232, 240, 0.7) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+}
+
+body.tema-claro .glizzy-deslizante {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.2) !important;
+}
+
+body.tema-claro .aura-contenido-interno {
+  color: #64748b !important;
+}
+
+body.tema-claro .opcion-aura.activa .aura-contenido-interno {
   color: #0f172a !important;
   font-weight: 700 !important;
-}
-
-body.tema-claro [data-lucide],
-body.tema-claro .icono-btn,
-body.tema-claro svg {
-  color: #1e293b !important;
-  stroke: #1e293b !important;
-}
-
-/* 3. Definición de Tarjetas Glassmorphism con Bordes Grises */
-body.tema-claro .tarjeta,
-body.tema-claro .tarjeta-chat,
-body.tema-claro .item-chat,
-body.tema-claro .tarjeta-estado,
-body.tema-claro .seccion-perfil,
-body.tema-claro .bloque-ajuste,
-body.tema-claro .menu-desplegable {
-  background: rgba(255, 255, 255, 0.72) !important;
-  backdrop-filter: blur(16px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
-  border: 1px solid rgba(148, 163, 184, 0.45) !important; /* Borde gris definido */
-  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06) !important;
-  border-radius: 20px !important;
-}
-
-/* 4. Pantalla de Perfil: Textos, Nombres y Estados */
-body.tema-claro .nombre-perfil,
-body.tema-claro #nombre-usuario,
-body.tema-claro .usuario-nombre,
-body.tema-claro .titulo-seccion,
-body.tema-claro .etiqueta-ajuste {
-  color: #0f172a !important;
-  font-weight: 800 !important;
   text-shadow: none !important;
 }
 
-body.tema-claro .estado-usuario,
-body.tema-claro .subtitulo,
-body.tema-claro .texto-secundario,
-body.tema-claro p,
-body.tema-claro span:not(.btn-filtro) {
-  color: #334155 !important; /* Gris oscuro para máxima legibilidad */
-}
-
-/* 5. Selector de Aura y Botones Secundarios */
-body.tema-claro .contenedor-aura,
-body.tema-claro .selector-aura {
-  background: rgba(226, 232, 240, 0.8) !important;
-  border: 1px solid rgba(148, 163, 184, 0.5) !important;
-  border-radius: 16px !important;
-}
-
-body.tema-claro .btn-aura,
-body.tema-claro .opcion-aura {
-  color: #1e293b !important;
-  font-weight: 600 !important;
-}
-
-body.tema-claro .btn-aura.activo,
-body.tema-claro .opcion-aura.activa {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border: 1px solid #38bdf8 !important;
-  color: #0284c7 !important;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2) !important;
-}
-
-/* 6. Botones de Acción (Compartir, QR Pro, Limpiar) */
-body.tema-claro .btn-accion,
-body.tema-claro .btn-compartir,
-body.tema-claro .btn-qr,
-body.tema-claro .btn-limpiar,
-body.tema-claro button:not(.btn-flotante):not(.btn-filtro) {
-  background: rgba(255, 255, 255, 0.85) !important;
-  border: 1px solid rgba(148, 163, 184, 0.4) !important;
+body.tema-claro .btn-compartir {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
   color: #0f172a !important;
-  font-weight: 700 !important;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05) !important;
 }
 
-body.tema-claro .btn-limpiar,
-body.tema-claro .opcion-peligro {
-  background: rgba(254, 226, 226, 0.7) !important;
-  border: 1px solid rgba(248, 113, 113, 0.4) !important;
-  color: #dc2626 !important;
-}
-
-/* 7. Buscador y Filtros (Todos / No leídos) */
-body.tema-claro .caja-busqueda,
-body.tema-claro .input-busqueda-contenedor {
+body.tema-claro .btn-compartir:hover {
   background: rgba(255, 255, 255, 0.9) !important;
-  border: 1px solid rgba(148, 163, 184, 0.5) !important;
 }
 
-body.tema-claro input {
+body.tema-claro .btn-qr {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
   color: #0f172a !important;
 }
 
-body.tema-claro input::placeholder {
-  color: #64748b !important;
-}
-
-body.tema-claro .btn-filtro {
-  background: rgba(226, 232, 240, 0.9) !important;
-  border: 1px solid rgba(148, 163, 184, 0.35) !important;
-  color: #475569 !important;
-  font-weight: 600 !important;
-}
-
-body.tema-claro .btn-filtro.activo {
-  background: linear-gradient(135deg, #0284c7, #2563eb) !important;
-  color: #ffffff !important;
-  border: none !important;
-  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.3) !important;
-}
-
-/* 8. Barra Inferior de Navegación (Flotante y Definida) */
-body.tema-claro .barra-navegacion,
-body.tema-claro footer,
-body.tema-claro #barra-navegacion {
-  background: rgba(255, 255, 255, 0.88) !important;
+/* 6. Barra Flotante Inferior de Navegación */
+body.tema-claro .menu-flotante {
+  background: rgba(255, 255, 255, 0.75) !important;
   backdrop-filter: blur(20px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  border: 1px solid rgba(148, 163, 184, 0.4) !important;
-  box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12) !important;
 }
 
-body.tema-claro .nav-item,
-body.tema-claro .btn-nav {
+body.tema-claro .menu-btn {
   color: #64748b !important;
 }
 
-body.tema-claro .nav-item.activo,
-body.tema-claro .btn-nav.activo,
-body.tema-claro .nav-item.activo span,
-body.tema-claro .btn-nav.activo span {
+body.tema-claro .menu-btn.activo,
+body.tema-claro .menu-btn:hover {
   color: #0284c7 !important;
-  font-weight: 700 !important;
+  text-shadow: 0 0 10px rgba(2, 132, 199, 0.3) !important;
 }
 
-body.tema-claro .nav-item [data-lucide],
-body.tema-claro .btn-nav [data-lucide] {
-  stroke: #64748b !important;
+/* 7. Menú Desplegable de Cabecera */
+body.tema-claro #menu-desplegable-cabecera {
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15) !important;
 }
 
-body.tema-claro .nav-item.activo [data-lucide],
-body.tema-claro .btn-nav.activo [data-lucide] {
-  stroke: #0284c7 !important;
+body.tema-claro #lista-opciones-cabecera li {
+  color: #1e293b !important;
+}
+
+body.tema-claro #lista-opciones-cabecera li:hover {
+  background: rgba(2, 132, 199, 0.1) !important;
+  color: #0284c7 !important;
+}
+
+/* 8. Chat Privado en Tema Claro */
+body.tema-claro .chat-privado-header {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25) !important;
+}
+
+body.tema-claro .btn-volver {
+  color: #0f172a !important;
+}
+
+body.tema-claro .amigo-datos .amigo-nombre-chat {
+  color: #0f172a !important;
+}
+
+body.tema-claro .mensaje-burbuja.recibido {
+  background: rgba(255, 255, 255, 0.8) !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04) !important;
+}
+
+body.tema-claro .mensaje-burbuja.recibido .mensaje-hora {
+  color: #64748b !important;
+}
+
+body.tema-claro .barra-escribir-chat {
+  background: rgba(255, 255, 255, 0.7) !important;
+  border-top: 1px solid rgba(148, 163, 184, 0.25) !important;
+}
+
+body.tema-claro .caja-input-chat {
+  background: rgba(241, 245, 249, 0.8) !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+}
+
+body.tema-claro .input-mensaje-real {
+  color: #0f172a !important;
+}
+
+body.tema-claro .btn-adjuntar,
+body.tema-claro .btn-emoji {
+  background: rgba(226, 232, 240, 0.8) !important;
+  color: #334155 !important;
 }
