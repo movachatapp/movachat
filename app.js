@@ -3923,10 +3923,15 @@ const btnConfirmarEliminar = document.getElementById("btn-confirmar-eliminar");
 
 let contactoParaEliminarNodo = null;
 
-// 🟢 LÓGICA CONECTADA A FIREBASE CON FILTRO ANTI-DUPLICADOS
+// Variable global de control de llamadas para evitar duplicados por ejecuciones simultáneas
+let ultimoRenderIdContactos = 0;
+
+// 🟢 LÓGICA CONECTADA A FIREBASE CON CONTROL ANTI-CARRERA ASÍNCRONA
 async function renderizarListaContactosModal(filtro = "") {
   if (!contenedorListaContactos) return;
-  contenedorListaContactos.innerHTML = "";
+
+  // Incrementar token de ejecución para cancelar renders anteriores en espera
+  const renderIdActual = ++ultimoRenderIdContactos;
 
   const textoFiltro = filtro.toLowerCase().trim();
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -3937,17 +3942,33 @@ async function renderizarListaContactosModal(filtro = "") {
     const misContactosRef = ref(db, `mis_contactos/${miUid}`);
     const snapshotContactos = await get(misContactosRef);
 
-    if (snapshotContactos.exists()) {
-      // 1. Extraer UIDs y eliminar duplicados de la lista de claves
-      const contactosRaw = snapshotContactos.val();
-      const contactosUids = [...new Set(Object.keys(contactosRaw))];
+    // Si se disparó otra búsqueda mientras esperábamos Firebase, abortar esta
+    if (renderIdActual !== ultimoRenderIdContactos) return;
 
-      // 2. Traer los datos reales de la colección 'usuarios'
+    if (snapshotContactos.exists()) {
+      const contactosRaw = snapshotContactos.val();
+
+      // Extraer UIDs únicos de Firebase
+      const uidsUnicos = new Set();
+      Object.entries(contactosRaw).forEach(([key, val]) => {
+        if (typeof val === 'object' && val !== null && val.uid) {
+          uidsUnicos.add(val.uid);
+        } else {
+          uidsUnicos.add(key);
+        }
+      });
+
+      const contactosUids = Array.from(uidsUnicos);
+
+      // Traer los datos de 'usuarios'
       const promesasUsuarios = contactosUids.map(uid => get(ref(db, `usuarios/${uid}`)));
       const snapshotsUsuarios = await Promise.all(promesasUsuarios);
 
-      // Conjunto de control para no renderizar dos veces el mismo UID/Usuario
-      const uidsRenderizados = new Set();
+      // Si hubo otra llamada más reciente mientras traíamos usuarios, abortar
+      if (renderIdActual !== ultimoRenderIdContactos) return;
+
+      // Limpiar la caja justo antes de pintar los elementos
+      contenedorListaContactos.innerHTML = "";
 
       snapshotsUsuarios.forEach((snapUsuario, index) => {
         if (snapUsuario.exists()) {
@@ -3955,11 +3976,7 @@ async function renderizarListaContactosModal(filtro = "") {
           const targetUid = snapUsuario.key || contactosUids[index];
           const nombreContacto = usuario.nombre || "Usuario";
 
-          // Evitar renderizar si ya se agregó a la vista
-          if (uidsRenderizados.has(targetUid)) return;
-          uidsRenderizados.add(targetUid);
-
-          // Filtro por texto de búsqueda
+          // Filtro por texto
           if (nombreContacto.toLowerCase().includes(textoFiltro)) {
             const filaHTML = document.createElement("div");
             filaHTML.className = "item-contacto-fila";
@@ -4000,7 +4017,7 @@ async function renderizarListaContactosModal(filtro = "") {
               if (modalContactos) modalContactos.classList.add("oculto");
             });
 
-            // Evento para eliminar
+            // Evento para confirmar eliminación
             const btnZafacon = filaHTML.querySelector(".btn-eliminar-contacto-item");
             if (btnZafacon) {
               btnZafacon.addEventListener("click", (e) => {
