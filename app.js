@@ -5199,10 +5199,10 @@ if (btnVolverChat) {
 }
 
 // ========================================================
-// 🔕 MÓDULO INTEGRADO DE SILENCIO DE CHATS (AISLADO)
+// 🔕 MÓDULO INTEGRADO DE SILENCIO DE CHATS (CON PROTECCIÓN DE CLIC)
 // ========================================================
 (() => {
-  // 1. ACTUALIZAR INDICADOR VISUAL DE SILENCIO
+  // 1. ACTUALIZAR INDICADOR VISUAL DE SILENCIO EN LA TARJETA
   window.actualizarEstadoSilencioUI = function (chatUid, estaSilenciado) {
     const tarjetas = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
 
@@ -5234,7 +5234,7 @@ if (btnVolverChat) {
     });
   };
 
-  // 2. VERIFICAR SI EL SILENCIO EXPIRO
+  // 2. VERIFICAR EXPRIRACIÓN DEL SILENCIO
   window.comprobarSilencioChat = function (chatUid) {
     const registro = localStorage.getItem(`silenciado_${chatUid}`);
     if (!registro) return false;
@@ -5253,34 +5253,46 @@ if (btnVolverChat) {
     return true;
   };
 
-  // 3. DETECTAR CLIC EN "SILENCIAR CHAT"
+  // 3. CAPTURAR CLIC EN "SILENCIAR CHAT" (BLOQUEA RECARGA Y CIERRES INVOLUNTARIOS)
   document.addEventListener("click", (e) => {
     const btnSilenciar = e.target.closest('[data-accion="silenciar"]') ||
       e.target.closest('#btn-silenciar-chat') ||
       (e.target.textContent && e.target.textContent.includes("Silenciar"));
 
     if (btnSilenciar) {
+      e.preventDefault();
       e.stopPropagation();
 
+      // Ocultar menús flotantes
       const menuContextual = document.getElementById("menu-contextual-chat") ||
-        document.getElementById("menu-desplegable-cabecera");
+        document.getElementById("menu-desplegable-cabecera") ||
+        document.querySelector(".menu-contextual");
       if (menuContextual) menuContextual.classList.add("oculto");
 
+      // Mostrar modal
       const modalSilenciar = document.getElementById("modal-silenciar-chat");
-      if (modalSilenciar) modalSilenciar.classList.remove("oculto");
+      if (modalSilenciar) {
+        modalSilenciar.classList.remove("oculto");
+      }
     }
   });
 
-  // 4. ACCIÓN CANCELAR EN MODAL
+  // 4. EVITAR QUE LOS CLICS DENTRO DEL MODAL LO CIERREN
   document.addEventListener("click", (e) => {
+    const modalCaja = e.target.closest(".modal-silenciar-caja");
+    if (modalCaja) {
+      e.stopPropagation();
+    }
+
+    // Botón Cancelar
     if (e.target.id === "btn-cancelar-silencio" || e.target.closest("#btn-cancelar-silencio")) {
+      e.preventDefault();
       document.getElementById("modal-silenciar-chat")?.classList.add("oculto");
     }
-  });
 
-  // 5. ACCIÓN CONFIRMAR EN MODAL
-  document.addEventListener("click", (e) => {
+    // Botón Confirmar
     if (e.target.id === "btn-confirmar-silencio" || e.target.closest("#btn-confirmar-silencio")) {
+      e.preventDefault();
       const seleccion = document.querySelector('input[name="tiempo_silencio"]:checked');
       const tiempo = seleccion ? seleccion.value : "30m";
 
@@ -5298,7 +5310,6 @@ if (btnVolverChat) {
       localStorage.setItem(`silenciado_${tituloChatActivo}`, expiraEn);
 
       document.getElementById("modal-silenciar-chat")?.classList.add("oculto");
-
       window.actualizarEstadoSilencioUI(tituloChatActivo, true);
 
       const textoTiempo = tiempo === "siempre" ? "indefinidamente" : `por ${tiempo}`;
@@ -5308,7 +5319,7 @@ if (btnVolverChat) {
     }
   });
 
-  // 6. VERIFICAR SILENCIOS AL CARGAR
+  // 5. REVISAR ESTADOS AL CARGAR LA PÁGINA
   window.verificarTodosLosSilencios = function () {
     const tarjetasChat = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
 
