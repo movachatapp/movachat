@@ -1573,21 +1573,29 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
 
     // 🗑️ OPCIÓN 4: ELIMINAR (De la pantalla y de Firebase)
     else if (accion === "eliminar") {
-      const idParaBorrar = msgId || (menuCtx ? menuCtx.dataset.msgId : null);
+      // 1. 🙈 Ocultar el menú contextual inmediatamente
+      const menuFlotante = typeof menuCtx !== "undefined" ? menuCtx : document.getElementById("menu-contextual-mensaje");
+      if (menuFlotante) {
+        menuFlotante.classList.add("oculto");
+        menuFlotante.style.display = "none";
+      }
+
+      // 2. Capturar el ID del mensaje
+      const idParaBorrar = msgId 
+        || (nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null) 
+        || (menuFlotante ? menuFlotante.dataset.msgId : null);
+
       const elementoBurbuja = nodoMensaje || (idParaBorrar ? document.querySelector(`[data-msg-id="${idParaBorrar}"]`) : null);
 
       if (!idParaBorrar) {
+        console.error("No se pudo obtener el ID del mensaje.");
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("No se encontró el identificador del mensaje.", "⚠️", "#ff4b2b");
+          mostrarAvisoPremium("No se encontró el ID del mensaje.", "⚠️", "#ff4b2b");
         }
         return;
       }
 
-      const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
-      const miUid = usuarioActual ? usuarioActual.uid : null;
-      const contactoUid = window.contactoActivoUid;
-
-      // 1. 🎨 Animación fluida de salida en pantalla
+      // 3. 🎨 Animación fluida de salida en pantalla
       if (elementoBurbuja) {
         elementoBurbuja.style.transition = "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
         elementoBurbuja.style.opacity = "0";
@@ -1600,7 +1608,11 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
         }, 250);
       }
 
-      // 2. ☁️ Borrar en Firebase Realtime Database
+      // 4. ☁️ Borrar en Firebase Realtime Database
+      const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
+      const contactoUid = window.contactoActivoUid;
+
       if (miUid && contactoUid) {
         const chatId = typeof obtenerChatId === "function" 
           ? obtenerChatId(miUid, contactoUid) 
@@ -1608,7 +1620,8 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
 
         const mensajeRef = ref(db, `chats/${chatId}/mensajes/${idParaBorrar}`);
 
-        remove(mensajeRef)
+        // Uso de set(..., null) para garantizar compatibilidad total con tus importaciones existentes
+        set(mensajeRef, null)
           .then(() => {
             if (typeof mostrarAvisoPremium === "function") {
               mostrarAvisoPremium("Mensaje eliminado.", "🗑️", "#ff4b2b");
@@ -1620,6 +1633,8 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
               mostrarAvisoPremium("Error al eliminar de la nube.", "⚠️", "#ff4b2b");
             }
           });
+      } else {
+        console.warn("Falta miUid o contactoUid para la conexión con Firebase.");
       }
     }
 
