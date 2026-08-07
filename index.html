@@ -529,48 +529,50 @@
               data-lucide="x"></i></button>
         </div>
 
-        <div class="modal-body">
-          <div class="caja-input-estado-premium"
-            style="display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 4px 8px; margin-bottom: 12px;">
-            <input type="text" id="input-nuevo-contacto" placeholder="Nombre de nuevo contacto..."
-              style="width: 100%; background: transparent; border: none; padding: 10px; color: white; font-size: 13.5px; outline: none;">
-            <button id="btn-guardar-contacto" class="btn-primario"
-              style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
-          </div>
+        <div class="caja-input-estado-premium"
+          style="display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 4px 8px; margin-bottom: 12px; position: relative;">
+          <input type="text" id="input-nuevo-contacto" placeholder="Nombre de nuevo contacto..." autocomplete="off"
+            style="width: 100%; background: transparent; border: none; padding: 10px; color: white; font-size: 13.5px; outline: none;">
+          <button id="btn-guardar-contacto" class="btn-primario"
+            style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
 
-          <div class="chasis-buscador-interno" style="margin-bottom: 15px;">
-            <i data-lucide="search" class="icono-buscar-interno"></i>
-            <input type="text" id="input-buscar-contacto" placeholder="Buscar contacto...">
-          </div>
+          <!-- Lista flotante de autocompletado de usuarios Firebase -->
+          <div id="sugerencias-busqueda-contactos" class="sugerencias-contactos-caja oculto"></div>
+        </div>
 
-          <div class="lista-contactos-modal" id="contenedor-lista-contactos"
-            style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+        <div class="chasis-buscador-interno" style="margin-bottom: 15px;">
+          <i data-lucide="search" class="icono-buscar-interno"></i>
+          <input type="text" id="input-buscar-contacto" placeholder="Buscar contacto...">
+        </div>
 
-          <div id="capa-confirmar-eliminar" class="oculto"
-            style="margin-top: 15px; background: rgba(255, 75, 43, 0.1); border: 1px solid rgba(255, 75, 43, 0.3); border-radius: 12px; padding: 12px; text-align: center;">
-            <p style="font-size: 12.5px; color: rgba(255,255,255,0.9); margin-bottom: 10px;"
-              id="texto-confirmar-eliminar">¿Eliminar este contacto?</p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-              <button id="btn-cancelar-eliminar" class="btn-secundario"
-                style="padding: 6px 16px; font-size: 12px; border-radius: 8px;">Cancelar</button>
-              <button id="btn-confirmar-eliminar" class="btn-primario"
-                style="background: linear-gradient(135deg, #ff416c, #ff4b2b); padding: 6px 16px; font-size: 12px; border-radius: 8px;">Eliminar</button>
-            </div>
+        <div class="lista-contactos-modal" id="contenedor-lista-contactos"
+          style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;"></div>
+
+        <div id="capa-confirmar-eliminar" class="oculto"
+          style="margin-top: 15px; background: rgba(255, 75, 43, 0.1); border: 1px solid rgba(255, 75, 43, 0.3); border-radius: 12px; padding: 12px; text-align: center;">
+          <p style="font-size: 12.5px; color: rgba(255,255,255,0.9); margin-bottom: 10px;"
+            id="texto-confirmar-eliminar">¿Eliminar este contacto?</p>
+          <div style="display: flex; gap: 10px; justify-content: center;">
+            <button id="btn-cancelar-eliminar" class="btn-secundario"
+              style="padding: 6px 16px; font-size: 12px; border-radius: 8px;">Cancelar</button>
+            <button id="btn-confirmar-eliminar" class="btn-primario"
+              style="background: linear-gradient(135deg, #ff416c, #ff4b2b); padding: 6px 16px; font-size: 12px; border-radius: 8px;">Eliminar</button>
           </div>
         </div>
       </div>
     </div>
+  </div>
 
-    <nav class="menu-flotante">
-      <button class="menu-btn activo">
-        <i data-lucide="home"></i>
-        <span>Inicio</span>
-      </button>
-      <button class="menu-btn">
-        <i data-lucide="user"></i>
-        <span>Perfil</span>
-      </button>
-    </nav>
+  <nav class="menu-flotante">
+    <button class="menu-btn activo">
+      <i data-lucide="home"></i>
+      <span>Inicio</span>
+    </button>
+    <button class="menu-btn">
+      <i data-lucide="user"></i>
+      <span>Perfil</span>
+    </button>
+  </nav>
   </div>
 
   <div id="toast-premium" class="toast-oculto"
@@ -670,7 +672,8 @@
   <div id="modal-silenciar-tiempo" class="modal-overlay oculto">
     <div class="modal-cristal modal-silenciar-caja">
       <div class="modal-header">
-        <h3><i data-lucide="bell-off" style="color: #00f2fe; width:18px; height:18px;"></i> Silenciar notificaciones</h3>
+        <h3><i data-lucide="bell-off" style="color: #00f2fe; width:18px; height:18px;"></i> Silenciar notificaciones
+        </h3>
         <button type="button" class="btn-cerrar-icono" id="btn-cerrar-modal-silenciar" aria-label="Cerrar modal">
           <i data-lucide="x"></i>
         </button>
@@ -678,21 +681,21 @@
 
       <div class="modal-body">
         <p class="modal-label" id="txt-estado-silencio-actual">Elige por cuánto tiempo deseas silenciar este chat:</p>
-        
+
         <div class="opciones-tiempo-grid">
           <button type="button" class="btn-opcion-tiempo" data-tiempo="1m">
             <span>1 minuto</span>
             <small>(Prueba)</small>
           </button>
-          
+
           <button type="button" class="btn-opcion-tiempo" data-tiempo="1h">
             <span>1 hora</span>
           </button>
-          
+
           <button type="button" class="btn-opcion-tiempo" data-tiempo="8h">
             <span>8 horas</span>
           </button>
-          
+
           <button type="button" class="btn-opcion-tiempo" data-tiempo="1d">
             <span>1 día (24h)</span>
           </button>
@@ -704,7 +707,8 @@
         </div>
 
         <button type="button" id="btn-activar-notificaciones-modal" class="btn-primario btn-desactivar-silencio oculto">
-          <i data-lucide="bell" style="width:16px; height:16px; display:inline-block; vertical-align:middle;"></i> Activar notificaciones
+          <i data-lucide="bell" style="width:16px; height:16px; display:inline-block; vertical-align:middle;"></i>
+          Activar notificaciones
         </button>
       </div>
     </div>
@@ -721,14 +725,15 @@
       </div>
 
       <div class="modal-body">
-        <p class="modal-label" id="txt-estado-temporales-actual">Selecciona cuánto tiempo durarán los mensajes antes de desaparecer:</p>
-        
+        <p class="modal-label" id="txt-estado-temporales-actual">Selecciona cuánto tiempo durarán los mensajes antes de
+          desaparecer:</p>
+
         <div class="opciones-tiempo-grid">
           <button type="button" class="btn-opcion-temporal" data-duracion="10s">
             <span>10 segundos</span>
             <small>(Ultraconfidencial)</small>
           </button>
-          
+
           <button type="button" class="btn-opcion-temporal" data-duracion="5m">
             <span>5 minutos</span>
             <small>(Conversación rápida)</small>
@@ -738,7 +743,7 @@
             <span>1 hora</span>
             <small>(Reunión / Trabajo)</small>
           </button>
-          
+
           <button type="button" class="btn-opcion-temporal" data-duracion="1d">
             <span>24 horas</span>
             <small>(Estándar)</small>
@@ -746,7 +751,8 @@
         </div>
 
         <button type="button" id="btn-desactivar-temporales-modal" class="btn-primario btn-desactivar-silencio oculto">
-          <i data-lucide="shield-off" style="width:16px; height:16px; display:inline-block; vertical-align:middle;"></i> Desactivar modo efímero
+          <i data-lucide="shield-off" style="width:16px; height:16px; display:inline-block; vertical-align:middle;"></i>
+          Desactivar modo efímero
         </button>
       </div>
     </div>

@@ -3441,3 +3441,86 @@ body.tema-claro .btn-opcion-temporal:hover {
   border-color: #0284c7 !important;
   color: #0284c7 !important;
 }
+
+/* ========================================================
+   🔍 LISTA FLOTANTE DE AUTOCOMPLETADO DE CONTACTOS (GLASSMORPHISM)
+   ======================================================== */
+
+.sugerencias-contactos-caja {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  margin-top: 6px;
+  max-height: 210px;
+  overflow-y: auto;
+  background: rgba(15, 20, 35, 0.95);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(0, 242, 254, 0.25);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 242, 254, 0.15);
+  padding: 6px;
+}
+
+.item-sugerencia-usuario {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.item-sugerencia-usuario:hover {
+  background: rgba(0, 242, 254, 0.12);
+}
+
+.avatar-sugerencia {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(0, 242, 254, 0.4);
+}
+
+.avatar-sugerencia-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00f2fe, #4facfe);
+  color: #0b0c10;
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nombre-sugerencia-txt {
+  font-size: 13.5px;
+  color: #ffffff;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- INTEGRACIÓN TEMA CLARO --- */
+body.tema-claro .sugerencias-contactos-caja {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(148, 163, 184, 0.4) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12) !important;
+}
+
+body.tema-claro .item-sugerencia-usuario:hover {
+  background: rgba(2, 132, 199, 0.1) !important;
+}
+
+body.tema-claro .nombre-sugerencia-txt {
+  color: #0f172a !important;
+}

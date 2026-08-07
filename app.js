@@ -4032,6 +4032,99 @@ async function renderizarListaContactosModal(filtro = "") {
   }
 }
 
+// ========================================================
+// 🔍 BÚSQUEDA GLOBAL Y AUTOCOMPLETADO DE CONTACTOS EN TIEMPO REAL
+// ========================================================
+const cajaSugerencias = document.getElementById("sugerencias-busqueda-contactos");
+
+if (inputNuevoContacto && cajaSugerencias) {
+  inputNuevoContacto.addEventListener("input", async (e) => {
+    const textoConsulta = e.target.value.trim().toLowerCase();
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+
+    if (!textoConsulta || !miUid) {
+      cajaSugerencias.classList.add("oculto");
+      cajaSugerencias.innerHTML = "";
+      return;
+    }
+
+    try {
+      // Consultar lista global de usuarios en Firebase
+      const snapUsuarios = await get(ref(db, "usuarios"));
+      if (!snapUsuarios.exists()) {
+        cajaSugerencias.classList.add("oculto");
+        return;
+      }
+
+      // Obtener tus contactos actuales para no sugerirlos de nuevo
+      const snapMisContactos = await get(ref(db, `mis_contactos/${miUid}`));
+      const misContactosAgregados = snapMisContactos.exists() ? Object.keys(snapMisContactos.val()) : [];
+
+      const usuariosCoincidentes = [];
+
+      snapUsuarios.forEach((child) => {
+        const uUid = child.key;
+        const uData = child.val();
+
+        // Excluir propio usuario y contactos ya agregados
+        if (uUid === miUid || misContactosAgregados.includes(uUid)) return;
+
+        // Filtrar por coincidencia de nombre
+        if (uData.nombre && uData.nombre.toLowerCase().includes(textoConsulta)) {
+          usuariosCoincidentes.push({ uid: uUid, ...uData });
+        }
+      });
+
+      if (usuariosCoincidentes.length === 0) {
+        cajaSugerencias.innerHTML = `<div style="padding: 10px; font-size: 12px; color: rgba(255,255,255,0.5); text-align: center;">No se encontraron usuarios</div>`;
+        cajaSugerencias.classList.remove("oculto");
+        return;
+      }
+
+      // Renderizar el menú flotante con fotos
+      let htmlSugerencias = "";
+      usuariosCoincidentes.forEach((usuario) => {
+        const tieneFoto = usuario.fotoPerfil || usuario.fotoUrl || usuario.photoURL;
+        const inicial = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : "?";
+
+        htmlSugerencias += `
+          <div class="item-sugerencia-usuario" data-nombre="${usuario.nombre}">
+            ${tieneFoto 
+              ? `<img src="${tieneFoto}" class="avatar-sugerencia" alt="Perfil">` 
+              : `<div class="avatar-sugerencia-placeholder">${inicial}</div>`}
+            <span class="nombre-sugerencia-txt">${usuario.nombre}</span>
+          </div>
+        `;
+      });
+
+      cajaSugerencias.innerHTML = htmlSugerencias;
+      cajaSugerencias.classList.remove("oculto");
+
+      // Selección al hacer clic en una sugerencia
+      cajaSugerencias.querySelectorAll(".item-sugerencia-usuario").forEach((item) => {
+        item.addEventListener("click", () => {
+          const nombreSeleccionado = item.getAttribute("data-nombre");
+          inputNuevoContacto.value = nombreSeleccionado;
+          cajaSugerencias.classList.add("oculto");
+          cajaSugerencias.innerHTML = "";
+          
+          if (btnGuardarContacto) btnGuardarContacto.click();
+        });
+      });
+
+    } catch (err) {
+      console.error("Error buscando usuarios en Firebase:", err);
+    }
+  });
+
+  // Ocultar caja de sugerencias si se hace clic fuera
+  document.addEventListener("click", (e) => {
+    if (!inputNuevoContacto.contains(e.target) && !cajaSugerencias.contains(e.target)) {
+      cajaSugerencias.classList.add("oculto");
+    }
+  });
+}
+
 if (btnAbrirContactos && modalContactos) {
   btnAbrirContactos.addEventListener("click", () => {
     renderizarListaContactosModal();
