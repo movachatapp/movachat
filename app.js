@@ -4144,15 +4144,6 @@ if (btnGuardarContacto) {
   };
 }
 
-// ⚡ FUNCIÓN DEBOUNCE PARA OPTIMIZAR CPU Y BATERÍA EN MÓVILES
-function crearDebounce(funcion, espera = 300) {
-  let temporizador;
-  return function (...parametros) {
-    clearTimeout(temporizador);
-    temporizador = setTimeout(() => funcion.apply(this, parametros), espera);
-  };
-}
-
 // 🔍 4. AUTOCOMPLETADO GLOBAL DE CONTACTOS EN TIEMPO REAL (OPTIMIZADO CON DEBOUNCE)
 const cajaSugerencias = document.getElementById("sugerencias-busqueda-contactos");
 
