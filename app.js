@@ -1906,14 +1906,16 @@ if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
 // ========================================================
 function asignarEventosMenuCabecera() {
   document.querySelectorAll(".opcion-cabecera-item").forEach((item) => {
-    item.addEventListener("click", (e) => {
+    item.addEventListener("click", async (e) => {
       e.stopPropagation();
       const accion = item.getAttribute("data-accion");
       const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
       const miUid = usuarioActual ? usuarioActual.uid : null;
 
       // Ocultar menú tras hacer clic
-      if (menuCabeceraFlotante) menuCabeceraFlotante.classList.add("oculto");
+      if (typeof menuCabeceraFlotante !== "undefined" && menuCabeceraFlotante) {
+        menuCabeceraFlotante.classList.add("oculto");
+      }
 
       // --- OPCIONES PANTALLA PRINCIPAL ---
       if (accion === "mi-perfil") {
@@ -1976,78 +1978,40 @@ function asignarEventosMenuCabecera() {
 
       // --- OPCIONES PANTALLA MI PERFIL ---
       else if (accion === "cambiar-password") {
-        if (typeof cambiarPassword === "function") {
-          cambiarPassword();
-        } else if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Abriendo cambio de contraseña...", "🔑", "#00f2fe");
+        if (usuarioActual && usuarioActual.email) {
+          try {
+            const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+            await sendPasswordResetEmail(auth, usuarioActual.email);
+
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium(`Enlace enviado a <b>${usuarioActual.email}</b> 🔑`, "✉️", "#00f2fe");
+            }
+          } catch (error) {
+            console.error("Error al enviar correo:", error);
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("No se pudo enviar el correo de cambio ⚠️", "❌", "#ff4b2b");
+            }
+          }
         }
       }
 
       else if (accion === "cerrar-sesion") {
         if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
-          if (typeof auth !== "undefined") {
-            auth.signOut().then(() => {
-              window.location.reload();
-            });
+          try {
+            const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+            await signOut(auth);
+
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
+            }
+          } catch (error) {
+            console.error("Error al cerrar sesión:", error);
           }
         }
       }
     });
   });
-}
-
-function asignarEventosMenuCabecera() {
-  // --- 1. OPCIÓN: MI PERFIL ---
-  const opcionMiPerfil = document.getElementById("opcion-mi-perfil");
-  if (opcionMiPerfil) {
-    opcionMiPerfil.addEventListener("click", () => {
-      menuCabeceraFlotante.classList.add("oculto");
-      if (btnPerfilMenu) btnPerfilMenu.click();
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Abriendo tu Perfil... 👤", "✨", "#00f2fe");
-      }
-    });
-  }
-
-  // --- 2. OPCIÓN: CAMBIAR CONTRASEÑA (Envía correo de recuperación) ---
-  const opcionCambiarPassword = document.getElementById("opcion-cambiar-password");
-  if (opcionCambiarPassword) {
-    opcionCambiarPassword.addEventListener("click", async () => {
-      menuCabeceraFlotante.classList.add("oculto");
-
-      const usuarioActual = auth.currentUser;
-      if (usuarioActual && usuarioActual.email) {
-        try {
-          // Importar dinámicamente o usar sendPasswordResetEmail de Firebase
-          const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-          await sendPasswordResetEmail(auth, usuarioActual.email);
-
-          mostrarAvisoPremium(`Enlace enviado a <b>${usuarioActual.email}</b> 🔑`, "✉️", "#00f2fe");
-        } catch (error) {
-          console.error("Error al enviar correo:", error);
-          mostrarAvisoPremium("No se pudo enviar el correo de cambio ⚠️", "❌", "#ff4b2b");
-        }
-      }
-    });
-  }
-
-  // --- 3. OPCIÓN: CERRAR SESIÓN (Desconexión Real) ---
-  const opcionCerrarSesion = document.getElementById("opcion-cerrar-sesion");
-  if (opcionCerrarSesion) {
-    opcionCerrarSesion.addEventListener("click", async () => {
-      menuCabeceraFlotante.classList.add("oculto");
-      try {
-        const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-        await signOut(auth); // Cierra sesión en Firebase
-
-        mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
-        // El listener onAuthStateChanged que ya tienes mostrará pantalla-auth automáticamente
-      } catch (error) {
-        console.error("Error al cerrar sesión:", error);
-      }
-    });
-  }
-}
+} 
 
 // Cierre automático al tocar fuera
 document.addEventListener("click", () => {
