@@ -3923,7 +3923,7 @@ const btnConfirmarEliminar = document.getElementById("btn-confirmar-eliminar");
 
 let contactoParaEliminarNodo = null;
 
-// 🟢 LÓGICA CONECTADA A FIREBASE (Contactos reales + Apertura de chat directa)
+// 🟢 LÓGICA CONECTADA A FIREBASE CON FILTRO ANTI-DUPLICADOS
 async function renderizarListaContactosModal(filtro = "") {
   if (!contenedorListaContactos) return;
   contenedorListaContactos.innerHTML = "";
@@ -3934,24 +3934,32 @@ async function renderizarListaContactosModal(filtro = "") {
   if (!miUid) return;
 
   try {
-    // 1. Obtener los contactos del usuario desde Firebase Realtime Database
     const misContactosRef = ref(db, `mis_contactos/${miUid}`);
     const snapshotContactos = await get(misContactosRef);
 
     if (snapshotContactos.exists()) {
-      const contactosUids = Object.keys(snapshotContactos.val());
+      // 1. Extraer UIDs y eliminar duplicados de la lista de claves
+      const contactosRaw = snapshotContactos.val();
+      const contactosUids = [...new Set(Object.keys(contactosRaw))];
 
-      // 2. Traer los datos reales de la colección 'usuarios' en PARALELO
+      // 2. Traer los datos reales de la colección 'usuarios'
       const promesasUsuarios = contactosUids.map(uid => get(ref(db, `usuarios/${uid}`)));
       const snapshotsUsuarios = await Promise.all(promesasUsuarios);
+
+      // Conjunto de control para no renderizar dos veces el mismo UID/Usuario
+      const uidsRenderizados = new Set();
 
       snapshotsUsuarios.forEach((snapUsuario, index) => {
         if (snapUsuario.exists()) {
           const usuario = snapUsuario.val();
-          const targetUid = contactosUids[index];
+          const targetUid = snapUsuario.key || contactosUids[index];
           const nombreContacto = usuario.nombre || "Usuario";
 
-          // Filtro por texto de búsqueda exacto o parcial
+          // Evitar renderizar si ya se agregó a la vista
+          if (uidsRenderizados.has(targetUid)) return;
+          uidsRenderizados.add(targetUid);
+
+          // Filtro por texto de búsqueda
           if (nombreContacto.toLowerCase().includes(textoFiltro)) {
             const filaHTML = document.createElement("div");
             filaHTML.className = "item-contacto-fila";
@@ -3979,7 +3987,7 @@ async function renderizarListaContactosModal(filtro = "") {
               document.querySelectorAll(".item-contacto-fila").forEach(el => el.classList.remove("activo"));
               filaHTML.classList.add("activo");
 
-              const uidContacto = usuario.uid || targetUid;
+              const uidContacto = targetUid;
               const nomContacto = usuario.nombre || "Usuario";
               const fotoContacto = fotoUrl || "";
 
@@ -3992,7 +4000,7 @@ async function renderizarListaContactosModal(filtro = "") {
               if (modalContactos) modalContactos.classList.add("oculto");
             });
 
-            // Evento para abrir modal de confirmación de eliminación
+            // Evento para eliminar
             const btnZafacon = filaHTML.querySelector(".btn-eliminar-contacto-item");
             if (btnZafacon) {
               btnZafacon.addEventListener("click", (e) => {
