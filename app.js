@@ -3906,7 +3906,7 @@ function eliminarChatAnimado(tarjeta) {
 }
 
 // ========================================================
-// 13. GESTIÓN DE CONTACTOS Y MODALES
+// 13. GESTIÓN DE CONTACTOS Y MODALES (UNIFICADO Y CORREGIDO)
 // ========================================================
 const btnAbrirContactos = document.getElementById("btn-abrir-contactos");
 const modalContactos = document.getElementById("modal-contactos");
@@ -3922,8 +3922,6 @@ const btnCancelarEliminar = document.getElementById("btn-cancelar-eliminar");
 const btnConfirmarEliminar = document.getElementById("btn-confirmar-eliminar");
 
 let contactoParaEliminarNodo = null;
-
-const listaContactosBD = [];
 
 // 🟢 LÓGICA CONECTADA A FIREBASE (Contactos reales + Apertura de chat directa)
 async function renderizarListaContactosModal(filtro = "") {
@@ -3943,7 +3941,7 @@ async function renderizarListaContactosModal(filtro = "") {
     if (snapshotContactos.exists()) {
       const contactosUids = Object.keys(snapshotContactos.val());
 
-      // 2. Traer los datos reales de la colección 'usuarios' en PARALELO (Mucho más rápido)
+      // 2. Traer los datos reales de la colección 'usuarios' en PARALELO
       const promesasUsuarios = contactosUids.map(uid => get(ref(db, `usuarios/${uid}`)));
       const snapshotsUsuarios = await Promise.all(promesasUsuarios);
 
@@ -3953,15 +3951,15 @@ async function renderizarListaContactosModal(filtro = "") {
           const targetUid = contactosUids[index];
           const nombreContacto = usuario.nombre || "Usuario";
 
-          // Filtro por texto de búsqueda
+          // Filtro por texto de búsqueda exacto o parcial
           if (nombreContacto.toLowerCase().includes(textoFiltro)) {
             const filaHTML = document.createElement("div");
             filaHTML.className = "item-contacto-fila";
 
-            // Foto real subida a Firebase o avatar con la inicial del nombre
             const primerLetra = nombreContacto.charAt(0).toUpperCase();
-            const fotoHTML = usuario.fotoUrl
-              ? `<img src="${usuario.fotoUrl}" alt="${nombreContacto}" class="avatar-contacto-mini">`
+            const fotoUrl = usuario.fotoUrl || usuario.fotoPerfil || usuario.photoURL;
+            const fotoHTML = fotoUrl
+              ? `<img src="${fotoUrl}" alt="${nombreContacto}" class="avatar-contacto-mini">`
               : `<div class="avatar-contacto-mini" style="background:#00f2fe; color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; border-radius:50%; width:32px; height:32px;">${primerLetra}</div>`;
 
             filaHTML.innerHTML = `
@@ -3974,37 +3972,31 @@ async function renderizarListaContactosModal(filtro = "") {
               </button>
             `;
 
-            // 🚀 CORREGIDO: Usamos filaHTML en lugar de itemContacto
-            filaHTML.addEventListener("click", (e) => {
+            // Evento para abrir chat privado
+            filaHTML.querySelector(".info-contacto-izq").addEventListener("click", (e) => {
               e.stopPropagation();
 
-              // 1. Destacar contacto seleccionado visualmente
               document.querySelectorAll(".item-contacto-fila").forEach(el => el.classList.remove("activo"));
               filaHTML.classList.add("activo");
 
-              contactoSeleccionado = usuario;
-
-              // 2. Extraer datos del usuario
               const uidContacto = usuario.uid || targetUid;
               const nomContacto = usuario.nombre || "Usuario";
-              const fotoContacto = usuario.fotoUrl || "";
+              const fotoContacto = fotoUrl || "";
 
-              // 3. Abrir chat privado
               if (typeof abrirChatConUsuario === "function") {
                 abrirChatConUsuario(uidContacto, nomContacto, fotoContacto);
               } else if (window.abrirChatConUsuario) {
                 window.abrirChatConUsuario(uidContacto, nomContacto, fotoContacto);
               }
 
-              // 4. Cerrar el modal de contactos si está abierto
               if (modalContactos) modalContactos.classList.add("oculto");
             });
 
-            // 🔴 EVENTO PARA ELIMINAR CONTACTO
+            // Evento para abrir modal de confirmación de eliminación
             const btnZafacon = filaHTML.querySelector(".btn-eliminar-contacto-item");
             if (btnZafacon) {
               btnZafacon.addEventListener("click", (e) => {
-                e.stopPropagation(); // Impide que abra el chat al tocar la papelera
+                e.stopPropagation();
                 contactoParaEliminarNodo = { nodo: filaHTML, uid: targetUid, nombre: nombreContacto };
                 if (textoConfirmarEliminar) {
                   textoConfirmarEliminar.innerHTML = `¿Seguro que deseas eliminar a <b>${nombreContacto}</b>?`;
@@ -4018,11 +4010,8 @@ async function renderizarListaContactosModal(filtro = "") {
         }
       });
 
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de contenedorListaContactos
       if (window.lucide) {
-        window.lucide.createIcons({
-          targets: [contenedorListaContactos]
-        });
+        window.lucide.createIcons({ targets: [contenedorListaContactos] });
       }
     } else {
       contenedorListaContactos.innerHTML = `<p style="color:rgba(255,255,255,0.5); font-size:12px; text-align:center; padding:10px;">No tienes contactos agregados aún.</p>`;
@@ -4030,6 +4019,181 @@ async function renderizarListaContactosModal(filtro = "") {
   } catch (error) {
     console.error("Error al cargar la lista de contactos:", error);
   }
+}
+
+// 🔴 1. ELIMINACIÓN PERMANENTE EN FIREBASE REALTIME DATABASE
+if (btnConfirmarEliminar) {
+  btnConfirmarEliminar.onclick = async () => {
+    if (!contactoParaEliminarNodo) return;
+
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const targetUid = contactoParaEliminarNodo.uid;
+
+    if (miUid && targetUid) {
+      try {
+        // Eliminar directamente en la base de datos Firebase
+        await set(ref(db, `mis_contactos/${miUid}/${targetUid}`), null);
+
+        // Remover nodo HTML de pantalla
+        if (contactoParaEliminarNodo.nodo) {
+          contactoParaEliminarNodo.nodo.remove();
+        }
+
+        mostrarAvisoPremium(`Contacto <b>${contactoParaEliminarNodo.nombre || ''}</b> eliminado.`, "🗑️", "#ff4b2b");
+        
+        // Recargar vista por si quedó vacía
+        renderizarListaContactosModal();
+      } catch (err) {
+        console.error("Error al eliminar contacto de Firebase:", err);
+      }
+    }
+
+    if (capaConfirmarEliminar) capaConfirmarEliminar.classList.add("oculto");
+    contactoParaEliminarNodo = null;
+  };
+}
+
+if (btnCancelarEliminar && capaConfirmarEliminar) {
+  btnCancelarEliminar.onclick = () => {
+    capaConfirmarEliminar.classList.add("oculto");
+    contactoParaEliminarNodo = null;
+  };
+}
+
+// 🔍 2. BÚSQUEDA / FILTRO LOCAL (PASO 2)
+if (inputBuscarContacto) {
+  inputBuscarContacto.addEventListener("input", (e) => {
+    const terminoFiltro = e.target.value.toLowerCase().trim();
+    renderizarListaContactosModal(terminoFiltro);
+  });
+}
+
+// 👤 3. AGREGAR CONTACTO NUEVO (PASO 1)
+if (btnGuardarContacto) {
+  btnGuardarContacto.onclick = async () => {
+    const nombreIngresado = inputNuevoContacto ? inputNuevoContacto.value.trim() : "";
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+
+    if (!nombreIngresado || !miUid) return;
+
+    try {
+      const snapUsuarios = await get(ref(db, "usuarios"));
+      if (!snapUsuarios.exists()) return;
+
+      let uidEncontrado = null;
+      let usuarioEncontrado = null;
+
+      snapUsuarios.forEach((child) => {
+        const uData = child.val();
+        if (uData.nombre && uData.nombre.toLowerCase().trim() === nombreIngresado.toLowerCase().trim()) {
+          uidEncontrado = child.key;
+          usuarioEncontrado = uData;
+        }
+      });
+
+      if (uidEncontrado && uidEncontrado !== miUid) {
+        // Guardar contacto en Firebase
+        await set(ref(db, `mis_contactos/${miUid}/${uidEncontrado}`), true);
+        if (inputNuevoContacto) inputNuevoContacto.value = "";
+        renderizarListaContactosModal();
+        mostrarAvisoPremium(`Contacto <b>${usuarioEncontrado.nombre}</b> añadido.`, "👤", "#00f2fe");
+      } else if (uidEncontrado === miUid) {
+        mostrarAvisoPremium("No puedes agregarte a ti mismo.", "⚠️", "#ffaa00");
+      } else {
+        mostrarAvisoPremium("Usuario no encontrado.", "❌", "#ff4b2b");
+      }
+    } catch (err) {
+      console.error("Error guardando contacto:", err);
+    }
+  };
+}
+
+// 🔍 4. AUTOCOMPLETADO GLOBAL DE CONTACTOS EN TIEMPO REAL
+const cajaSugerencias = document.getElementById("sugerencias-busqueda-contactos");
+
+if (inputNuevoContacto && cajaSugerencias) {
+  inputNuevoContacto.addEventListener("input", async (e) => {
+    const textoConsulta = e.target.value.trim().toLowerCase();
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+
+    if (!textoConsulta || !miUid) {
+      cajaSugerencias.classList.add("oculto");
+      cajaSugerencias.innerHTML = "";
+      return;
+    }
+
+    try {
+      const snapUsuarios = await get(ref(db, "usuarios"));
+      if (!snapUsuarios.exists()) {
+        cajaSugerencias.classList.add("oculto");
+        return;
+      }
+
+      const snapMisContactos = await get(ref(db, `mis_contactos/${miUid}`));
+      const misContactosAgregados = snapMisContactos.exists() ? Object.keys(snapMisContactos.val()) : [];
+
+      const usuariosCoincidentes = [];
+
+      snapUsuarios.forEach((child) => {
+        const uUid = child.key;
+        const uData = child.val();
+
+        // Excluir propio usuario y contactos ya agregados
+        if (uUid === miUid || misContactosAgregados.includes(uUid)) return;
+
+        const nombreUsuario = (uData.nombre || "").toLowerCase().trim();
+
+        // Coincidencia precisa por inicio de texto
+        if (nombreUsuario.startsWith(textoConsulta) || nombreUsuario.includes(textoConsulta)) {
+          usuariosCoincidentes.push({ uid: uUid, ...uData });
+        }
+      });
+
+      if (usuariosCoincidentes.length === 0) {
+        cajaSugerencias.innerHTML = `<div style="padding: 10px; font-size: 12px; color: rgba(255,255,255,0.5); text-align: center;">No se encontraron usuarios</div>`;
+        cajaSugerencias.classList.remove("oculto");
+        return;
+      }
+
+      let htmlSugerencias = "";
+      usuariosCoincidentes.forEach((usuario) => {
+        const tieneFoto = usuario.fotoPerfil || usuario.fotoUrl || usuario.photoURL;
+        const inicial = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : "?";
+
+        htmlSugerencias += `
+          <div class="item-sugerencia-usuario" data-nombre="${usuario.nombre}">
+            ${tieneFoto 
+              ? `<img src="${tieneFoto}" class="avatar-sugerencia" alt="Perfil">` 
+              : `<div class="avatar-sugerencia-placeholder">${inicial}</div>`}
+            <span class="nombre-sugerencia-txt">${usuario.nombre}</span>
+          </div>
+        `;
+      });
+
+      cajaSugerencias.innerHTML = htmlSugerencias;
+      cajaSugerencias.classList.remove("oculto");
+
+      cajaSugerencias.querySelectorAll(".item-sugerencia-usuario").forEach((item) => {
+        item.addEventListener("click", () => {
+          const nombreSeleccionado = item.getAttribute("data-nombre");
+          inputNuevoContacto.value = nombreSeleccionado;
+          cajaSugerencias.classList.add("oculto");
+          cajaSugerencias.innerHTML = "";
+          
+          if (btnGuardarContacto) btnGuardarContacto.click();
+        });
+      });
+
+    } catch (err) {
+      console.error("Error buscando usuarios en Firebase:", err);
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!inputNuevoContacto.contains(e.target) && !cajaSugerencias.contains(e.target)) {
+      cajaSugerencias.classList.add("oculto");
+    }
+  });
 }
 
 // ========================================================
@@ -4069,8 +4233,10 @@ if (inputNuevoContacto && cajaSugerencias) {
         // Excluir propio usuario y contactos ya agregados
         if (uUid === miUid || misContactosAgregados.includes(uUid)) return;
 
-        // Filtrar por coincidencia de nombre
-        if (uData.nombre && uData.nombre.toLowerCase().includes(textoConsulta)) {
+        const nombreUsuario = (uData.nombre || "").toLowerCase().trim();
+
+        // Filtrar si el nombre empieza por la letra escrita o la contiene exactamente
+        if (nombreUsuario.startsWith(textoConsulta) || nombreUsuario.includes(textoConsulta)) {
           usuariosCoincidentes.push({ uid: uUid, ...uData });
         }
       });
