@@ -5256,3 +5256,61 @@ if (btnConfirmarSilencio && modalSilenciar) {
     }
   });
 }
+
+// ========================================================
+// 🔕 ACTUALIZAR INDICADOR VISUAL DE SILENCIO EN TARJETA CHAT
+// ========================================================
+function actualizarEstadoSilencioUI(chatUid, estaSilenciado) {
+  const tarjetas = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
+  
+  tarjetas.forEach((tarjeta) => {
+    // 1. Identificar la tarjeta por dataset.uid, dataset.id o coincidencia de nombre
+    const uidTarjeta = tarjeta.dataset.uid || tarjeta.dataset.id;
+    const elementoNombre = tarjeta.querySelector(".chat-nombre") || tarjeta.querySelector(".nombre-contacto");
+    const nombreTexto = elementoNombre ? elementoNombre.textContent.trim() : "";
+
+    const esCoincidencia = (uidTarjeta && uidTarjeta === chatUid) || 
+                           (nombreTexto && nombreTexto.toLowerCase().includes(chatUid.toLowerCase()));
+
+    if (esCoincidencia) {
+      let iconoSilencio = tarjeta.querySelector(".indicador-silencio-neon");
+
+      if (estaSilenciado) {
+        tarjeta.classList.add("chat-silenciado-zona");
+
+        // 2. Insertar el icono junto al nombre (evita romper el flex-space-between de .chat-cabecera)
+        if (!iconoSilencio && elementoNombre) {
+          const span = document.createElement("span");
+          span.className = "indicador-silencio-neon";
+          span.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.856 18 12.003 18 8a6 6 0 0 0-6-6 5.96 5.96 0 0 0-3.328 .999"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`;
+          elementoNombre.appendChild(span);
+        }
+      } else {
+        tarjeta.classList.remove("chat-silenciado-zona");
+        if (iconoSilencio) iconoSilencio.remove();
+      }
+    }
+  });
+}
+
+// ========================================================
+// 🔕 VERIFICAR SI EL SILENCIO DEL CHAT SIGUE ACTIVO O EXPIRO
+// ========================================================
+function comprobarSilencioChat(chatUid) {
+  const registro = localStorage.getItem(`silenciado_${chatUid}`);
+  if (!registro) return false;
+
+  if (registro === "siempre" || registro === "indefinido") return true;
+
+  const fechaExpiracion = new Date(registro);
+  const ahora = new Date();
+
+  if (ahora > fechaExpiracion) {
+    // El tiempo ya pasó, eliminar silencio automáticamente
+    localStorage.removeItem(`silenciado_${chatUid}`);
+    actualizarEstadoSilencioUI(chatUid, false);
+    return false;
+  }
+
+  return true;
+}
