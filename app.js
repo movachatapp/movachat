@@ -20,6 +20,16 @@ const firebaseConfig = {
   appId: "1:127806471801:web:1924b7881925bff5d41ea8"
 };
 
+// 🔄 Cargar preferencia de tema visual al iniciar la app
+(function cargarTemaGuardado() {
+  const temaGuardado = localStorage.getItem("tema_app_pwa");
+  if (temaGuardado === "claro") {
+    document.body.classList.add("tema-claro");
+  } else {
+    document.body.classList.remove("tema-claro");
+  }
+})();
+
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -1833,7 +1843,9 @@ if (btnPerfilMenu) {
   });
 }
 
-// --- MENÚ DINÁMICO DE 3 PUNTOS PARA LA CABECERA ---
+// ========================================================
+// 📱 MENÚ DINÁMICO DE 3 PUNTOS PARA LA CABECERA
+// ========================================================
 const btnOpcionesCabecera = document.getElementById("btn-opciones-cabecera");
 const menuCabeceraFlotante = document.getElementById("menu-desplegable-cabecera");
 const listaOpcionesCabecera = document.getElementById("lista-opciones-cabecera");
@@ -1845,34 +1857,237 @@ if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
     const estaOculto = menuCabeceraFlotante.classList.contains("oculto");
 
     if (estaOculto) {
-      // Detección directa de si el perfil está visible
+      const pantallaPerfil = document.getElementById("pantalla-perfil") || document.querySelector(".pantalla-perfil");
       const estaEnPerfil = pantallaPerfil && (pantallaPerfil.style.display === "flex" || pantallaPerfil.classList.contains("activa"));
 
-      // Inyección dinámica de las opciones
+      // 1. Inyección dinámica según la pantalla activa
       if (estaEnPerfil) {
+        // 👤 OPCIONES DEL MENÚ EN MI PERFIL
         listaOpcionesCabecera.innerHTML = `
-          <li id="opcion-cambiar-password"><i data-lucide="key"></i> Cambiar Contraseña</li>
-          <li id="opcion-cerrar-sesion" class="opcion-peligro"><i data-lucide="log-out"></i> Cerrar Sesión</li>
+          <li class="opcion-cabecera-item" data-accion="cambiar-password"><i data-lucide="key"></i> Cambiar Contraseña</li>
+          <li class="opcion-cabecera-item opcion-peligro" data-accion="cerrar-sesion"><i data-lucide="log-out"></i> Cerrar Sesión</li>
         `;
       } else {
+        // 💬 OPCIONES DEL MENÚ EN PANTALLA PRINCIPAL (CHATS)
         listaOpcionesCabecera.innerHTML = `
-          <li id="opcion-mi-perfil"><i data-lucide="user"></i> Mi Perfil</li>
+          <li class="opcion-cabecera-item" data-accion="mi-perfil"><i data-lucide="user"></i> Mi Perfil / Ajustes</li>
+          <li class="opcion-cabecera-item" data-accion="modo-oscuro"><i data-lucide="moon"></i> Modo Oscuro / Claro</li>
+          <li class="opcion-cabecera-item" data-accion="mensajes-guardados"><i data-lucide="bookmark"></i> Mensajes Guardados</li>
+          <li class="opcion-cabecera-item" data-accion="sincronizar"><i data-lucide="refresh-cw"></i> Sincronizar / Refrescar</li>
         `;
       }
 
-      // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro de 'listaOpcionesCabecera'
+      // 2. Renderizar iconos únicamente dentro de la lista con Lucide
       if (window.lucide) {
         window.lucide.createIcons({
           targets: [listaOpcionesCabecera]
         });
       }
 
+      // 3. Asignar los eventos de clic a cada opción inyectada
       asignarEventosMenuCabecera();
 
       menuCabeceraFlotante.classList.remove("oculto");
     } else {
       menuCabeceraFlotante.classList.add("oculto");
     }
+  });
+
+  // Cerrar menú al hacer clic en cualquier otra parte
+  document.addEventListener("click", (e) => {
+    if (!menuCabeceraFlotante.contains(e.target) && e.target !== btnOpcionesCabecera) {
+      menuCabeceraFlotante.classList.add("oculto");
+    }
+  });
+}
+
+// ========================================================
+// ⚙️ MANEJADOR DE EVENTOS PARA LAS OPCIONES INYECTADAS
+// ========================================================
+function asignarEventosMenuCabecera() {
+  document.querySelectorAll(".opcion-cabecera-item").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const accion = item.getAttribute("data-accion");
+      const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
+
+      // Ocultar menú tras hacer clic
+      if (menuCabeceraFlotante) menuCabeceraFlotante.classList.add("oculto");
+
+      // --- OPCIONES PANTALLA PRINCIPAL ---
+      if (accion === "mi-perfil") {
+        const pantallaPerfil = document.getElementById("pantalla-perfil") || document.querySelector(".pantalla-perfil");
+        const pantallaChats = document.getElementById("pantalla-chats") || document.querySelector(".pantalla-chats");
+
+        if (pantallaPerfil) {
+          if (typeof switchPantalla === "function") {
+            switchPantalla(pantallaPerfil, pantallaChats);
+          } else {
+            if (pantallaChats) pantallaChats.style.display = "none";
+            pantallaPerfil.style.display = "flex";
+          }
+        }
+      }
+
+      else if (accion === "modo-oscuro") {
+        const esClaro = document.body.classList.toggle("tema-claro");
+        localStorage.setItem("tema_app_pwa", esClaro ? "claro" : "oscuro");
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(
+            esClaro ? "Tema Claro activado" : "Tema Oscuro activado",
+            esClaro ? "☀️" : "🌙",
+            "#00f2fe"
+          );
+        }
+      }
+
+      else if (accion === "mensajes-guardados") {
+        if (!miUid) return;
+
+        const miNombre = usuarioActual.displayName || "Mensajes Guardados";
+        const miFoto = usuarioActual.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${miUid}`;
+
+        if (typeof abrirChatConUsuario === "function") {
+          abrirChatConUsuario(miUid, `${miNombre} (Tú)`, miFoto);
+          
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Tu espacio de notas privadas 📌", "✨", "#00f2fe");
+          }
+        }
+      }
+
+      else if (accion === "sincronizar") {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Sincronizando chats con la nube...", "🔄", "#00f2fe");
+        }
+
+        if (typeof escucharListaChats === "function") {
+          escucharListaChats();
+        }
+
+        setTimeout(() => {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Aplicación actualizada y conectada ✨", "✅", "#00f2fe");
+          }
+        }, 1000);
+      }
+
+      // --- OPCIONES PANTALLA MI PERFIL ---
+      else if (accion === "cambiar-password") {
+        if (typeof cambiarPassword === "function") {
+          cambiarPassword();
+        } else if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Abriendo cambio de contraseña...", "🔑", "#00f2fe");
+        }
+      }
+
+      else if (accion === "cerrar-sesion") {
+        if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+          if (typeof auth !== "undefined") {
+            auth.signOut().then(() => {
+              window.location.reload();
+            });
+          }
+        }
+      }
+    });
+  });
+}
+
+// ========================================================
+// ⚙️ MANEJADOR DE ACCIONES DEL MENÚ DE CABECERA
+// ========================================================
+function asignarEventosMenuCabecera() {
+  document.querySelectorAll(".opcion-cabecera-item").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const accion = item.getAttribute("data-accion");
+      const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
+
+      // Ocultar el menú inmediatamente
+      if (menuCabeceraFlotante) menuCabeceraFlotante.classList.add("oculto");
+
+      // --- ACCIONES PANTALLA PRINCIPAL ---
+      if (accion === "mi-perfil") {
+        const pantallaPerfil = document.getElementById("pantalla-perfil") || document.querySelector(".pantalla-perfil");
+        const pantallaChats = document.getElementById("pantalla-chats") || document.querySelector(".pantalla-chats");
+
+        if (pantallaPerfil) {
+          if (typeof switchPantalla === "function") {
+            switchPantalla(pantallaPerfil, pantallaChats);
+          } else {
+            if (pantallaChats) pantallaChats.style.display = "none";
+            pantallaPerfil.style.display = "flex";
+          }
+        }
+      }
+
+      else if (accion === "modo-oscuro") {
+        const esClaro = document.body.classList.toggle("tema-claro");
+        localStorage.setItem("tema_app_pwa", esClaro ? "claro" : "oscuro");
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(
+            esClaro ? "Tema Claro activado" : "Tema Oscuro activado",
+            esClaro ? "☀️" : "🌙",
+            "#00f2fe"
+          );
+        }
+      }
+
+      else if (accion === "mensajes-guardados") {
+        if (!miUid) return;
+
+        const miNombre = usuarioActual.displayName || "Mensajes Guardados";
+        const miFoto = usuarioActual.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${miUid}`;
+
+        if (typeof abrirChatConUsuario === "function") {
+          abrirChatConUsuario(miUid, `${miNombre} (Tú)`, miFoto);
+          
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Tu espacio de notas privadas 📌", "✨", "#00f2fe");
+          }
+        }
+      }
+
+      else if (accion === "sincronizar") {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Sincronizando chats con la nube...", "🔄", "#00f2fe");
+        }
+
+        if (typeof escucharListaChats === "function") {
+          escucharListaChats();
+        }
+
+        setTimeout(() => {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Aplicación actualizada y conectada ✨", "✅", "#00f2fe");
+          }
+        }, 1000);
+      }
+
+      // --- ACCIONES PANTALLA DE MI PERFIL ---
+      else if (accion === "cambiar-password") {
+        if (typeof cambiarPassword === "function") {
+          cambiarPassword();
+        } else if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Función de cambiar contraseña activa.", "🔑", "#00f2fe");
+        }
+      }
+
+      else if (accion === "cerrar-sesion") {
+        if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+          if (typeof auth !== "undefined") {
+            auth.signOut().then(() => {
+              window.location.reload();
+            });
+          }
+        }
+      }
+    });
   });
 }
 
