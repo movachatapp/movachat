@@ -1536,7 +1536,7 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
     else if (accion === "reenviar") {
       if (textoMensaje) {
         const esMio = nodoMensaje ? nodoMensaje.classList.contains("enviado") : false;
-        
+
         // 1. Si el mensaje YA venía reenviado, conservamos el autor original
         const tagReenviadoPrevio = nodoMensaje ? nodoMensaje.querySelector(".mensaje-etiqueta-reenviado b") : null;
         let autorOriginal = tagReenviadoPrevio ? tagReenviadoPrevio.textContent.trim() : null;
@@ -1591,8 +1591,8 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
 
       // 2. Capturar el ID del mensaje
-      const idParaBorrar = msgId 
-        || (nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null) 
+      const idParaBorrar = msgId
+        || (nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null)
         || (menuFlotante ? menuFlotante.dataset.msgId : null);
 
       const elementoBurbuja = nodoMensaje || (idParaBorrar ? document.querySelector(`[data-msg-id="${idParaBorrar}"]`) : null);
@@ -1624,8 +1624,8 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       const contactoUid = window.contactoActivoUid;
 
       if (miUid && contactoUid) {
-        const chatId = typeof obtenerChatId === "function" 
-          ? obtenerChatId(miUid, contactoUid) 
+        const chatId = typeof obtenerChatId === "function"
+          ? obtenerChatId(miUid, contactoUid)
           : [miUid, contactoUid].sort().join("_");
 
         const mensajeRef = ref(db, `chats/${chatId}/mensajes/${idParaBorrar}`);
@@ -1919,16 +1919,15 @@ function asignarEventosMenuCabecera() {
 
       // --- OPCIONES PANTALLA PRINCIPAL ---
       if (accion === "mi-perfil") {
-        const pantallaPerfil = document.getElementById("pantalla-perfil") || document.querySelector(".pantalla-perfil");
-        const pantallaChats = document.getElementById("pantalla-chats") || document.querySelector(".pantalla-chats");
+        // Busca el botón de Perfil en la barra de navegación inferior y lo presiona
+        const btnPerfilNav = document.getElementById("btn-nav-perfil") ||
+          document.getElementById("btn-perfil") ||
+          document.querySelector('.nav-item[data-target="pantalla-perfil"]');
 
-        if (pantallaPerfil) {
-          if (typeof switchPantalla === "function") {
-            switchPantalla(pantallaPerfil, pantallaChats);
-          } else {
-            if (pantallaChats) pantallaChats.style.display = "none";
-            pantallaPerfil.style.display = "flex";
-          }
+        if (btnPerfilNav) {
+          btnPerfilNav.click();
+        } else if (typeof cargarPerfilUsuario === "function") {
+          cargarPerfilUsuario();
         }
       }
 
@@ -1953,7 +1952,7 @@ function asignarEventosMenuCabecera() {
 
         if (typeof abrirChatConUsuario === "function") {
           abrirChatConUsuario(miUid, `${miNombre} (Tú)`, miFoto);
-          
+
           if (typeof mostrarAvisoPremium === "function") {
             mostrarAvisoPremium("Tu espacio de notas privadas 📌", "✨", "#00f2fe");
           }
@@ -2011,7 +2010,7 @@ function asignarEventosMenuCabecera() {
       }
     });
   });
-} 
+}
 
 // Cierre automático al tocar fuera
 document.addEventListener("click", () => {
@@ -4622,7 +4621,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   // ↪️ VERIFICAR SI HAY UN PAQUETE DE REENVÍO PENDIENTE
   if (window.objetoPendienteReenviar) {
     const cajaEntrada = document.getElementById("input-chat-privado") || (typeof inputChat !== "undefined" ? inputChat : null);
-    
+
     window.mensajeReenviadoActivo = { ...window.objetoPendienteReenviar };
     window.objetoPendienteReenviar = null;
 
@@ -4638,7 +4637,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
 
         // 🎯 Buscar el contenedor principal del pie de chat para ponerse justo arriba
         const pieDeChat = cajaEntrada.closest(".footer-chat") || cajaEntrada.closest(".caja-input-privado") || cajaEntrada.parentElement.parentElement;
-        
+
         if (pieDeChat && pieDeChat.parentNode) {
           pieDeChat.parentNode.insertBefore(vistaPreviaReenvio, pieDeChat);
         } else if (cajaEntrada.parentElement) {

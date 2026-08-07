@@ -2997,3 +2997,31 @@ body {
   backdrop-filter: blur(8px);
   animation: fadeInDown 0.2s ease-out;
 }
+
+/* ========================================================
+   ☀️ ESTILOS PARA TEMA CLARO
+   ======================================================== */
+body.tema-claro {
+  background-color: #f0f2f5 !important;
+  color: #1c1e21 !important;
+}
+
+body.tema-claro .pantalla-chats,
+body.tema-claro .cabecera-app,
+body.tema-claro .tarjeta-chat,
+body.tema-claro .menu-desplegable,
+body.tema-claro .barra-navegacion {
+  background-color: #ffffff !important;
+  color: #1c1e21 !important;
+  border-color: #e4e6eb !important;
+}
+
+body.tema-claro .nombre-contacto,
+body.tema-claro .titulo-app,
+body.tema-claro .opcion-cabecera-item span {
+  color: #050505 !important;
+}
+
+body.tema-claro .ultimo-mensaje {
+  color: #65676b !important;
+}
