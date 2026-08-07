@@ -5199,195 +5199,131 @@ if (btnVolverChat) {
 }
 
 // ========================================================
-// 🔕 LÓGICA DE SILENCIAR CHAT CON MODAL TEMPORAL
+// 🔕 MÓDULO INTEGRADO DE SILENCIO DE CHATS (AISLADO)
 // ========================================================
-const btnSilenciarMenu = document.getElementById("btn-silenciar-chat") || 
-                         document.querySelector('[data-accion="silenciar"]');
-const modalSilenciar = document.getElementById("modal-silenciar-chat");
-const btnCancelarSilencio = document.getElementById("btn-cancelar-silencio");
-const btnConfirmarSilencio = document.getElementById("btn-confirmar-silencio");
+(() => {
+  // 1. ACTUALIZAR INDICADOR VISUAL DE SILENCIO
+  window.actualizarEstadoSilencioUI = function (chatUid, estaSilenciado) {
+    const tarjetas = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
 
-// 1. Abrir Modal al presionar en el menú
-if (btnSilenciarMenu && modalSilenciar) {
-  btnSilenciarMenu.addEventListener("click", (e) => {
-    e.stopPropagation();
+    tarjetas.forEach((tarjeta) => {
+      const uidTarjeta = tarjeta.dataset.uid || tarjeta.dataset.id;
+      const elementoNombre = tarjeta.querySelector(".chat-nombre") || tarjeta.querySelector(".nombre-contacto");
+      const nombreTexto = elementoNombre ? elementoNombre.textContent.trim() : "";
 
-    // Ocultar el menú de 3 puntos
-    const menuCtx = document.getElementById("menu-contextual-chat") || document.querySelector(".menu-contextual");
-    if (menuCtx) menuCtx.classList.add("oculto");
+      const esCoincidencia = (uidTarjeta && uidTarjeta === chatUid) ||
+        (nombreTexto && nombreTexto.toLowerCase().includes(chatUid.toLowerCase()));
 
-    // Mostrar modal
-    modalSilenciar.classList.remove("oculto");
-  });
-}
+      if (esCoincidencia) {
+        let iconoSilencio = tarjeta.querySelector(".indicador-silencio-neon");
 
-// 2. Cerrar Modal
-if (btnCancelarSilencio && modalSilenciar) {
-  btnCancelarSilencio.addEventListener("click", () => {
-    modalSilenciar.classList.add("oculto");
-  });
-}
+        if (estaSilenciado) {
+          tarjeta.classList.add("chat-silenciado-zona");
 
-// 3. Confirmar Elección
-if (btnConfirmarSilencio && modalSilenciar) {
-  btnConfirmarSilencio.addEventListener("click", () => {
-    const seleccion = document.querySelector('input[name="tiempo_silencio"]:checked');
-    const tiempo = seleccion ? seleccion.value : "30m";
+          if (!iconoSilencio && elementoNombre) {
+            const span = document.createElement("span");
+            span.className = "indicador-silencio-neon";
+            span.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.856 18 12.003 18 8a6 6 0 0 0-6-6 5.96 5.96 0 0 0-3.328 .999"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`;
+            elementoNombre.appendChild(span);
+          }
+        } else {
+          tarjeta.classList.remove("chat-silenciado-zona");
+          if (iconoSilencio) iconoSilencio.remove();
+        }
+      }
+    });
+  };
 
-    // Calcular fecha exacta de expiración
-    let expiraEn = null;
+  // 2. VERIFICAR SI EL SILENCIO EXPIRO
+  window.comprobarSilencioChat = function (chatUid) {
+    const registro = localStorage.getItem(`silenciado_${chatUid}`);
+    if (!registro) return false;
+
+    if (registro === "siempre" || registro === "indefinido") return true;
+
+    const fechaExpiracion = new Date(registro);
     const ahora = new Date();
 
-    if (tiempo === "30m") expiraEn = new Date(ahora.getTime() + 30 * 60000);
-    else if (tiempo === "1h") expiraEn = new Date(ahora.getTime() + 60 * 60000);
-    else if (tiempo === "24h") expiraEn = new Date(ahora.getTime() + 24 * 60 * 60000);
-    else if (tiempo === "siempre") expiraEn = "indefinido";
+    if (ahora > fechaExpiracion) {
+      localStorage.removeItem(`silenciado_${chatUid}`);
+      window.actualizarEstadoSilencioUI(chatUid, false);
+      return false;
+    }
 
-    // Guardar preferencia (puedes vincularlo a Firebase o localStorage)
-    const chatActivoId = window.contactoActivoUid || "chat_actual";
-    localStorage.setItem(`silenciado_${chatActivoId}`, expiraEn ? expiraEn.toString() : "");
+    return true;
+  };
 
-    modalSilenciar.classList.add("oculto");
+  // 3. DETECTAR CLIC EN "SILENCIAR CHAT"
+  document.addEventListener("click", (e) => {
+    const btnSilenciar = e.target.closest('[data-accion="silenciar"]') ||
+      e.target.closest('#btn-silenciar-chat') ||
+      (e.target.textContent && e.target.textContent.includes("Silenciar"));
 
-    // Feedback visual
-    const textoTiempo = tiempo === "siempre" ? "indefinidamente" : `por ${tiempo}`;
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Chat silenciado ${textoTiempo} 🔕`, "🔇", "#00f2fe");
+    if (btnSilenciar) {
+      e.stopPropagation();
+
+      const menuContextual = document.getElementById("menu-contextual-chat") ||
+        document.getElementById("menu-desplegable-cabecera");
+      if (menuContextual) menuContextual.classList.add("oculto");
+
+      const modalSilenciar = document.getElementById("modal-silenciar-chat");
+      if (modalSilenciar) modalSilenciar.classList.remove("oculto");
     }
   });
-}
 
-// ========================================================
-// 🔕 1. ACTUALIZAR INDICADOR VISUAL DE SILENCIO EN TARJETA CHAT
-// ========================================================
-function actualizarEstadoSilencioUI(chatUid, estaSilenciado) {
-  const tarjetas = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
-  
-  tarjetas.forEach((tarjeta) => {
-    const uidTarjeta = tarjeta.dataset.uid || tarjeta.dataset.id;
-    const elementoNombre = tarjeta.querySelector(".chat-nombre") || tarjeta.querySelector(".nombre-contacto");
-    const nombreTexto = elementoNombre ? elementoNombre.textContent.trim() : "";
+  // 4. ACCIÓN CANCELAR EN MODAL
+  document.addEventListener("click", (e) => {
+    if (e.target.id === "btn-cancelar-silencio" || e.target.closest("#btn-cancelar-silencio")) {
+      document.getElementById("modal-silenciar-chat")?.classList.add("oculto");
+    }
+  });
 
-    const esCoincidencia = (uidTarjeta && uidTarjeta === chatUid) || 
-                           (nombreTexto && nombreTexto.toLowerCase().includes(chatUid.toLowerCase()));
+  // 5. ACCIÓN CONFIRMAR EN MODAL
+  document.addEventListener("click", (e) => {
+    if (e.target.id === "btn-confirmar-silencio" || e.target.closest("#btn-confirmar-silencio")) {
+      const seleccion = document.querySelector('input[name="tiempo_silencio"]:checked');
+      const tiempo = seleccion ? seleccion.value : "30m";
 
-    if (esCoincidencia) {
-      let iconoSilencio = tarjeta.querySelector(".indicador-silencio-neon");
+      const tituloChatActivo = document.querySelector(".amigo-nombre-chat")?.textContent.trim() ||
+        window.contactoActivoUid ||
+        "chat_actual";
 
-      if (estaSilenciado) {
-        tarjeta.classList.add("chat-silenciado-zona");
+      let expiraEn = "siempre";
+      const ahora = new Date();
 
-        if (!iconoSilencio && elementoNombre) {
-          const span = document.createElement("span");
-          span.className = "indicador-silencio-neon";
-          span.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.856 18 12.003 18 8a6 6 0 0 0-6-6 5.96 5.96 0 0 0-3.328 .999"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`;
-          elementoNombre.appendChild(span);
-        }
-      } else {
-        tarjeta.classList.remove("chat-silenciado-zona");
-        if (iconoSilencio) iconoSilencio.remove();
+      if (tiempo === "30m") expiraEn = new Date(ahora.getTime() + 30 * 60000).toString();
+      else if (tiempo === "1h") expiraEn = new Date(ahora.getTime() + 60 * 60000).toString();
+      else if (tiempo === "24h") expiraEn = new Date(ahora.getTime() + 24 * 60 * 60000).toString();
+
+      localStorage.setItem(`silenciado_${tituloChatActivo}`, expiraEn);
+
+      document.getElementById("modal-silenciar-chat")?.classList.add("oculto");
+
+      window.actualizarEstadoSilencioUI(tituloChatActivo, true);
+
+      const textoTiempo = tiempo === "siempre" ? "indefinidamente" : `por ${tiempo}`;
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(`Chat silenciado ${textoTiempo} 🔕`, "🔇", "#00f2fe");
       }
     }
   });
-}
 
-// ========================================================
-// 🔕 2. VERIFICAR SI EL SILENCIO DEL CHAT SIGUE ACTIVO O EXPIRO
-// ========================================================
-function comprobarSilencioChat(chatUid) {
-  const registro = localStorage.getItem(`silenciado_${chatUid}`);
-  if (!registro) return false;
+  // 6. VERIFICAR SILENCIOS AL CARGAR
+  window.verificarTodosLosSilencios = function () {
+    const tarjetasChat = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
 
-  if (registro === "siempre" || registro === "indefinido") return true;
+    tarjetasChat.forEach((tarjeta) => {
+      const elNombre = tarjeta.querySelector(".chat-nombre") || tarjeta.querySelector(".nombre-contacto");
+      if (!elNombre) return;
 
-  const fechaExpiracion = new Date(registro);
-  const ahora = new Date();
+      const nombreChat = elNombre.textContent.trim();
+      const uidChat = tarjeta.dataset.uid || tarjeta.dataset.id || nombreChat;
 
-  if (ahora > fechaExpiracion) {
-    localStorage.removeItem(`silenciado_${chatUid}`);
-    actualizarEstadoSilencioUI(chatUid, false);
-    return false;
-  }
+      const silenciado = window.comprobarSilencioChat(nombreChat) || window.comprobarSilencioChat(uidChat);
+      window.actualizarEstadoSilencioUI(nombreChat, silenciado);
+    });
+  };
 
-  return true;
-}
-
-// ========================================================
-// 🔕 3. MÓDULO INTEGRADO DE ACCIONES Y MODAL DE SILENCIO
-// ========================================================
-
-// ABRIR MODAL DESDE MENÚ DE 3 PUNTOS
-document.addEventListener("click", (e) => {
-  const btnSilenciar = e.target.closest('[data-accion="silenciar"]') || 
-                       e.target.closest('#btn-silenciar-chat') ||
-                       (e.target.textContent && e.target.textContent.includes("Silenciar"));
-
-  if (btnSilenciar) {
-    e.stopPropagation();
-
-    const menuContextual = document.getElementById("menu-contextual-chat") || 
-                           document.getElementById("menu-desplegable-cabecera");
-    if (menuContextual) menuContextual.classList.add("oculto");
-
-    const modalSilenciar = document.getElementById("modal-silenciar-chat");
-    if (modalSilenciar) modalSilenciar.classList.remove("oculto");
-  }
-});
-
-// BOTÓN CANCELAR EN MODAL
-const btnCancelarSilencio = document.getElementById("btn-cancelar-silencio");
-if (btnCancelarSilencio) {
-  btnCancelarSilencio.addEventListener("click", () => {
-    document.getElementById("modal-silenciar-chat")?.classList.add("oculto");
-  });
-}
-
-// CONFIRMAR Y GUARDAR SILENCIO
-const btnConfirmarSilencio = document.getElementById("btn-confirmar-silencio");
-if (btnConfirmarSilencio) {
-  btnConfirmarSilencio.addEventListener("click", () => {
-    const seleccion = document.querySelector('input[name="tiempo_silencio"]:checked');
-    const tiempo = seleccion ? seleccion.value : "30m";
-
-    const tituloChatActivo = document.querySelector(".amigo-nombre-chat")?.textContent.trim() || 
-                             window.contactoActivoUid || 
-                             "chat_actual";
-
-    let expiraEn = "siempre";
-    const ahora = new Date();
-
-    if (tiempo === "30m") expiraEn = new Date(ahora.getTime() + 30 * 60000).toString();
-    else if (tiempo === "1h") expiraEn = new Date(ahora.getTime() + 60 * 60000).toString();
-    else if (tiempo === "24h") expiraEn = new Date(ahora.getTime() + 24 * 60 * 60000).toString();
-
-    localStorage.setItem(`silenciado_${tituloChatActivo}`, expiraEn);
-
-    document.getElementById("modal-silenciar-chat")?.classList.add("oculto");
-
-    actualizarEstadoSilencioUI(tituloChatActivo, true);
-
-    const textoTiempo = tiempo === "siempre" ? "indefinidamente" : `por ${tiempo}`;
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Chat silenciado ${textoTiempo} 🔕`, "🔇", "#00f2fe");
-    }
-  });
-}
-
-// REVISIÓN AUTOMÁTICA AL ABRIR LA APP
-function verificarTodosLosSilencios() {
-  const tarjetasChat = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
-
-  tarjetasChat.forEach((tarjeta) => {
-    const elNombre = tarjeta.querySelector(".chat-nombre") || tarjeta.querySelector(".nombre-contacto");
-    if (!elNombre) return;
-
-    const nombreChat = elNombre.textContent.trim();
-    const uidChat = tarjeta.dataset.uid || tarjeta.dataset.id || nombreChat;
-
-    const silenciado = comprobarSilencioChat(nombreChat) || comprobarSilencioChat(uidChat);
-    actualizarEstadoSilencioUI(nombreChat, silenciado);
-  });
-}
-
-document.addEventListener("DOMContentLoaded", verificarTodosLosSilencios);
-setTimeout(verificarTodosLosSilencios, 1000);
+  document.addEventListener("DOMContentLoaded", window.verificarTodosLosSilencios);
+  setTimeout(window.verificarTodosLosSilencios, 1000);
+})();
