@@ -3787,7 +3787,17 @@ function abrirMenuContextualMova(x, y, tarjeta) {
   if (!menuTarjetas) return;
 
   tarjetaChatSeleccionada = tarjeta;
-  const esFijado = tarjeta.classList.contains("tarjeta-fijada");
+
+  // 📌 Leer si está fijado tanto por clase CSS como por LocalStorage/Dataset
+  const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
+  const esFijado = tarjeta.classList.contains("tarjeta-fijada") || localStorage.getItem(`fijado_${contactoUid}`) === "true";
+
+  // Sincronizar la clase visual por si acaso
+  if (esFijado) {
+    tarjeta.classList.add("tarjeta-fijada");
+  } else {
+    tarjeta.classList.remove("tarjeta-fijada");
+  }
 
   // 📐 Referencia del contenedor principal de forma segura
   const elContenedor = document.querySelector(".contenedor-chat") || document.body;
@@ -3809,19 +3819,19 @@ function abrirMenuContextualMova(x, y, tarjeta) {
   if (posY + altoMenu > marcoApp.height) {
     posY = marcoApp.height - altoMenu - 10;
   }
-  if (posY < 10) posY = 10; // 🚀 Control de seguridad para el borde superior
+  if (posY < 10) posY = 10;
 
   // 📍 Posicionamiento absoluto seguro
   menuTarjetas.style.position = "absolute";
   menuTarjetas.style.top = `${posY}px`;
   menuTarjetas.style.left = `${posX}px`;
   menuTarjetas.style.zIndex = "99999";
-  menuTarjetas.style.display = "block"; // Rompe el bloqueo de pantalla
+  menuTarjetas.style.display = "block";
 
+  // ✏️ Texto dinámico según el estado real
   if (btnCtxFijar) {
     btnCtxFijar.innerHTML = `<i data-lucide="pin"></i> <span>${esFijado ? 'Desfijar chat' : 'Fijar chat arriba'}</span>`;
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente el icono dentro de btnCtxFijar
     if (window.lucide) {
       window.lucide.createIcons({
         targets: [btnCtxFijar]
@@ -3866,7 +3876,7 @@ if (btnCtxCerrar) {
   };
 }
 
-// 📌 Lógica para Fijar / Desfijar Chat conectada a Firebase
+// 📌 Lógica para Fijar / Desfijar Chat conectada a Firebase (Respuesta a 1 Clic)
 async function alternarFijarChat(tarjeta) {
   if (!tarjeta) return;
 
@@ -3878,52 +3888,53 @@ async function alternarFijarChat(tarjeta) {
 
   const cabecera = tarjeta.querySelector(".chat-cabecera");
   let pinIcono = tarjeta.querySelector(".indicador-pin-neon");
-  const esFijado = tarjeta.classList.contains("tarjeta-fijada");
+  
+  // Evaluar estado real
+  const esFijado = tarjeta.classList.contains("tarjeta-fijada") || localStorage.getItem(`fijado_${contactoUid}`) === "true";
 
   const fijadoRef = ref(db, `fijados/${miUid}/${contactoUid}`);
 
-  try {
-    if (esFijado) {
-      // 1. Quitar fijado en Firebase
+  if (esFijado) {
+    // 🔴 DESFIJAR (Cambio visual inmediato)
+    tarjeta.classList.remove("tarjeta-fijada");
+    tarjeta.style.order = "";
+    localStorage.removeItem(`fijado_${contactoUid}`);
+    if (pinIcono) pinIcono.remove();
+
+    try {
       await set(fijadoRef, null);
-      localStorage.removeItem(`fijado_${contactoUid}`);
-
-      tarjeta.classList.remove("tarjeta-fijada");
-      tarjeta.style.order = "";
-      if (pinIcono) pinIcono.remove();
-
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Chat desfijado", "📌", "#00f2fe");
       }
-    } else {
-      // 2. Guardar fijado en Firebase
-      await set(fijadoRef, true);
-      localStorage.setItem(`fijado_${contactoUid}`, "true");
+    } catch (error) {
+      console.error("Error al desfijar en Firebase:", error);
+    }
+  } else {
+    // 🟢 FIJAR (Cambio visual inmediato)
+    tarjeta.classList.add("tarjeta-fijada");
+    tarjeta.style.order = "-1";
+    localStorage.setItem(`fijado_${contactoUid}`, "true");
 
-      tarjeta.classList.add("tarjeta-fijada");
-      tarjeta.style.order = "-1";
+    if (!pinIcono && cabecera) {
+      cabecera.insertAdjacentHTML(
+        "beforeend",
+        `<span class="indicador-pin-neon"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>`
+      );
 
-      if (!pinIcono && cabecera) {
-        cabecera.insertAdjacentHTML(
-          "beforeend",
-          `<span class="indicador-pin-neon"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>`
-        );
-
-        if (window.lucide) {
-          window.lucide.createIcons({
-            targets: [cabecera]
-          });
-        }
+      if (window.lucide) {
+        window.lucide.createIcons({
+          targets: [cabecera]
+        });
       }
+    }
 
+    try {
+      await set(fijadoRef, true);
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Chat fijado arriba 📌", "📌", "#00f2fe");
       }
-    }
-  } catch (error) {
-    console.error("Error al actualizar fijado en Firebase:", error);
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Error al guardar fijado.", "❌", "#ff4b2b");
+    } catch (error) {
+      console.error("Error al fijar en Firebase:", error);
     }
   }
 }
