@@ -573,6 +573,34 @@
     </nav>
   </div>
 
+  <!-- 🔕 MODAL SILENCIAR CHAT CON TIEMPOS -->
+<div class="modal-overlay oculto" id="modal-silenciar-chat">
+  <div class="modal-cristal">
+    <div class="modal-header">
+      <h3><i data-lucide="bell-off" style="color: #ff4b2b; width:18px; height:18px;"></i> Silenciar notificaciones</h3>
+      <button class="btn-cerrar-icono" id="btn-cerrar-silenciar"><i data-lucide="x"></i></button>
+    </div>
+
+    <div class="modal-body" style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;">
+      <p class="modal-label">Elige durante cuánto tiempo deseas silenciar esta conversación:</p>
+      
+      <button class="btn-primario btn-opcion-mute" data-tiempo="1m" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); justify-content: flex-start; gap: 10px;">
+        ⏱️ 1 minuto
+      </button>
+      <button class="btn-primario btn-opcion-mute" data-tiempo="1h" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); justify-content: flex-start; gap: 10px;">
+        ⏳ 1 hora
+      </button>
+      <button class="btn-primario btn-opcion-mute" data-tiempo="8h" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); justify-content: flex-start; gap: 10px;">
+        🌙 8 horas
+      </button>
+
+      <button class="btn-primario btn-opcion-mute" data-tiempo="indefinido" style="background: rgba(255, 75, 43, 0.15); border: 1px solid rgba(255, 75, 43, 0.3); color: #ff4b2b; justify-content: flex-start; gap: 10px; font-weight: bold;">
+        🔕 Siempre (Hasta reactivar)
+      </button>
+    </div>
+  </div>
+</div>
+
   <div id="toast-premium" class="toast-oculto"
     style="position: fixed; top: -100px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 360px; background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5); border-radius: 20px; padding: 16px; display: flex; align-items: center; gap: 14px; z-index: 99999; transition: top 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s; opacity: 0;">
     <div id="toast-icono-caja"
@@ -665,41 +693,6 @@
       </div>
     </div>
   </div>
-
-  <!-- 🔕 MODAL FLOTANTE: SILENCIAR CHAT -->
-<div id="modal-silenciar-chat" class="modal-mova-overlay oculto">
-  <div class="modal-mova-caja modal-silenciar-caja">
-    <div class="modal-mova-icono">🔕</div>
-    <h3 class="modal-mova-titulo">Silenciar notificaciones</h3>
-    <p class="modal-mova-texto">Selecciona por cuánto tiempo deseas pausar las alertas de este chat:</p>
-
-    <!-- Opciones de tiempo -->
-    <div class="contenedor-opciones-silencio">
-      <label class="opcion-tiempo-silencio activo">
-        <input type="radio" name="tiempo_silencio" value="30m" checked>
-        <span class="chip-tiempo">30 minutos</span>
-      </label>
-      <label class="opcion-tiempo-silencio">
-        <input type="radio" name="tiempo_silencio" value="1h">
-        <span class="chip-tiempo">1 hora</span>
-      </label>
-      <label class="opcion-tiempo-silencio">
-        <input type="radio" name="tiempo_silencio" value="24h">
-        <span class="chip-tiempo">24 horas</span>
-      </label>
-      <label class="opcion-tiempo-silencio">
-        <input type="radio" name="tiempo_silencio" value="siempre">
-        <span class="chip-tiempo">Siempre</span>
-      </label>
-    </div>
-
-    <!-- Botones de Acción -->
-    <div class="modal-mova-botones" style="margin-top: 20px;">
-      <button id="btn-cancelar-silencio" class="btn-mova-secundario">Cancelar</button>
-      <button id="btn-confirmar-silencio" class="btn-principal" style="margin-top: 0;">Silenciar</button>
-    </div>
-  </div>
-</div>
 
   <script type="module" src="app.js?v=2"></script>
   <script>
