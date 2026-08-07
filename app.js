@@ -3905,6 +3905,15 @@ function eliminarChatAnimado(tarjeta) {
   }, 300);
 }
 
+// ⚡ FUNCIÓN DEBOUNCE PARA REDUCIR USO DE CPU Y PETICIONES A FIREBASE
+function crearDebounce(funcion, espera = 300) {
+  let temporizador;
+  return function (...parametros) {
+    clearTimeout(temporizador);
+    temporizador = setTimeout(() => funcion.apply(this, parametros), espera);
+  };
+}
+
 // ========================================================
 // 13. GESTIÓN DE CONTACTOS Y MODALES (UNIFICADO Y CORREGIDO)
 // ========================================================

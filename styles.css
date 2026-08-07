@@ -3546,3 +3546,23 @@ body.tema-claro .nombre-sugerencia-txt {
     max-height: 160px !important;
   }
 }
+
+/* ========================================================
+   🚀 OPTIMIZACIÓN GPU Y BATERÍA (RENDIMIENTO MÓVIL)
+   ======================================================== */
+
+/* Aceleración por Hardware para evitar sobrecalentamiento */
+.modal-overlay,
+.modal-cristal,
+.sugerencias-contactos-caja,
+.item-contacto-fila,
+.btn-opcion-temporal {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+/* Suavizado de desplazamiento fluido en móviles */
+.modal-cristal {
+  -webkit-overflow-scrolling: touch;
+}
