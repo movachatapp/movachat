@@ -5164,3 +5164,36 @@ window.addEventListener('appinstalled', () => {
   console.log('🟢 MovaChat instalada exitosamente en el dispositivo.');
   eventoInstalacionPWA = null;
 });
+
+// ========================================================
+// 🛡️ REPARACIÓN DE NAVEGACIÓN: MOSTRAR ENCABEZADO EN INICIO
+// ========================================================
+function mostrarEncabezadoPrincipal() {
+  const encabezado = document.querySelector(".encabezado-inicio");
+  if (encabezado) {
+    encabezado.classList.remove("oculto");
+    encabezado.style.display = "flex";
+  }
+}
+
+// 1. Escuchar los clics en los botones de navegación inferior
+document.querySelectorAll(".menu-flotante .menu-btn, .barra-navegacion .nav-item").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    mostrarEncabezadoPrincipal();
+  });
+});
+
+// 2. Corregir el botón "Volver" del Chat Privado
+const btnVolverChat = document.querySelector(".chat-privado-header .btn-volver") || document.getElementById("btn-volver-chat");
+
+if (btnVolverChat) {
+  btnVolverChat.addEventListener("click", () => {
+    const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
+    const pantallaChats = document.getElementById("pantalla-chats");
+
+    if (pantallaChatPrivado) pantallaChatPrivado.style.display = "none";
+    if (pantallaChats) pantallaChats.style.display = "flex";
+
+    mostrarEncabezadoPrincipal();
+  });
+}
