@@ -1522,35 +1522,51 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // ↪️ OPCIÓN 3: REENVIAR MENSAJE (Guarda texto, autor original y redirige)
+    // ↪️ OPCIÓN 3: REENVIAR MENSAJE (Captura el nombre exacto del autor)
     else if (accion === "reenviar") {
-      if (textoMensaje && nodoMensaje) {
-        // Identificar si el mensaje original era mío o del contacto
-        const esMio = nodoMensaje.classList.contains("enviado");
-        const elemNombreContacto = document.querySelector(".amigo-nombre-chat");
-        const nombreContacto = elemNombreContacto ? elemNombreContacto.textContent.trim() : "Contacto";
+      if (textoMensaje) {
+        const esMio = nodoMensaje ? nodoMensaje.classList.contains("enviado") : false;
+        
+        // 1. Si el mensaje YA venía reenviado, conservamos el autor original
+        const tagReenviadoPrevio = nodoMensaje ? nodoMensaje.querySelector(".mensaje-etiqueta-reenviado b") : null;
+        let autorOriginal = tagReenviadoPrevio ? tagReenviadoPrevio.textContent.trim() : null;
 
-        const autorOriginal = esMio ? "Tú" : nombreContacto;
+        // 2. Si es la primera vez que se reenvía, obtenemos el nombre actual
+        if (!autorOriginal) {
+          if (esMio) {
+            autorOriginal = "Tú";
+          } else {
+            const elemNombreContacto = document.querySelector(".amigo-nombre-chat");
+            autorOriginal = elemNombreContacto ? elemNombreContacto.textContent.trim() : "Contacto";
+          }
+        }
 
-        // Guardar el paquete completo de reenvío en memoria global
+        // 3. Guardar el paquete en memoria global
         window.objetoPendienteReenviar = {
           texto: textoMensaje,
-          autorOriginal: autorOriginal,
-          esReenviado: true
+          autorOriginal: autorOriginal
         };
 
-        // Cerrar chat actual para ir a la lista de contactos
-        const btnCerrarChat = document.getElementById("btn-cerrar-chat") || document.querySelector(".btn-volver");
-        if (btnCerrarChat) {
-          btnCerrarChat.click();
+        // 4. Volver a la lista de chats
+        const pantallaChat = document.getElementById("pantalla-chat-privado") || document.querySelector(".pantalla-chat-privado");
+        const btnVolver = document.querySelector(".btn-volver") || document.getElementById("btn-cerrar-chat");
+
+        if (btnVolver) {
+          btnVolver.click();
+        } else if (pantallaChat) {
+          pantallaChat.classList.remove("pantalla-completa");
+          pantallaChat.style.display = "none";
+          if (typeof pantallaChats !== "undefined" && pantallaChats) {
+            pantallaChats.style.display = "flex";
+          }
         }
 
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Mensaje de ${autorOriginal} listo. Selecciona el chat destino.`, "↪️", "#00f2fe");
+          mostrarAvisoPremium(`Mensaje de ${autorOriginal} listo. Selecciona el chat ↪️`, "✨", "#00f2fe");
         }
       } else {
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Este tipo de contenido no se puede reenviar.", "⚠️", "#ff4b2b");
+          mostrarAvisoPremium("No hay texto para reenviar.", "⚠️", "#ff4b2b");
         }
       }
     }
