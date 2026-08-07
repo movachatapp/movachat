@@ -2999,39 +2999,131 @@ body {
 }
 
 /* ========================================================
-   🎨 TEMA CLARO PREMIUM (Diseño Pulido y Alto Contraste)
+   💎 TEMA CLARO PREMIUM: GLASSMORPHISM & ALTO CONTRASTE
    ======================================================== */
 
-/* 1. Fondo general: Bajo de intensidad (Gris suave neutro) */
+/* 1. Fondo General y Estructura Base */
 body.tema-claro {
-  background-color: #ebf0f5 !important;
+  background: #e2e8f0 !important;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.12) 0px, transparent 50%) !important;
   color: #0f172a !important;
 }
 
-/* 2. Cabecera e Iconos Superiores */
+/* Evita que la barra inferior solape el contenido final de las pantallas */
+body.tema-claro .pantalla,
+body.tema-claro #pantalla-perfil,
+body.tema-claro #pantalla-chats,
+body.tema-claro .contenedor-principal {
+  padding-bottom: 110px !important;
+}
+
+/* 2. Cabecera, Títulos e Iconos Globale */
 body.tema-claro .cabecera-app,
-body.tema-claro .titulo-app {
+body.tema-claro .titulo-app,
+body.tema-claro h1, 
+body.tema-claro h2, 
+body.tema-claro h3, 
+body.tema-claro h4, 
+body.tema-claro h5, 
+body.tema-claro h6 {
   color: #0f172a !important;
+  font-weight: 700 !important;
 }
 
-body.tema-claro .icono-btn,
 body.tema-claro [data-lucide],
-body.tema-claro .cabecera-app svg {
+body.tema-claro .icono-btn,
+body.tema-claro svg {
   color: #1e293b !important;
   stroke: #1e293b !important;
 }
 
-/* 3. Buscador: Fondo blanco limpio con texto oscuro legibles */
-body.tema-claro .caja-busqueda,
-body.tema-claro .input-busqueda-contenedor {
-  background-color: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-  border-radius: 12px !important;
+/* 3. Definición de Tarjetas Glassmorphism con Bordes Grises */
+body.tema-claro .tarjeta,
+body.tema-claro .tarjeta-chat,
+body.tema-claro .item-chat,
+body.tema-claro .tarjeta-estado,
+body.tema-claro .seccion-perfil,
+body.tema-claro .bloque-ajuste,
+body.tema-claro .menu-desplegable {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(148, 163, 184, 0.45) !important; /* Borde gris definido */
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06) !important;
+  border-radius: 20px !important;
 }
 
-body.tema-claro input,
-body.tema-claro .input-busqueda {
-  background-color: transparent !important;
+/* 4. Pantalla de Perfil: Textos, Nombres y Estados */
+body.tema-claro .nombre-perfil,
+body.tema-claro #nombre-usuario,
+body.tema-claro .usuario-nombre,
+body.tema-claro .titulo-seccion,
+body.tema-claro .etiqueta-ajuste {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  text-shadow: none !important;
+}
+
+body.tema-claro .estado-usuario,
+body.tema-claro .subtitulo,
+body.tema-claro .texto-secundario,
+body.tema-claro p,
+body.tema-claro span:not(.btn-filtro) {
+  color: #334155 !important; /* Gris oscuro para máxima legibilidad */
+}
+
+/* 5. Selector de Aura y Botones Secundarios */
+body.tema-claro .contenedor-aura,
+body.tema-claro .selector-aura {
+  background: rgba(226, 232, 240, 0.8) !important;
+  border: 1px solid rgba(148, 163, 184, 0.5) !important;
+  border-radius: 16px !important;
+}
+
+body.tema-claro .btn-aura,
+body.tema-claro .opcion-aura {
+  color: #1e293b !important;
+  font-weight: 600 !important;
+}
+
+body.tema-claro .btn-aura.activo,
+body.tema-claro .opcion-aura.activa {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid #38bdf8 !important;
+  color: #0284c7 !important;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2) !important;
+}
+
+/* 6. Botones de Acción (Compartir, QR Pro, Limpiar) */
+body.tema-claro .btn-accion,
+body.tema-claro .btn-compartir,
+body.tema-claro .btn-qr,
+body.tema-claro .btn-limpiar,
+body.tema-claro button:not(.btn-flotante):not(.btn-filtro) {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border: 1px solid rgba(148, 163, 184, 0.4) !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05) !important;
+}
+
+body.tema-claro .btn-limpiar,
+body.tema-claro .opcion-peligro {
+  background: rgba(254, 226, 226, 0.7) !important;
+  border: 1px solid rgba(248, 113, 113, 0.4) !important;
+  color: #dc2626 !important;
+}
+
+/* 7. Buscador y Filtros (Todos / No leídos) */
+body.tema-claro .caja-busqueda,
+body.tema-claro .input-busqueda-contenedor {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(148, 163, 184, 0.5) !important;
+}
+
+body.tema-claro input {
   color: #0f172a !important;
 }
 
@@ -3039,56 +3131,29 @@ body.tema-claro input::placeholder {
   color: #64748b !important;
 }
 
-/* 4. Botones de Filtro (Todos / No leídos) */
-body.tema-claro .btn-filtro,
-body.tema-claro .pestana-filtro {
-  background-color: #e2e8f0 !important;
-  color: #475569 !important; /* Texto visible para inactivos */
-  border: none !important;
+body.tema-claro .btn-filtro {
+  background: rgba(226, 232, 240, 0.9) !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  color: #475569 !important;
   font-weight: 600 !important;
 }
 
-body.tema-claro .btn-filtro.activo,
-body.tema-claro .pestana-filtro.activa {
-  background: linear-gradient(135deg, #00c6ff, #0072ff) !important;
-  color: #ffffff !important; /* Texto blanco contrastado sobre azul */
-  box-shadow: 0 2px 8px rgba(0, 114, 255, 0.25) !important;
-}
-
-/* 5. Tarjetas de Chat y Estado */
-body.tema-claro .item-chat,
-body.tema-claro .tarjeta-chat,
-body.tema-claro .tarjeta-estado {
-  background-color: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04) !important;
-}
-
-body.tema-claro .nombre-contacto,
-body.tema-claro .titulo-estado {
-  color: #0f172a !important;
-  font-weight: 700 !important;
-}
-
-body.tema-claro .ultimo-mensaje,
-body.tema-claro .subtitulo {
-  color: #64748b !important;
-}
-
-/* 6. Botón Flotante (+) */
-body.tema-claro .btn-flotante,
-body.tema-claro #btn-nuevo-chat {
-  background: linear-gradient(135deg, #00c6ff, #0072ff) !important;
+body.tema-claro .btn-filtro.activo {
+  background: linear-gradient(135deg, #0284c7, #2563eb) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(0, 114, 255, 0.35) !important;
+  border: none !important;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.3) !important;
 }
 
-/* 7. Barra Inferior de Navegación (Adaptada al tema claro) */
+/* 8. Barra Inferior de Navegación (Flotante y Definida) */
 body.tema-claro .barra-navegacion,
-body.tema-claro footer {
-  background-color: #ffffff !important;
-  border-top: 1px solid #e2e8f0 !important;
-  box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.05) !important;
+body.tema-claro footer,
+body.tema-claro #barra-navegacion {
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(148, 163, 184, 0.4) !important;
+  box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.08) !important;
 }
 
 body.tema-claro .nav-item,
@@ -3097,8 +3162,11 @@ body.tema-claro .btn-nav {
 }
 
 body.tema-claro .nav-item.activo,
-body.tema-claro .btn-nav.activo {
-  color: #0072ff !important;
+body.tema-claro .btn-nav.activo,
+body.tema-claro .nav-item.activo span,
+body.tema-claro .btn-nav.activo span {
+  color: #0284c7 !important;
+  font-weight: 700 !important;
 }
 
 body.tema-claro .nav-item [data-lucide],
@@ -3108,5 +3176,5 @@ body.tema-claro .btn-nav [data-lucide] {
 
 body.tema-claro .nav-item.activo [data-lucide],
 body.tema-claro .btn-nav.activo [data-lucide] {
-  stroke: #0072ff !important;
+  stroke: #0284c7 !important;
 }
