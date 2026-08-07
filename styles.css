@@ -3524,3 +3524,33 @@ body.tema-claro .item-sugerencia-usuario:hover {
 body.tema-claro .nombre-sugerencia-txt {
   color: #0f172a !important;
 }
+
+/* ========================================================
+   📱 OPTIMIZACIÓN PARA TECLADO MÓVIL EN MODALES
+   ======================================================== */
+
+@media (max-width: 600px) {
+  /* Alinea los modales hacia arriba en móviles */
+  .modal-overlay {
+    align-items: flex-start !important;
+    padding-top: 40px !important;
+    padding-bottom: 20px !important;
+  }
+
+  /* Cuando el usuario toca un input y el teclado se activa */
+  .modal-overlay:focus-within {
+    padding-top: 15px !important;
+  }
+
+  /* Ajuste de altura máxima y scroll interno para pantallas reducidas */
+  .modal-cristal {
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+    transition: transform 0.25s ease, margin 0.25s ease;
+  }
+
+  /* Asegura que las sugerencias flotantes sigan visibles sobre el modal */
+  .sugerencias-contactos-caja {
+    max-height: 160px !important;
+  }
+}
