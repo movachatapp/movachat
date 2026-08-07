@@ -3379,3 +3379,65 @@ body.tema-claro .btn-opcion-tiempo.activo {
   border-color: #0284c7 !important;
   color: #0f172a !important;
 }
+
+/* ========================================================
+   ⏳ MODAL MENSAJES TEMPORALES POR TIEMPO
+   ======================================================== */
+
+.btn-opcion-temporal {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px 10px;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.btn-opcion-temporal small {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.btn-opcion-temporal:hover {
+  background: rgba(0, 242, 254, 0.12);
+  border-color: rgba(0, 242, 254, 0.4);
+  color: #00f2fe;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.2);
+}
+
+.btn-opcion-temporal:hover small {
+  color: rgba(0, 242, 254, 0.8);
+}
+
+.btn-opcion-temporal.activo {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(127, 0, 255, 0.25)) !important;
+  border-color: #00f2fe !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.35) !important;
+}
+
+/* --- INTEGRACIÓN TEMA CLARO --- */
+body.tema-claro .btn-opcion-temporal {
+  background: rgba(241, 245, 249, 0.8) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #0f172a !important;
+}
+
+body.tema-claro .btn-opcion-temporal small {
+  color: #64748b !important;
+}
+
+body.tema-claro .btn-opcion-temporal:hover {
+  background: rgba(2, 132, 199, 0.12) !important;
+  border-color: #0284c7 !important;
+  color: #0284c7 !important;
+}

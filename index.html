@@ -710,6 +710,48 @@
     </div>
   </div>
 
+  <!-- ⏳ MODAL PERSONALIZADO MENSAJES TEMPORALES (MOVACHAT) -->
+  <div id="modal-temporales-tiempo" class="modal-overlay oculto">
+    <div class="modal-cristal modal-silenciar-caja">
+      <div class="modal-header">
+        <h3><i data-lucide="hourglass" style="color: #00f2fe; width:18px; height:18px;"></i> Mensajes temporales</h3>
+        <button type="button" class="btn-cerrar-icono" id="btn-cerrar-modal-temporales" aria-label="Cerrar modal">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-label" id="txt-estado-temporales-actual">Selecciona cuánto tiempo durarán los mensajes antes de desaparecer:</p>
+        
+        <div class="opciones-tiempo-grid">
+          <button type="button" class="btn-opcion-temporal" data-duracion="10s">
+            <span>10 segundos</span>
+            <small>(Ultraconfidencial)</small>
+          </button>
+          
+          <button type="button" class="btn-opcion-temporal" data-duracion="5m">
+            <span>5 minutos</span>
+            <small>(Conversación rápida)</small>
+          </button>
+
+          <button type="button" class="btn-opcion-temporal" data-duracion="1h">
+            <span>1 hora</span>
+            <small>(Reunión / Trabajo)</small>
+          </button>
+          
+          <button type="button" class="btn-opcion-temporal" data-duracion="1d">
+            <span>24 horas</span>
+            <small>(Estándar)</small>
+          </button>
+        </div>
+
+        <button type="button" id="btn-desactivar-temporales-modal" class="btn-primario btn-desactivar-silencio oculto">
+          <i data-lucide="shield-off" style="width:16px; height:16px; display:inline-block; vertical-align:middle;"></i> Desactivar modo efímero
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="app.js?v=2"></script>
   <script>
     lucide.createIcons();

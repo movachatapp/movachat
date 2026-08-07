@@ -587,7 +587,7 @@ if (btnOpcionesChat) {
     // 🔕 1. TEXTO DEL BOTÓN SILENCIAR
     const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
     if (btnCtxSilenciar && contactoUid) {
-      btnCtxSilenciar.innerHTML = `<i data-lucide="bell-off"></i> Silenciar / Notificaciones`;
+      btnCtxSilenciar.innerHTML = `<i data-lucide="bell-off"></i> Silenciar / Notificacio..`;
     }
 
     // 🛡️ 2. ACTUALIZAR TEXTO Y ESTADO DEL BOTÓN BLOQUEAR EN TIEMPO REAL
@@ -1315,12 +1315,13 @@ async function enviarMensajeNuevo() {
     return;
   }
 
-  // ⏳ VERIFICAR SI EL MODO TEMPORAL ESTÁ ACTIVO EN ESTE CHAT
-  let esEfimero = false;
+  // ⏳ VERIFICAR DURACIÓN DE MODO TEMPORAL EN ESTE CHAT
+  let duracionEfimeraMs = 0;
   try {
     const tempSnap = await get(ref(db, `chats/${chatId}/config/temporales`));
     if (tempSnap.exists()) {
-      esEfimero = tempSnap.val() === true;
+      const val = tempSnap.val();
+      duracionEfimeraMs = typeof val === 'number' ? val : (val === true ? 10000 : 0);
     }
   } catch (err) {
     console.error("Error verificando temporales:", err);
@@ -1333,7 +1334,8 @@ async function enviarMensajeNuevo() {
     texto: texto,
     hora: horaFormateada,
     timestamp: Date.now(),
-    esEfimero: esEfimero,
+    esEfimero: duracionEfimeraMs > 0,
+    duracionEfimeraMs: duracionEfimeraMs,
     // ↪️ METADATOS DE REENVÍO (Lee la variable global)
     esReenviado: window.mensajeReenviadoActivo ? true : false,
     autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
@@ -3266,9 +3268,13 @@ if (btnActivarNotifModal) {
 }
 
 // ========================================================
-// ⏳ BOTÓN MENSAJES TEMPORALES (SINCRONIZADO EN FIREBASE)
+// ⏳ GESTOR DE MENSAJES TEMPORALES CON SELECCIÓN DE TIEMPO
 // ========================================================
 const btnCtxTemporales = document.getElementById("btn-ctx-temporales");
+const modalTemporalesTiempo = document.getElementById("modal-temporales-tiempo");
+const btnCerrarModalTemporales = document.getElementById("btn-cerrar-modal-temporales");
+const btnDesactivarTemporalesModal = document.getElementById("btn-desactivar-temporales-modal");
+const txtEstadoTemporalesActual = document.getElementById("txt-estado-temporales-actual");
 
 if (btnCtxTemporales) {
   btnCtxTemporales.addEventListener("click", async (e) => {
@@ -3276,31 +3282,114 @@ if (btnCtxTemporales) {
 
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
     const contactoUid = window.contactoActivoUid;
-    const elemNombre = document.querySelector(".amigo-nombre-chat");
-    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
-
     if (!miUid || !contactoUid) return;
+
     if (menuCabecera) menuCabecera.classList.add("oculto");
+
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
     const chatId = obtenerChatId(miUid, contactoUid);
     const configRef = ref(db, `chats/${chatId}/config/temporales`);
 
     try {
       const snap = await get(configRef);
-      const estaActivo = snap.exists() ? snap.val() : false;
-      const nuevoEstado = !estaActivo;
+      const tiempoConfigurado = snap.exists() ? snap.val() : 0;
+      const estaActivo = typeof tiempoConfigurado === 'number' ? tiempoConfigurado > 0 : Boolean(tiempoConfigurado);
 
-      await set(configRef, nuevoEstado);
+      if (txtEstadoTemporalesActual) {
+        txtEstadoTemporalesActual.innerHTML = estaActivo
+          ? `El modo efímero está <b>activo</b> para la conversación con ${nombreAmigo}.`
+          : `Selecciona cuánto tiempo durarán los mensajes con <b>${nombreAmigo}</b>:`;
+      }
 
-      mostrarAvisoPremium(
-        nuevoEstado
-          ? `Modo efímero activo con <b>${nombreAmigoActual}</b>. Los mensajes durarán 10s.`
-          : `Modo permanente restaurado con <b>${nombreAmigoActual}</b>.`,
-        nuevoEstado ? "⏳" : "📡",
-        "#00f2fe"
-      );
+      if (btnDesactivarTemporalesModal) {
+        if (estaActivo) {
+          btnDesactivarTemporalesModal.classList.remove("oculto");
+        } else {
+          btnDesactivarTemporalesModal.classList.add("oculto");
+        }
+      }
+
+      if (modalTemporalesTiempo) {
+        modalTemporalesTiempo.classList.remove("oculto");
+        if (window.lucide) window.lucide.createIcons({ targets: [modalTemporalesTiempo] });
+      }
     } catch (err) {
-      console.error("Error al cambiar estado de mensajes temporales:", err);
+      console.error("Error al consultar estado de temporales:", err);
+    }
+  });
+}
+
+// Evento Cerrar Modal
+if (btnCerrarModalTemporales && modalTemporalesTiempo) {
+  btnCerrarModalTemporales.onclick = () => modalTemporalesTiempo.classList.add("oculto");
+}
+
+// Evento al elegir una opción de tiempo (10s, 5m, 1h, 1d)
+document.querySelectorAll(".btn-opcion-temporal").forEach((btnTiempo) => {
+  btnTiempo.addEventListener("click", async () => {
+    const duracionClave = btnTiempo.getAttribute("data-duracion");
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = window.contactoActivoUid;
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+    if (!miUid || !contactoUid) return;
+
+    let duracionMs = 0;
+    let textoTiempo = "";
+
+    if (duracionClave === "10s") {
+      duracionMs = 10 * 1000;
+      textoTiempo = "10 segundos";
+    } else if (duracionClave === "5m") {
+      duracionMs = 5 * 60 * 1000;
+      textoTiempo = "5 minutos";
+    } else if (duracionClave === "1h") {
+      duracionMs = 60 * 60 * 1000;
+      textoTiempo = "1 hora";
+    } else if (duracionClave === "1d") {
+      duracionMs = 24 * 60 * 60 * 1000;
+      textoTiempo = "24 horas";
+    }
+
+    const chatId = obtenerChatId(miUid, contactoUid);
+    const configRef = ref(db, `chats/${chatId}/config/temporales`);
+
+    try {
+      await set(configRef, duracionMs);
+
+      if (modalTemporalesTiempo) modalTemporalesTiempo.classList.add("oculto");
+
+      mostrarAvisoPremium(`Modo efímero activo con <b>${nombreAmigo}</b>: los mensajes durarán ${textoTiempo}.`, "⏳", "#00f2fe");
+    } catch (err) {
+      console.error("Error al guardar tiempo de temporales:", err);
+    }
+  });
+});
+
+// Evento del botón "Desactivar modo efímero" dentro del Modal
+if (btnDesactivarTemporalesModal) {
+  btnDesactivarTemporalesModal.addEventListener("click", async () => {
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = window.contactoActivoUid;
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+    if (!miUid || !contactoUid) return;
+
+    const chatId = obtenerChatId(miUid, contactoUid);
+    const configRef = ref(db, `chats/${chatId}/config/temporales`);
+
+    try {
+      await set(configRef, 0);
+
+      if (modalTemporalesTiempo) modalTemporalesTiempo.classList.add("oculto");
+
+      mostrarAvisoPremium(`Modo permanente restaurado con <b>${nombreAmigo}</b>.`, "📡", "#00f2fe");
+    } catch (err) {
+      console.error("Error al desactivar temporales:", err);
     }
   });
 }
@@ -4945,10 +5034,11 @@ function escucharMensajesChat(chatId) {
           // 🛑 Ignorar mensajes de contactos bloqueados
           if (estaBloqueadoElContacto && !esMio) return;
 
-          // A) Lógica de mensajes efímeros
+          // A) Lógica de mensajes efímeros dinámica
           if (msg.esEfimero) {
+            const limiteMs = msg.duracionEfimeraMs || 10000;
             const transcurrido = Date.now() - (msg.timestamp || Date.now());
-            const tiempoRestante = 10000 - transcurrido;
+            const tiempoRestante = limiteMs - transcurrido;
 
             if (tiempoRestante <= 0) {
               set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
