@@ -3474,9 +3474,13 @@ if (btnAceptarVaciar) {
   });
 }
 
+// ========================================================
+// 🔍 LÓGICA COMPLETA DE BÚSQUEDA EN LA PANTALLA PRINCIPAL
+// ========================================================
 const btnBuscadorEncabezado = document.getElementById("btn-buscador-encabezado");
-const inputBuscadorPrincipal = document.querySelector(".input-buscador");
+const inputBuscadorPrincipal = document.querySelector(".input-buscador") || document.getElementById("input-buscador");
 
+// 1. Clic en la Lupa de la Cabecera (Lleva a Inicio, enfoca y da destello)
 if (btnBuscadorEncabezado && inputBuscadorPrincipal) {
   btnBuscadorEncabezado.addEventListener("click", () => {
     const btnInicioMenu = document.querySelectorAll(".menu-flotante .menu-btn")[0];
@@ -3497,7 +3501,45 @@ if (btnBuscadorEncabezado && inputBuscadorPrincipal) {
       }, 2000);
     }
 
-    mostrarAvisoPremium("Escribe para buscar conversaciones o amigos... 🔍", "⚡", "#00f2fe");
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Escribe para buscar conversaciones o amigos... 🔍", "⚡", "#00f2fe");
+    }
+  });
+}
+
+// 2. Filtrado en tiempo real mientras el usuario escribe
+if (inputBuscadorPrincipal) {
+  inputBuscadorPrincipal.addEventListener("input", (e) => {
+    const textoBusqueda = e.target.value.toLowerCase().trim();
+    const tarjetasChat = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
+    const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+
+    // Ocultar "Mi Estado" al buscar un contacto para limpiar la lista
+    if (tarjetaMiEstado) {
+      if (textoBusqueda.length > 0) {
+        tarjetaMiEstado.classList.add("oculto");
+      } else {
+        tarjetaMiEstado.classList.remove("oculto");
+      }
+    }
+
+    tarjetasChat.forEach((tarjeta) => {
+      if (tarjeta.id === "tarjeta-mi-estado-propio") return;
+
+      const elementoNombre = tarjeta.querySelector(".chat-nombre") || tarjeta.querySelector(".nombre-contacto");
+      const elementoTexto = tarjeta.querySelector(".chat-texto") || tarjeta.querySelector(".ultimo-mensaje");
+
+      const nombre = elementoNombre ? elementoNombre.textContent.toLowerCase() : "";
+      const mensaje = elementoTexto ? elementoTexto.textContent.toLowerCase() : "";
+
+      const coincide = nombre.includes(textoBusqueda) || mensaje.includes(textoBusqueda);
+
+      if (coincide) {
+        tarjeta.classList.remove("oculto");
+      } else {
+        tarjeta.classList.add("oculto");
+      }
+    });
   });
 }
 
