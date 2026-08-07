@@ -3754,7 +3754,9 @@ const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
 // 1️⃣ EVENTO Clic Derecho en PC (Directo a nivel de document)
 document.addEventListener("contextmenu", (e) => {
-  const tarjeta = e.target.closest(".tarjeta-chat");
+  // Busca cualquiera de los selectores posibles de tarjetas de chat
+  const tarjeta = e.target.closest(".tarjeta-chat, .item-contacto-fila, .tarjeta-conversacion-item, .item-chat");
+  
   if (tarjeta) {
     e.preventDefault();
     e.stopPropagation();
@@ -3764,7 +3766,8 @@ document.addEventListener("contextmenu", (e) => {
 
 // 2️⃣ EVENTO Long Press para Móviles y Emulador F12
 document.addEventListener("touchstart", (e) => {
-  const tarjeta = e.target.closest(".tarjeta-chat");
+  const tarjeta = e.target.closest(".tarjeta-chat, .item-contacto-fila, .tarjeta-conversacion-item, .item-chat");
+  
   if (tarjeta) {
     temporizadorLongPress = setTimeout(() => {
       const touch = e.touches[0];
@@ -3774,7 +3777,6 @@ document.addEventListener("touchstart", (e) => {
       setTimeout(() => {
         bloquarClickFantasma = false;
       }, 400);
-
     }, 450);
   }
 }, { passive: true });
@@ -4142,11 +4144,20 @@ if (btnGuardarContacto) {
   };
 }
 
-// 🔍 4. AUTOCOMPLETADO GLOBAL DE CONTACTOS EN TIEMPO REAL
+// ⚡ FUNCIÓN DEBOUNCE PARA OPTIMIZAR CPU Y BATERÍA EN MÓVILES
+function crearDebounce(funcion, espera = 300) {
+  let temporizador;
+  return function (...parametros) {
+    clearTimeout(temporizador);
+    temporizador = setTimeout(() => funcion.apply(this, parametros), espera);
+  };
+}
+
+// 🔍 4. AUTOCOMPLETADO GLOBAL DE CONTACTOS EN TIEMPO REAL (OPTIMIZADO CON DEBOUNCE)
 const cajaSugerencias = document.getElementById("sugerencias-busqueda-contactos");
 
 if (inputNuevoContacto && cajaSugerencias) {
-  inputNuevoContacto.addEventListener("input", async (e) => {
+  inputNuevoContacto.addEventListener("input", crearDebounce(async (e) => {
     const textoConsulta = e.target.value.trim().toLowerCase();
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
 
@@ -4221,7 +4232,7 @@ if (inputNuevoContacto && cajaSugerencias) {
     } catch (err) {
       console.error("Error buscando usuarios en Firebase:", err);
     }
-  });
+  }, 300)); // Espera 300ms después de escribir para no saturar el teléfono
 
   document.addEventListener("click", (e) => {
     if (!inputNuevoContacto.contains(e.target) && !cajaSugerencias.contains(e.target)) {
