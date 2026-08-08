@@ -529,69 +529,6 @@ function filtrarYRenderizar() {
   }
 }
 
-if (contenedorChats) {
-  contenedorChats.addEventListener("click", (e) => {
-    const tarjeta = e.target.closest(".tarjeta-chat");
-    if (!tarjeta) return;
-
-    // 🛑 FRENO DE MANO: Si el menú contextual está visible o activado el bloqueo fantasma, no abrimos chat
-    const menuTarjetas = document.getElementById("menu-tarjetas-chat");
-    if (bloquarClickFantasma || (menuTarjetas && !menuTarjetas.classList.contains("oculto"))) {
-      return;
-    }
-
-    if (isLongPress) {
-      e.stopPropagation();
-      e.preventDefault();
-      return;
-    }
-
-    // Abrir estado al hacer clic en la foto de avatar si tiene historia
-    if (e.target.closest(".chat-avatar-caja")) {
-      e.stopPropagation();
-
-      // Buscar si la tarjeta tiene la clase o indicador de historia/estado activo
-      const tieneEstado = tarjeta.dataset.estadoUrl;
-      if (tieneEstado) {
-        abrirEstadoAmigo(tarjeta.dataset.estadoUrl, tarjeta.dataset.estadoTexto || "");
-      }
-      return;
-    }
-
-    // Clic en la tarjeta para abrir el chat privado
-    const nombreSeleccionado = tarjeta.querySelector(".chat-nombre").textContent;
-    const textoEstadoCabecera = document.querySelector(".amigo-datos .amigo-estado-texto");
-    const ledSuperiorEnfoque = document.getElementById("led-enfoque-app");
-
-    document.querySelector(".amigo-nombre-chat").textContent = nombreSeleccionado;
-
-    cargarMensajesDeAmigo(nombreSeleccionado, historialMensajes);
-
-    const srcImg = tarjeta.querySelector("img") ? tarjeta.querySelector("img").src : "";
-    if (srcImg) document.querySelector(".avatar-mini-caja img").src = srcImg;
-
-    encabezadoGlobal.style.display = "none";
-    menuFlotanteGlobal.style.display = "none";
-    pantallaChatPrivado.classList.add("pantalla-completa");
-    switchPantalla(pantallaChatPrivado, pantallaChats, pantallaPerfil, pantallaBienvenida);
-
-    historialMensajes.scrollTop = historialMensajes.scrollHeight;
-
-    if (window.timerSimuladorLectura) clearTimeout(window.timerSimuladorLectura);
-    if (window.timerSimuladorEscribiendo) clearTimeout(window.timerSimuladorEscribiendo);
-
-    if (textoEstadoCabecera) {
-      textoEstadoCabecera.textContent = "En línea";
-      textoEstadoCabecera.style.color = "rgba(255, 255, 255, 0.5)";
-    }
-
-    if (ledSuperiorEnfoque) {
-      ledSuperiorEnfoque.style.backgroundColor = "#7f00ff";
-      ledSuperiorEnfoque.style.boxShadow = "0 0 8px #7f00ff";
-    }
-  });
-}
-
 // ========================================================
 // 3. MENÚS DESPLEGABLES Y ARCHIVOS DE CÁMARA PRO
 // ========================================================
@@ -5780,77 +5717,91 @@ if (btnVolverChat) {
   });
 }
 
-// 🔄 Escucha los chats activos del usuario y genera las tarjetas directamente en el Inicio
+// 🔄 Escucha los chats activos e invoca el motor oficial del proyecto (abrirChatConUsuario)
 function escucharChatsActivos(uidActual) {
   if (!uidActual || typeof db === "undefined") return;
 
   const refMisContactos = ref(db, `mis_contactos/${uidActual}`);
 
   onValue(refMisContactos, (snapshot) => {
-    const contenedor = document.getElementById("lista-chats") || document.getElementById("contenedor-chats");
+    const contenedor = document.getElementById("lista-chats-principal") || document.getElementById("lista-chats");
     if (!contenedor) return;
 
     const contactos = snapshot.val();
+    const tarjetaEstado = document.getElementById("tarjeta-mi-estado-propio") || document.getElementById("tarjeta-mi-estado");
 
-    // 1. Si no hay contactos en la lista, limpiar y mantener solo "Mi Estado"
+    // 1. Si no hay contactos, mantener solo "Mi Estado"
     if (!contactos) {
-      const tarjetaEstado = document.getElementById("tarjeta-mi-estado");
       contenedor.innerHTML = "";
       if (tarjetaEstado) contenedor.appendChild(tarjetaEstado);
       return;
     }
 
-    // 2. Limpiar el contenedor antes de dibujar las tarjetas actualizadas
-    const tarjetaEstado = document.getElementById("tarjeta-mi-estado");
     contenedor.innerHTML = "";
     if (tarjetaEstado) contenedor.appendChild(tarjetaEstado);
 
-    // 3. Recorrer los UIDs guardados en mis_contactos
+    // 2. Recorrer los contactos guardados en mis_contactos
     Object.keys(contactos).forEach(async (contactoUid) => {
       try {
-        // Consultar los datos del contacto desde Firebase
         const userSnap = await get(ref(db, `usuarios/${contactoUid}`));
         if (!userSnap.exists()) return;
 
         const datosUser = userSnap.val();
         const nombre = datosUser.nombre || datosUser.nombreUsuario || datosUser.email || "Usuario";
         const inicial = nombre.charAt(0).toUpperCase();
-        const avatarUrl = datosUser.fotoPerfil || datosUser.avatarUrl || null;
+        const avatarUrl = datosUser.fotoPerfil || datosUser.fotoUrl || datosUser.avatarUrl || null;
 
-        // Crear la tarjeta HTML en memoria
+        const chatId = [uidActual, contactoUid].sort().join("_");
+        let ultimoTexto = "Conversación activa";
+        let ultimaHora = "--:--";
+
+        try {
+          const msgSnap = await get(ref(db, `chats/${chatId}/mensajes`));
+          if (msgSnap.exists()) {
+            const msgs = msgSnap.val();
+            const keys = Object.keys(msgs);
+            const ultimoMsg = msgs[keys[keys.length - 1]];
+            if (ultimoMsg) {
+              ultimoTexto = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? `[${ultimoMsg.tipoAdjunto}]` : "Mensaje recibido");
+              ultimaHora = ultimoMsg.hora || "--:--";
+            }
+          }
+        } catch (e) {
+          console.warn("No se pudo obtener el último mensaje:", e);
+        }
+
         const tarjeta = document.createElement("div");
         tarjeta.className = "tarjeta-chat";
         tarjeta.setAttribute("data-uid", contactoUid);
-        tarjeta.setAttribute("data-chat-id", contactoUid);
+        tarjeta.setAttribute("id", `tarjeta-chat-${contactoUid}`);
 
         tarjeta.innerHTML = `
-          <div class="wrapper-avatar">
+          <div class="chat-avatar-caja">
             ${avatarUrl 
               ? `<img src="${avatarUrl}" class="avatar-chat" alt="${nombre}">` 
               : `<div class="avatar-inicial" style="width: 45px; height: 45px; border-radius: 50%; background: linear-gradient(135deg, #00f2fe, #4facfe); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">${inicial}</div>`
             }
-            <span class="led-estado"></span>
+            <span class="punto-online-chat-plus"></span>
           </div>
-          <div class="info-chat" style="flex: 1; margin-left: 12px;">
-            <div class="encabezado-chat" style="display: flex; justify-content: space-between; align-items: center;">
-              <h4 class="nombre-contacto" style="margin: 0; color: #fff; font-size: 1rem;">${nombre}</h4>
-              <span class="hora-ultimo-msg" style="font-size: 0.75rem; color: #888;">--:--</span>
+          <div class="chat-info">
+            <div class="chat-cabecera">
+              <h4 class="chat-nombre">${nombre}</h4>
+              <span class="chat-hora">${ultimaHora}</span>
             </div>
-            <p class="ultimo-mensaje" style="margin: 4px 0 0 0; font-size: 0.85rem; color: #aaa;">Conversación activa</p>
+            <div class="chat-mensaje-caja">
+              <p class="chat-texto">${ultimoTexto}</p>
+            </div>
           </div>
         `;
 
-        // Evento al hacer clic en la tarjeta para abrir el chat
+        // 🟢 Clic en la tarjeta: Llama a la función oficial de tu app
         tarjeta.addEventListener("click", () => {
-          window.contactoActivoUid = contactoUid;
-          if (typeof abrirChatConContacto === "function") {
-            abrirChatConContacto(contactoUid, nombre);
-          } else if (typeof abrirConversacion === "function") {
-            abrirConversacion(contactoUid);
+          if (typeof abrirChatConUsuario === "function") {
+            abrirChatConUsuario(contactoUid, nombre, avatarUrl);
           }
         });
 
-        // Evento para abrir el menú contextual de "Eliminar Chat"
+        // Evento menú contextual
         tarjeta.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           window.chatSeleccionadoId = contactoUid;
@@ -5858,6 +5809,7 @@ function escucharChatsActivos(uidActual) {
           
           const menuCtx = document.getElementById("menu-tarjetas-chat");
           if (menuCtx) {
+            menuCtx.classList.remove("oculto");
             menuCtx.style.display = "flex";
             menuCtx.style.flexDirection = "column";
             menuCtx.style.position = "fixed";
@@ -5867,7 +5819,6 @@ function escucharChatsActivos(uidActual) {
           }
         });
 
-        // Insertar la tarjeta en la pantalla
         contenedor.appendChild(tarjeta);
 
       } catch (err) {
@@ -5877,9 +5828,9 @@ function escucharChatsActivos(uidActual) {
   });
 }
 
-// 📌 Función independiente (fuera de escucharChatsActivos)
+// 📌 Función independiente para agregar contacto activo al interactuar
 async function alSeleccionarContacto(contactoUid) {
-  const usuarioActual = auth ? auth.currentUser : null;
+  const usuarioActual = typeof auth !== "undefined" && auth ? auth.currentUser : null;
   if (usuarioActual && contactoUid) {
     try {
       await set(ref(db, `mis_contactos/${usuarioActual.uid}/${contactoUid}`), true);
