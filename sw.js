@@ -2,7 +2,7 @@
 // 📱 SERVICE WORKER MOVACHAT (Versión Reparada v1.1)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v5.0';
+const CACHE_NAME = 'movachat-v5.1';
 
 // Solo guardamos recursos ESTÁTICOS (Imágenes, Fuentes, CSS base)
 const ASSETS_TO_CACHE = [

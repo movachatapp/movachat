@@ -3962,7 +3962,7 @@ function eliminarChatAnimado(tarjeta) {
   }
 }
 
-// Eventos de confirmación y cancelación en el Modal
+// 🗑️ Lógica de Eliminar Conversación UNILATERAL (Solo para quien elimina)
 document.addEventListener("DOMContentLoaded", () => {
   const modalVaciar = document.getElementById("modal-confirmar-vaciar");
   const btnAceptarVaciar = document.getElementById("btn-aceptar-vaciar-modal");
@@ -3996,25 +3996,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const elemNombre = tarjeta.querySelector(".chat-nombre");
       const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
-      const chatId = typeof obtenerChatId === "function" 
-        ? obtenerChatId(miUid, contactoUid) 
-        : (miUid < contactoUid ? `${miUid}_${contactoUid}` : `${contactoUid}_${miUid}`);
-
       try {
-        // 1. Borrar conversación en Firebase Realtime Database
-        await set(ref(db, `chats/${chatId}`), null);
+        // 1. Guardar la fecha de vaciado ÚNICAMENTE en tu nodo personal
+        const timestampVaciado = Date.now();
+        await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
 
-        // 2. Borrar registros auxiliares
-        await set(ref(db, `lecturas/${miUid}/${contactoUid}`), null);
+        // 2. Limpiar solo tus configuraciones locales (fijado y silenciado personales)
         await set(ref(db, `fijados/${miUid}/${contactoUid}`), null);
         await set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
+        await set(ref(db, `lecturas/${miUid}/${contactoUid}`), null);
 
-        // 3. Limpiar almacenamiento local
         localStorage.removeItem(`fijado_${contactoUid}`);
         localStorage.removeItem(`silenciado_${contactoUid}`);
         localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
 
-        // 4. Reseteo visual fluido
+        // 3. Reseteo visual en tu pantalla
         tarjeta.classList.add("tarjeta-eliminar-anim");
         setTimeout(() => {
           const elemTexto = tarjeta.querySelector(".chat-texto");
@@ -4041,13 +4037,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 300);
 
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Conversación con <b>${nombreContacto}</b> eliminada.`, "🗑️", "#ff4b2b");
+          mostrarAvisoPremium(`Has eliminado el historial con <b>${nombreContacto}</b> de tu cuenta.`, "🗑️", "#ff4b2b");
         }
 
       } catch (error) {
-        console.error("Error al eliminar conversación en Firebase:", error);
+        console.error("Error al borrar conversación personal en Firebase:", error);
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Error al eliminar la conversación.", "❌", "#ff4b2b");
+          mostrarAvisoPremium("No se pudo vaciar la conversación.", "❌", "#ff4b2b");
         }
       } finally {
         tarjetaParaEliminarGlobal = null;
@@ -5325,7 +5321,7 @@ if (inputChatPrivado) {
 let listenerChatActivo = null;
 let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes en tiempo real desde Firebase (SIN DUPLICACIONES / CLEAN LISTENERS)
+// 📌 Escuchar mensajes en tiempo real desde Firebase (CON VACIADO UNILATERAL Y FILTRADO DE BLOQUEOS)
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
   if (!contenedorHistorial) return;
