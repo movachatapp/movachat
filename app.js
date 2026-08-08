@@ -5717,7 +5717,7 @@ if (btnVolverChat) {
   });
 }
 
-// 🔄 Escucha los chats activos e invoca el motor oficial del proyecto (abrirChatConUsuario)
+// 🔄 Escucha los chats activos en tiempo real con actualización de vista previa, hora y notificaciones
 function escucharChatsActivos(uidActual) {
   if (!uidActual || typeof db === "undefined") return;
 
@@ -5751,25 +5751,6 @@ function escucharChatsActivos(uidActual) {
         const inicial = nombre.charAt(0).toUpperCase();
         const avatarUrl = datosUser.fotoPerfil || datosUser.fotoUrl || datosUser.avatarUrl || null;
 
-        const chatId = [uidActual, contactoUid].sort().join("_");
-        let ultimoTexto = "Conversación activa";
-        let ultimaHora = "--:--";
-
-        try {
-          const msgSnap = await get(ref(db, `chats/${chatId}/mensajes`));
-          if (msgSnap.exists()) {
-            const msgs = msgSnap.val();
-            const keys = Object.keys(msgs);
-            const ultimoMsg = msgs[keys[keys.length - 1]];
-            if (ultimoMsg) {
-              ultimoTexto = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? `[${ultimoMsg.tipoAdjunto}]` : "Mensaje recibido");
-              ultimaHora = ultimoMsg.hora || "--:--";
-            }
-          }
-        } catch (e) {
-          console.warn("No se pudo obtener el último mensaje:", e);
-        }
-
         const tarjeta = document.createElement("div");
         tarjeta.className = "tarjeta-chat";
         tarjeta.setAttribute("data-uid", contactoUid);
@@ -5786,10 +5767,11 @@ function escucharChatsActivos(uidActual) {
           <div class="chat-info">
             <div class="chat-cabecera">
               <h4 class="chat-nombre">${nombre}</h4>
-              <span class="chat-hora">${ultimaHora}</span>
+              <span class="chat-hora">--:--</span>
             </div>
             <div class="chat-mensaje-caja">
-              <p class="chat-texto">${ultimoTexto}</p>
+              <p class="chat-texto">Conversación activa</p>
+              <div class="badge-chat-no-leido badge-mensaje oculto">0</div>
             </div>
           </div>
         `;
@@ -5820,6 +5802,11 @@ function escucharChatsActivos(uidActual) {
         });
 
         contenedor.appendChild(tarjeta);
+
+        // 🔔 CONEXIÓN EN TIEMPO REAL: Activa el escuchador de mensajes, hora, vista previa y notificaciones
+        if (typeof escucharUltimoMensajeContacto === "function") {
+          escucharUltimoMensajeContacto(uidActual, contactoUid);
+        }
 
       } catch (err) {
         console.error("Error cargando tarjeta de chat:", err);
