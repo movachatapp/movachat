@@ -512,28 +512,65 @@ function filtrarYRenderizar() {
   }
 }
 
-// ⚡ Delegación de clics limpia para abrir chats
 if (contenedorChats) {
   contenedorChats.addEventListener("click", (e) => {
     const tarjeta = e.target.closest(".tarjeta-chat");
-    if (!tarjeta || tarjeta.classList.contains("tarjeta-solicitud-pendiente") || tarjeta.id === "tarjeta-mi-estado-propio") return;
+    if (!tarjeta) return;
 
-    // FRENO DE MANO: Si el menú contextual está abierto o bloqueado, no abrir el chat
+    // 🛑 FRENO DE MANO: Si el menú contextual está visible o activado el bloqueo fantasma, no abrimos chat
     const menuTarjetas = document.getElementById("menu-tarjetas-chat");
-    if (typeof bloquearClickFantasma !== "undefined" && bloquearClickFantasma) return;
-    if (menuTarjetas && !menuTarjetas.classList.contains("oculto")) return;
+    if (bloquarClickFantasma || (menuTarjetas && !menuTarjetas.classList.contains("oculto"))) {
+      return;
+    }
 
-    const uidContacto = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
-    const elemNombre = tarjeta.querySelector(".chat-nombre");
-    const elemImg = tarjeta.querySelector(".chat-avatar-caja img");
+    if (isLongPress) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
 
-    const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "Usuario";
-    const fotoContacto = elemImg ? elemImg.src : "";
+    // Abrir estado al hacer clic en la foto de avatar si tiene historia
+    if (e.target.closest(".chat-avatar-caja")) {
+      e.stopPropagation();
 
-    window.contactoActivoUid = uidContacto;
+      // Buscar si la tarjeta tiene la clase o indicador de historia/estado activo
+      const tieneEstado = tarjeta.dataset.estadoUrl;
+      if (tieneEstado) {
+        abrirEstadoAmigo(tarjeta.dataset.estadoUrl, tarjeta.dataset.estadoTexto || "");
+      }
+      return;
+    }
 
-    if (typeof abrirChatConUsuario === "function") {
-      abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+    // Clic en la tarjeta para abrir el chat privado
+    const nombreSeleccionado = tarjeta.querySelector(".chat-nombre").textContent;
+    const textoEstadoCabecera = document.querySelector(".amigo-datos .amigo-estado-texto");
+    const ledSuperiorEnfoque = document.getElementById("led-enfoque-app");
+
+    document.querySelector(".amigo-nombre-chat").textContent = nombreSeleccionado;
+
+    cargarMensajesDeAmigo(nombreSeleccionado, historialMensajes);
+
+    const srcImg = tarjeta.querySelector("img") ? tarjeta.querySelector("img").src : "";
+    if (srcImg) document.querySelector(".avatar-mini-caja img").src = srcImg;
+
+    encabezadoGlobal.style.display = "none";
+    menuFlotanteGlobal.style.display = "none";
+    pantallaChatPrivado.classList.add("pantalla-completa");
+    switchPantalla(pantallaChatPrivado, pantallaChats, pantallaPerfil, pantallaBienvenida);
+
+    historialMensajes.scrollTop = historialMensajes.scrollHeight;
+
+    if (window.timerSimuladorLectura) clearTimeout(window.timerSimuladorLectura);
+    if (window.timerSimuladorEscribiendo) clearTimeout(window.timerSimuladorEscribiendo);
+
+    if (textoEstadoCabecera) {
+      textoEstadoCabecera.textContent = "En línea";
+      textoEstadoCabecera.style.color = "rgba(255, 255, 255, 0.5)";
+    }
+
+    if (ledSuperiorEnfoque) {
+      ledSuperiorEnfoque.style.backgroundColor = "#7f00ff";
+      ledSuperiorEnfoque.style.boxShadow = "0 0 8px #7f00ff";
     }
   });
 }
@@ -3925,7 +3962,7 @@ function eliminarChatAnimado(tarjeta) {
   }
 }
 
-// 🗑️ Lógica para ELIMINAR CHAT DEFINITIVAMENTE (Elimina la tarjeta de la lista)
+// 🗑️ Lógica de Eliminar Conversación UNILATERAL (Solo para quien elimina)
 document.addEventListener("DOMContentLoaded", () => {
   const modalVaciar = document.getElementById("modal-confirmar-vaciar");
   const btnAceptarVaciar = document.getElementById("btn-aceptar-vaciar-modal");
@@ -3949,35 +3986,65 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (modalVaciar) modalVaciar.classList.add("oculto");
 
-      if (!miUid || !contactoUid) return;
+      if (!miUid || !contactoUid) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se pudo identificar el usuario.", "⚠️", "#ff4b2b");
+        }
+        return;
+      }
 
       const elemNombre = tarjeta.querySelector(".chat-nombre");
-      const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este contacto";
+      const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
       try {
-        // 1. 🛑 ELIMINAR EL CONTACTO DE MI LISTA DE CONTACTOS APROBADOS
-        await set(ref(db, `mis_contactos/${miUid}/${contactoUid}`), null);
+        // 1. Guardar la fecha de vaciado ÚNICAMENTE en tu nodo personal
+        const timestampVaciado = Date.now();
+        await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
 
-        // 2. Limpiar marcas de vaciado, fijados y silenciados de mi usuario
-        await set(ref(db, `vaciados/${miUid}/${contactoUid}`), Date.now());
+        // 2. Limpiar solo tus configuraciones locales (fijado y silenciado personales)
         await set(ref(db, `fijados/${miUid}/${contactoUid}`), null);
         await set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
+        await set(ref(db, `lecturas/${miUid}/${contactoUid}`), null);
 
         localStorage.removeItem(`fijado_${contactoUid}`);
         localStorage.removeItem(`silenciado_${contactoUid}`);
+        localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
 
-        // 3. 🎬 Animación y eliminación física del elemento DOM en pantalla
+        // 3. Reseteo visual en tu pantalla
         tarjeta.classList.add("tarjeta-eliminar-anim");
         setTimeout(() => {
-          tarjeta.remove(); // Remueve la tarjeta de la lista
+          const elemTexto = tarjeta.querySelector(".chat-texto");
+          const elemHora = tarjeta.querySelector(".chat-hora");
+          const elemBadge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
+          const pinIcono = tarjeta.querySelector(".indicador-pin-neon");
+          const silencioIcono = tarjeta.querySelector(".indicador-silencio-neon");
+
+          tarjeta.classList.remove("tarjeta-eliminar-anim", "tarjeta-fijada", "chat-silenciado-zona");
+          tarjeta.style.order = "";
+
+          if (elemTexto) elemTexto.textContent = "Conversación eliminada";
+          if (elemHora) elemHora.textContent = "--:--";
+          if (elemBadge) {
+            elemBadge.textContent = "0";
+            elemBadge.classList.add("oculto");
+          }
+          if (pinIcono) pinIcono.remove();
+          if (silencioIcono) silencioIcono.remove();
+
+          if (typeof window.actualizarBadgesNotificaciones === "function") {
+            window.actualizarBadgesNotificaciones();
+          }
         }, 300);
 
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Chat con <b>${nombreContacto}</b> eliminado.`, "🗑️", "#ff4b2b");
+          mostrarAvisoPremium(`Has eliminado el historial con <b>${nombreContacto}</b> de tu cuenta.`, "🗑️", "#ff4b2b");
         }
 
       } catch (error) {
-        console.error("Error al eliminar el chat en Firebase:", error);
+        console.error("Error al borrar conversación personal en Firebase:", error);
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se pudo vaciar la conversación.", "❌", "#ff4b2b");
+        }
       } finally {
         tarjetaParaEliminarGlobal = null;
       }
@@ -4863,127 +4930,152 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
 // Variable global para guardar el contacto seleccionado actualmente
 let contactoSeleccionado = null;
 
-// 🟢 Cargar solo contactos agregados y tarjetas de solicitud "X quiere hablar contigo"
+// 🟢 Cargar contactos aprobados escuchando fijados en tiempo real
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
 
-  const misContactosRef = ref(db, `mis_contactos/${usuarioActualUid}`);
-  const misSolicitudesRef = ref(db, `solicitudes/${usuarioActualUid}`);
+  const usuariosRef = ref(db, 'usuarios');
   const fijadosRef = ref(db, `fijados/${usuarioActualUid}`);
 
-  // Escuchar solicitudes y contactos en tiempo real
-  onValue(misContactosRef, (snapContactos) => {
-    onValue(misSolicitudesRef, (snapSolicitudes) => {
-      onValue(fijadosRef, (snapFijados) => {
-        const contactosAprobadosMap = snapContactos.exists() ? snapContactos.val() : {};
-        const solicitudesMap = snapSolicitudes.exists() ? snapSolicitudes.val() : {};
-        const fijadosBD = snapFijados.exists() ? snapFijados.val() : {};
+  // Escuchar fijados en tiempo real
+  onValue(fijadosRef, (snapFijados) => {
+    const fijadosBD = snapFijados.exists() ? snapFijados.val() : {};
 
+    onValue(usuariosRef, (snapshot) => {
+      try {
         const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+
         contenedorContactos.innerHTML = "";
-        if (tarjetaMiEstado) contenedorContactos.appendChild(tarjetaMiEstado);
-
-        // 📩 A) MOSTRAR TARJETAS DE SOLICITUD PENDIENTE ("Juan quiere hablar contigo")
-        Object.keys(solicitudesMap).forEach((emisorUid) => {
-          const sol = solicitudesMap[emisorUid];
-          if (!sol) return;
-
-          const tarjetaSol = document.createElement("div");
-          tarjetaSol.className = "tarjeta-chat tarjeta-solicitud-pendiente";
-          tarjetaSol.style.cssText = "background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.3); border-radius: 16px; margin-bottom: 10px; padding: 12px;";
-
-          const foto = sol.fotoUrl
-            ? `<img src="${sol.fotoUrl}" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover;">`
-            : `<div style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold;">${(sol.nombre || 'U').charAt(0).toUpperCase()}</div>`;
-
-          tarjetaSol.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 12px;">
-              ${foto}
-              <div style="flex: 1;">
-                <h4 style="margin: 0; font-size: 0.95rem; color: #fff;"><b>${sol.nombre || 'Usuario'}</b> quiere hablar contigo</h4>
-                <p style="margin: 2px 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.6);">¿Deseas aceptar la conversación?</p>
-              </div>
-            </div>
-            <div style="display: flex; gap: 8px; margin-top: 10px;">
-              <button class="btn-rechazar-sol" style="flex: 1; padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 0.8rem; cursor: pointer;">Rechazar</button>
-              <button class="btn-aceptar-sol" style="flex: 1; padding: 6px 10px; border-radius: 8px; background: linear-gradient(135deg, #00f2fe, #4facfe); border: none; color: #000; font-weight: bold; font-size: 0.8rem; cursor: pointer;">Aceptar</button>
-            </div>
-          `;
-
-          tarjetaSol.querySelector(".btn-aceptar-sol").onclick = () => aceptarSolicitudContacto(emisorUid, tarjetaSol);
-          tarjetaSol.querySelector(".btn-rechazar-sol").onclick = () => rechazarSolicitudContacto(emisorUid, tarjetaSol);
-
-          contenedorContactos.appendChild(tarjetaSol);
-        });
-
-        // 💬 B) MOSTRAR SOLO CONTACTOS APROBADOS
-        const uidsContactos = Object.keys(contactosAprobadosMap);
-        if (uidsContactos.length === 0 && Object.keys(solicitudesMap).length === 0) {
-          return;
+        if (tarjetaMiEstado) {
+          contenedorContactos.appendChild(tarjetaMiEstado);
         }
 
-        // Obtener datos de los usuarios agregados
-        onValue(ref(db, 'usuarios'), (snapUsuarios) => {
-          if (!snapUsuarios.exists()) return;
-          const todosLosUsuarios = snapUsuarios.val();
+        if (snapshot.exists()) {
+          const usuarios = snapshot.val();
 
-          uidsContactos.forEach((uid) => {
-            const usuario = todosLosUsuarios[uid];
-            if (!usuario) return;
+          Object.keys(usuarios).forEach((uid) => {
+            const usuario = usuarios[uid];
 
-            const itemContacto = document.createElement("div");
-            itemContacto.className = "tarjeta-chat contacto-item";
-            itemContacto.dataset.uid = uid;
-            itemContacto.id = `tarjeta-chat-${uid}`;
+            if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
+              const itemContacto = document.createElement("div");
+              itemContacto.className = "tarjeta-chat contacto-item";
+              itemContacto.dataset.uid = uid;
+              itemContacto.id = `tarjeta-chat-${uid}`;
 
-            const esFijado = fijadosBD[uid] === true || localStorage.getItem(`fijado_${uid}`) === "true";
-            if (esFijado) {
-              itemContacto.classList.add("tarjeta-fijada");
-              itemContacto.style.order = "-1";
-            }
-
-            const estaSilenciado = localStorage.getItem(`silenciado_${uid}`) === "true";
-            if (estaSilenciado) itemContacto.classList.add("chat-silenciado-zona");
-
-            const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
-            const foto = usuario.fotoUrl
-              ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre}">`
-              : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold;">${primerLetra}</div>`;
-
-            itemContacto.innerHTML = `
-              <div class="chat-avatar-caja">
-                ${foto}
-                <span class="punto-online-chat"></span>
-              </div>
-              <div class="chat-info">
-                <div class="chat-cabecera">
-                  <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
-                  <span class="chat-hora">--:--</span>
-                  ${esFijado ? `<span class="indicador-pin-neon"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>` : ''}
-                </div>
-                <div class="chat-mensaje-caja">
-                  <p class="chat-texto">${usuario.estadoTexto || "Disponible"}</p>
-                </div>
-              </div>
-            `;
-
-            itemContacto.addEventListener("click", () => {
-              window.contactoActivoUid = uid;
-              if (typeof abrirChatConUsuario === "function") {
-                abrirChatConUsuario(uid, usuario.nombre || "Usuario", usuario.fotoUrl || "");
+              // 📌 VERIFICAR SI ESTÁ FIJADO EN FIREBASE
+              const esFijado = fijadosBD[uid] === true || localStorage.getItem(`fijado_${uid}`) === "true";
+              if (esFijado) {
+                itemContacto.classList.add("tarjeta-fijada");
+                itemContacto.style.order = "-1";
               }
-            });
 
-            contenedorContactos.appendChild(itemContacto);
-            if (typeof escucharUltimoMensajeContacto === "function") {
-              escucharUltimoMensajeContacto(usuarioActualUid, uid);
+              // 🔕 VERIFICAR SI ESTÁ SILENCIADO
+              const estaSilenciado = localStorage.getItem(`silenciado_${uid}`) === "true";
+              if (estaSilenciado) {
+                itemContacto.classList.add("chat-silenciado-zona");
+              }
+
+              const primerLetra = usuario.nombre ? usuario.nombre.charAt(0).toUpperCase() : 'U';
+
+              const foto = usuario.fotoUrl
+                ? `<img src="${usuario.fotoUrl}" alt="${usuario.nombre || 'Usuario'}">`
+                : `<div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: #00f2fe; color: #000; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${primerLetra}</div>`;
+
+              const estadoDelContacto = usuario.estadoConexion || usuario.estadoPresencia || usuario.estado || "online";
+              let colorLed = "#00f2fe";
+              let sombraLed = "0 0 8px #00f2fe";
+
+              if (estadoDelContacto === "ocupado") {
+                colorLed = "#ef4444";
+                sombraLed = "0 0 8px #ef4444";
+              } else if (estadoDelContacto === "offline" || estadoDelContacto === "invisible") {
+                colorLed = "#888888";
+                sombraLed = "0 0 8px #888888";
+              }
+
+              itemContacto.dataset.mensajesNoLeidos = "0";
+              itemContacto.dataset.forzarReiniciar = "false";
+
+              itemContacto.innerHTML = `
+                <div class="chat-avatar-caja">
+                  ${foto}
+                  <span class="punto-online-chat" style="background-color: ${colorLed}; box-shadow: ${sombraLed};"></span>
+                </div>
+                <div class="chat-info">
+                  <div class="chat-cabecera">
+                    <h4 class="chat-nombre">${usuario.nombre || "Usuario"}</h4>
+                    <span class="chat-hora">--:--</span>
+                    ${esFijado ? `
+                      <span class="indicador-pin-neon" title="Chat fijado">
+                        <i data-lucide="pin" style="width:14px; height:14px;"></i>
+                      </span>
+                    ` : ''}
+                    ${estaSilenciado ? `
+                      <span class="indicador-silencio-neon" title="Chat silenciado">
+                        <i data-lucide="bell-off"></i>
+                      </span>
+                    ` : ''}
+                  </div>
+                  <div class="chat-mensaje-caja">
+                    <p class="chat-texto">${usuario.estadoTexto || usuario.estado || "¡Disponible en MovaChat!"}</p>
+                    <div class="badge-chat-no-leido badge-mensaje oculto">0</div>
+                  </div>
+                </div>
+              `;
+
+              itemContacto.addEventListener("click", (e) => {
+                e.stopPropagation();
+
+                const uidContacto = usuario.uid || uid;
+
+                contactoSeleccionado = uidContacto;
+                window.contactoActivoUid = uidContacto;
+
+                itemContacto.dataset.mensajesNoLeidos = "0";
+                itemContacto.dataset.forzarReiniciar = "true";
+
+                const badge = itemContacto.querySelector(".badge-chat-no-leido");
+                const elemTexto = itemContacto.querySelector(".chat-texto");
+
+                if (badge) {
+                  badge.textContent = "0";
+                  badge.classList.add("oculto");
+                }
+                if (elemTexto) {
+                  elemTexto.classList.remove("texto-resaltado");
+                }
+
+                if (typeof actualizarCampanitaGlobal === "function") {
+                  actualizarCampanitaGlobal();
+                }
+
+                document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
+                itemContacto.classList.add("activo");
+
+                const nombreContacto = usuario.nombre || "Usuario";
+                const fotoContacto = usuario.fotoUrl || "";
+
+                if (typeof abrirChatConUsuario === "function") {
+                  abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+                }
+              });
+
+              contenedorContactos.appendChild(itemContacto);
+
+              if (typeof escucharUltimoMensajeContacto === "function") {
+                escucharUltimoMensajeContacto(usuarioActualUid, uid);
+              }
             }
           });
 
-          if (window.lucide) window.lucide.createIcons({ targets: [contenedorContactos] });
-        }, { onlyOnce: true });
-      });
+          if (window.lucide) {
+            window.lucide.createIcons({ targets: [contenedorContactos] });
+          }
+        }
+      } catch (e) {
+        console.error("Error al cargar la lista de contactos:", e);
+      }
     });
   });
 }
@@ -5657,82 +5749,4 @@ if (btnVolverChat) {
 
     mostrarEncabezadoPrincipal();
   });
-}
-
-
-// 📩 1. Enviar solicitud de amistad/chat a otro usuario
-async function enviarSolicitudContacto(uidDestino) {
-  const usuarioActual = auth.currentUser;
-  if (!usuarioActual || !uidDestino) return;
-
-  const miUid = usuarioActual.uid;
-  if (miUid === uidDestino) {
-    if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium("No puedes agregarte a ti mismo.", "⚠️", "#ff4b2b");
-    return;
-  }
-
-  try {
-    // Obtener mis datos para enviarle la tarjeta al receptor
-    const snapMiUser = await get(ref(db, `usuarios/${miUid}`));
-    const misDatos = snapMiUser.exists() ? snapMiUser.val() : {};
-
-    await set(ref(db, `solicitudes/${uidDestino}/${miUid}`), {
-      emisorUid: miUid,
-      nombre: misDatos.nombre || "Usuario",
-      fotoUrl: misDatos.fotoUrl || "",
-      timestamp: Date.now()
-    });
-
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Solicitud enviada correctamente 📩", "✨", "#00f2fe");
-    }
-  } catch (error) {
-    console.error("Error al enviar solicitud:", error);
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("No se pudo enviar la solicitud.", "❌", "#ff4b2b");
-    }
-  }
-}
-
-// ✅ 2. Aceptar solicitud y desbloquear conversación para ambos
-async function aceptarSolicitudContacto(emisorUid, tarjetaSolicitud) {
-  const usuarioActual = auth.currentUser;
-  if (!usuarioActual || !emisorUid) return;
-
-  const miUid = usuarioActual.uid;
-
-  try {
-    // A) Agregar contacto en mi lista y en la del emisor
-    await set(ref(db, `mis_contactos/${miUid}/${emisorUid}`), true);
-    await set(ref(db, `mis_contactos/${emisorUid}/${miUid}`), true);
-
-    // B) Eliminar la solicitud pendiente
-    await set(ref(db, `solicitudes/${miUid}/${emisorUid}`), null);
-
-    if (tarjetaSolicitud) {
-      tarjetaSolicitud.remove();
-    }
-
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("¡Contacto aceptado! Ya pueden conversar 💬", "✅", "#00f2fe");
-    }
-  } catch (error) {
-    console.error("Error al aceptar solicitud:", error);
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Error al aceptar la solicitud.", "❌", "#ff4b2b");
-    }
-  }
-}
-
-// ❌ 3. Rechazar solicitud
-async function rechazarSolicitudContacto(emisorUid, tarjetaSolicitud) {
-  const usuarioActual = auth.currentUser;
-  if (!usuarioActual || !emisorUid) return;
-
-  try {
-    await set(ref(db, `solicitudes/${usuarioActual.uid}/${emisorUid}`), null);
-    if (tarjetaSolicitud) tarjetaSolicitud.remove();
-  } catch (error) {
-    console.error("Error al rechazar solicitud:", error);
-  }
 }
