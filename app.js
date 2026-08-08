@@ -5788,25 +5788,25 @@ if (btnVolverChat) {
   });
 }
 
-// 🔄 Muestra en Inicio solo las personas con las que has iniciado chat
+// 🔄 Muestra en Inicio solo las personas con las que has iniciado chat (Versión Firebase Modular)
 function escucharChatsActivos(uidActual) {
-  const refMisContactos = firebase.database().ref(`mis_contactos/${uidActual}`);
+  if (!uidActual || typeof db === "undefined") return;
 
-  refMisContactos.on("value", async (snapshot) => {
+  const refMisContactos = ref(db, `mis_contactos/${uidActual}`);
+
+  onValue(refMisContactos, (snapshot) => {
     const contactos = snapshot.val();
     
-    // Si no hay contactos con chats activos, no dibuja nada extra
     if (!contactos) return;
 
-    // Recorremos los contactos activos y los cargamos en pantalla
-    Object.keys(contactos).forEach(async (contactoUid) => {
-      // Si la función cargarDatosUsuario existe en tu código, la usamos
+    Object.keys(contactos).forEach((contactoUid) => {
       if (typeof cargarContactoEnInicio === "function") {
         cargarContactoEnInicio(contactoUid);
       } else if (typeof cargarContactosAprobados === "function") {
-        // Carga el contacto individualmente en la lista
         cargarContactosAprobados(uidActual, contactoUid);
       }
     });
+  }, (error) => {
+    console.error("Error escuchando chats activos:", error);
   });
 }
