@@ -3654,3 +3654,69 @@ body.tema-claro .nombre-sugerencia-txt {
     transform: scale(1) translateY(0);
   }
 }
+
+/* ========================================================
+   🛠️ FIJAR ALINEACIÓN Y DISEÑO DEL MENÚ CONTEXTUAL
+   ======================================================== */
+#menu-tarjetas-chat,
+.menu-contextual-mova {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  min-width: 190px !important;
+  padding: 8px !important;
+  background: rgba(18, 26, 43, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px !important;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 242, 254, 0.15) !important;
+  z-index: 99999 !important;
+  box-sizing: border-box !important;
+}
+
+/* Botones alineados de forma vertical en fila entera */
+.menu-contextual-mova .btn-opcion-menu {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  width: 100% !important;
+  padding: 10px 14px !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 10px !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+}
+
+.menu-contextual-mova .btn-opcion-menu:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #00f2fe !important;
+}
+
+.menu-contextual-mova .btn-opcion-menu:active {
+  transform: scale(0.97);
+}
+
+/* Iconos integrados */
+.menu-contextual-mova .btn-opcion-menu svg,
+.menu-contextual-mova .btn-opcion-menu i {
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Opción de peligro en rojo neón */
+.menu-contextual-mova .btn-opcion-menu.opcion-peligro {
+  color: #ff4b2b !important;
+}
+
+.menu-contextual-mova .btn-opcion-menu.opcion-peligro:hover {
+  background: rgba(255, 75, 43, 0.18) !important;
+}
