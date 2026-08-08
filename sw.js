@@ -1,5 +1,5 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v5.2)
+// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v5.9)
 // ========================================================
 
 const CACHE_NAME = 'movachat-v5.9';
@@ -9,6 +9,7 @@ const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './styles.css',
+  './app.js',
   './manifest.json',
   './assets/logo/icon-192.png',
   './assets/logo/icon-512.png'
@@ -20,7 +21,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE);
-    })
+    }).catch((err) => console.warn('Error precargando caché:', err))
   );
 });
 
@@ -39,27 +40,56 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Estrategia RED PRIMERO para scripts (Evita congelar contadores en caché)
+// 3. Estrategia Red Primero segura para scripts (Evita congelamientos si la red falla)
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
-  // SI ES CÓDIGO JS O HTML: Pedir SIEMPRE la versión fresca de la red
-  if (event.request.url.includes('app.js') || event.request.url.includes('index.html')) {
+  // SI ES CÓDIGO JS, CSS O HTML: Pedir la versión fresca y actualizar caché
+  if (
+    event.request.url.includes('app.js') || 
+    event.request.url.includes('index.html') ||
+    event.request.url.includes('styles.css')
+  ) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cachedResponse = await caches.match(event.request);
+          if (cachedResponse) return cachedResponse;
+          
+          // Retorno seguro en caso de fallo crítico de red para evitar la pantalla vacía
+          return new Response('/* Error de conexión */', { 
+            status: 503, 
+            headers: { 'Content-Type': 'text/javascript' } 
+          });
+        })
     );
     return;
   }
 
-  // Para otros archivos (imágenes/CSS), buscar en caché primero
+  // Para otros archivos (imágenes/fuentes), buscar en caché primero
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
-      return fetch(event.request);
+      return fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return networkResponse;
+      });
+    }).catch(() => {
+      return new Response('', { status: 404 });
     })
   );
 });
