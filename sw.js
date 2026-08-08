@@ -1,11 +1,13 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v1.1)
+// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v5.2)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v5.1';
+const CACHE_NAME = 'movachat-v5.2';
 
-// Solo guardamos recursos ESTÁTICOS (Imágenes, Fuentes, CSS base)
+// Recursos esenciales para arranque Offline y caché base
 const ASSETS_TO_CACHE = [
+  './',
+  './index.html',
   './styles.css',
   './manifest.json',
   './assets/logo/icon-192.png',

@@ -429,6 +429,18 @@ window.sonidosApp = window.sonidosApp || {
   grabando: new Audio("assets/sounds/grabando.mp3")
 };
 
+// 🔓 Desbloqueo automático de audio para teléfonos móviles al primer toque
+document.addEventListener("click", function desbloquearAudiosMova() {
+  if (window.sonidosApp) {
+    Object.values(window.sonidosApp).forEach(audio => {
+      if (audio) {
+        audio.play().then(() => audio.pause()).catch(() => {});
+      }
+    });
+  }
+  document.removeEventListener("click", desbloquearAudiosMova);
+}, { once: true });
+
 // 🔊 Función global para reproducir sonidos uno a la vez (Respeta silenciados y tiempos de expiración)
 window.reproducirSonido = function (tipo, contactoUid = null) {
   // 1. Si las notificaciones globales están apagadas en Ajustes

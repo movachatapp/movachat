@@ -4,6 +4,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>MovaChat</title>
   <!-- Configuración de PWA y App Instalable -->
   <link rel="manifest" href="manifest.json">
@@ -225,6 +227,12 @@
           <button class="btn-compartir"
             style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;">
             <i data-lucide="share-2"></i> Compartir MovaChat
+          </button>
+
+          <!-- 📲 BOTÓN DE INSTALACIÓN PWA -->
+          <button id="btn-instalar-pwa" class="btn-primario"
+            style="display: none; width: 100%; align-items: center; justify-content: center; gap: 10px; background: linear-gradient(135deg, #00f2fe, #7f00ff);">
+            <i data-lucide="download"></i> Instalar MovaChat App
           </button>
 
           <div style="display: flex; gap: 12px; width: 100%;">
@@ -656,14 +664,20 @@
   <!-- 🗑️ MODAL PERSONALIZADO ELIMINAR CONVERSACIÓN (GLASSMORPHISM) -->
   <div id="modal-confirmar-vaciar" class="modal-overlay oculto">
     <div class="modal-cristal modal-mova-caja" style="max-width: 350px; text-align: center;">
-      <div class="modal-mova-icono" style="font-size: 2.2rem; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 75, 43, 0.5));">🗑️</div>
-      <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin-bottom: 8px; font-weight: 600;">Eliminar conversación</h3>
-      <p class="modal-mova-texto" id="modal-vaciar-mensaje" style="font-size: 0.88rem; color: rgba(255, 255, 255, 0.7); line-height: 1.45; margin-bottom: 22px;">
-        ¿Estás seguro de que deseas eliminar permanentemente esta conversación? Se borrarán todos los mensajes de la nube.
+      <div class="modal-mova-icono"
+        style="font-size: 2.2rem; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 75, 43, 0.5));">🗑️</div>
+      <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin-bottom: 8px; font-weight: 600;">
+        Eliminar conversación</h3>
+      <p class="modal-mova-texto" id="modal-vaciar-mensaje"
+        style="font-size: 0.88rem; color: rgba(255, 255, 255, 0.7); line-height: 1.45; margin-bottom: 22px;">
+        ¿Estás seguro de que deseas eliminar permanentemente esta conversación? Se borrarán todos los mensajes de la
+        nube.
       </p>
       <div class="modal-mova-botones" style="display: flex; gap: 12px;">
-        <button id="btn-cancelar-vaciar-modal" class="btn-secundario" style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
-        <button id="btn-aceptar-vaciar-modal" class="btn-primario" style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);">Eliminar</button>
+        <button id="btn-cancelar-vaciar-modal" class="btn-secundario"
+          style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
+        <button id="btn-aceptar-vaciar-modal" class="btn-primario"
+          style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);">Eliminar</button>
       </div>
     </div>
   </div>
@@ -761,14 +775,6 @@
   <script type="module" src="app.js?v=2"></script>
   <script>
     lucide.createIcons();
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('Service Worker registrado correctamente', reg))
-          .catch(err => console.error('Error al registrar Service Worker', err));
-      });
-    }
   </script>
 
 </body>
