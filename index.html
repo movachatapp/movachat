@@ -144,22 +144,27 @@
       </div>
 
       <div class="lista-chats" id="lista-chats-principal">
-        <!-- Tarjeta Mi Estado identificada para evitar contadores erróneos -->
-        <div class="tarjeta-chat tarjeta-estado-propio" id="tarjeta-mi-estado-propio">
-          <div class="chat-avatar-caja" id="avatar-mi-estado-click">
-            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Mova" alt="" id="img-mi-avatar-bandeja">
-            <span class="punto-online-chat-plus">+</span>
+        <!-- 🟢 TARJETA FIJA: MI ESTADO PROPIO -->
+        <div class="tarjeta-chat mi-estado-item" id="tarjeta-mi-estado-propio">
+          <div class="chat-avatar-caja">
+            <div class="avatar-placeholder"
+              style="width: 45px; height: 45px; border-radius: 50%; background: linear-gradient(135deg, #ff007f, #7928ca); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+              🤖
+            </div>
+            <span class="punto-online-chat mas-icono-estado"
+              style="background-color: #00f2fe; box-shadow: 0 0 8px #00f2fe;">+</span>
           </div>
           <div class="chat-info">
             <div class="chat-cabecera">
               <h4 class="chat-nombre" style="color: #00f2fe;">Mi Estado</h4>
-              <span class="chat-hora" id="tiempo-mi-estado">Toca para subir foto</span>
+              <span class="chat-hora" style="font-size: 0.72rem; opacity: 0.6;">Toca para subir foto</span>
             </div>
             <div class="chat-mensaje-caja">
-              <p class="chat-texto" id="texto-subtulo-mi-estado">Comparte imágenes con tus amigos...</p>
+              <p class="chat-texto" style="opacity: 0.7;">Comparte imágenes con tus amigos...</p>
             </div>
           </div>
         </div>
+        <!-- Las tarjetas de contactos y solicitudes se inyectarán aquí dinámicamente desde Firebase -->
       </div>
     </main>
 
@@ -656,14 +661,20 @@
   <!-- 🗑️ MODAL PERSONALIZADO ELIMINAR CONVERSACIÓN (GLASSMORPHISM) -->
   <div id="modal-confirmar-vaciar" class="modal-overlay oculto">
     <div class="modal-cristal modal-mova-caja" style="max-width: 350px; text-align: center;">
-      <div class="modal-mova-icono" style="font-size: 2.2rem; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 75, 43, 0.5));">🗑️</div>
-      <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin-bottom: 8px; font-weight: 600;">Eliminar conversación</h3>
-      <p class="modal-mova-texto" id="modal-vaciar-mensaje" style="font-size: 0.88rem; color: rgba(255, 255, 255, 0.7); line-height: 1.45; margin-bottom: 22px;">
-        ¿Estás seguro de que deseas eliminar permanentemente esta conversación? Se borrarán todos los mensajes de la nube.
+      <div class="modal-mova-icono"
+        style="font-size: 2.2rem; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 75, 43, 0.5));">🗑️</div>
+      <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin-bottom: 8px; font-weight: 600;">
+        Eliminar conversación</h3>
+      <p class="modal-mova-texto" id="modal-vaciar-mensaje"
+        style="font-size: 0.88rem; color: rgba(255, 255, 255, 0.7); line-height: 1.45; margin-bottom: 22px;">
+        ¿Estás seguro de que deseas eliminar permanentemente esta conversación? Se borrarán todos los mensajes de la
+        nube.
       </p>
       <div class="modal-mova-botones" style="display: flex; gap: 12px;">
-        <button id="btn-cancelar-vaciar-modal" class="btn-secundario" style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
-        <button id="btn-aceptar-vaciar-modal" class="btn-primario" style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);">Eliminar</button>
+        <button id="btn-cancelar-vaciar-modal" class="btn-secundario"
+          style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
+        <button id="btn-aceptar-vaciar-modal" class="btn-primario"
+          style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);">Eliminar</button>
       </div>
     </div>
   </div>

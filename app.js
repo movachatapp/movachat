@@ -512,65 +512,28 @@ function filtrarYRenderizar() {
   }
 }
 
+// ⚡ Delegación de clics limpia para abrir chats
 if (contenedorChats) {
   contenedorChats.addEventListener("click", (e) => {
     const tarjeta = e.target.closest(".tarjeta-chat");
-    if (!tarjeta) return;
+    if (!tarjeta || tarjeta.classList.contains("tarjeta-solicitud-pendiente") || tarjeta.id === "tarjeta-mi-estado-propio") return;
 
-    // 🛑 FRENO DE MANO: Si el menú contextual está visible o activado el bloqueo fantasma, no abrimos chat
+    // FRENO DE MANO: Si el menú contextual está abierto o bloqueado, no abrir el chat
     const menuTarjetas = document.getElementById("menu-tarjetas-chat");
-    if (bloquarClickFantasma || (menuTarjetas && !menuTarjetas.classList.contains("oculto"))) {
-      return;
-    }
+    if (typeof bloquearClickFantasma !== "undefined" && bloquearClickFantasma) return;
+    if (menuTarjetas && !menuTarjetas.classList.contains("oculto")) return;
 
-    if (isLongPress) {
-      e.stopPropagation();
-      e.preventDefault();
-      return;
-    }
+    const uidContacto = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
+    const elemNombre = tarjeta.querySelector(".chat-nombre");
+    const elemImg = tarjeta.querySelector(".chat-avatar-caja img");
 
-    // Abrir estado al hacer clic en la foto de avatar si tiene historia
-    if (e.target.closest(".chat-avatar-caja")) {
-      e.stopPropagation();
+    const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "Usuario";
+    const fotoContacto = elemImg ? elemImg.src : "";
 
-      // Buscar si la tarjeta tiene la clase o indicador de historia/estado activo
-      const tieneEstado = tarjeta.dataset.estadoUrl;
-      if (tieneEstado) {
-        abrirEstadoAmigo(tarjeta.dataset.estadoUrl, tarjeta.dataset.estadoTexto || "");
-      }
-      return;
-    }
+    window.contactoActivoUid = uidContacto;
 
-    // Clic en la tarjeta para abrir el chat privado
-    const nombreSeleccionado = tarjeta.querySelector(".chat-nombre").textContent;
-    const textoEstadoCabecera = document.querySelector(".amigo-datos .amigo-estado-texto");
-    const ledSuperiorEnfoque = document.getElementById("led-enfoque-app");
-
-    document.querySelector(".amigo-nombre-chat").textContent = nombreSeleccionado;
-
-    cargarMensajesDeAmigo(nombreSeleccionado, historialMensajes);
-
-    const srcImg = tarjeta.querySelector("img") ? tarjeta.querySelector("img").src : "";
-    if (srcImg) document.querySelector(".avatar-mini-caja img").src = srcImg;
-
-    encabezadoGlobal.style.display = "none";
-    menuFlotanteGlobal.style.display = "none";
-    pantallaChatPrivado.classList.add("pantalla-completa");
-    switchPantalla(pantallaChatPrivado, pantallaChats, pantallaPerfil, pantallaBienvenida);
-
-    historialMensajes.scrollTop = historialMensajes.scrollHeight;
-
-    if (window.timerSimuladorLectura) clearTimeout(window.timerSimuladorLectura);
-    if (window.timerSimuladorEscribiendo) clearTimeout(window.timerSimuladorEscribiendo);
-
-    if (textoEstadoCabecera) {
-      textoEstadoCabecera.textContent = "En línea";
-      textoEstadoCabecera.style.color = "rgba(255, 255, 255, 0.5)";
-    }
-
-    if (ledSuperiorEnfoque) {
-      ledSuperiorEnfoque.style.backgroundColor = "#7f00ff";
-      ledSuperiorEnfoque.style.boxShadow = "0 0 8px #7f00ff";
+    if (typeof abrirChatConUsuario === "function") {
+      abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
     }
   });
 }
