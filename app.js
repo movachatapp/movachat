@@ -8,7 +8,7 @@ import {
   updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, get, child, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, get, child, onValue, update, push, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
@@ -3746,35 +3746,46 @@ const btnCtxFijar = document.getElementById("btn-ctx-fijar");
 const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
-// 🗑️ Lógica para Eliminar Chat por completo de la lista
+// 🗑️ Lógica para Eliminar Chat por completo de la lista (Firebase Modular)
 const btnEliminarChatCompleto = document.getElementById("btn-ctx-eliminar-chat-completo");
 
 if (btnEliminarChatCompleto) {
   btnEliminarChatCompleto.addEventListener("click", async () => {
-    // Verificar que exista un chat seleccionado
-    if (typeof chatSeleccionadoId === "undefined" || !chatSeleccionadoId) return;
+    // Obtener el ID del contacto o chat seleccionado
+    const contactoUid = window.chatSeleccionadoId || window.contactoActivoUid;
+
+    if (!contactoUid) {
+      console.warn("No se detectó ningún chat seleccionado.");
+      return;
+    }
 
     const confirmar = confirm("¿Deseas eliminar este chat por completo de tu lista?");
     if (!confirmar) return;
 
     try {
-      const uidActual = firebase.auth().currentUser ? firebase.auth().currentUser.uid : null;
-      if (!uidActual) return;
+      const usuarioActual = auth.currentUser;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
 
-      // 1. Remover la referencia del chat en Firebase para este usuario
-      await firebase.database().ref(`mis_contactos/${uidActual}/${chatSeleccionadoId}`).remove();
+      if (!miUid) return;
 
-      // 2. Eliminar la tarjeta visualmente de la pantalla
-      const tarjetaDOM = document.querySelector(`[data-chat-id="${chatSeleccionadoId}"]`) ||
-        document.querySelector(`[data-uid="${chatSeleccionadoId}"]`);
-      if (tarjetaDOM) tarjetaDOM.remove();
+      // 1. Eliminar la referencia de 'mis_contactos' en Firebase
+      await remove(ref(db, `mis_contactos/${miUid}/${contactoUid}`));
 
-      // 3. Ocultar el menú contextual si existe la función
-      if (typeof ocultarMenuContextual === "function") {
-        ocultarMenuContextual();
-      } else {
-        const menu = document.getElementById("menu-tarjetas-chat");
-        if (menu) menu.style.display = "none";
+      // 2. Quitar la tarjeta visualmente del HTML
+      const tarjetaDOM = document.querySelector(`[data-chat-id="${contactoUid}"]`) || 
+                         document.querySelector(`[data-uid="${contactoUid}"]`);
+      if (tarjetaDOM) {
+        tarjetaDOM.remove();
+      }
+
+      // 3. Ocultar el menú contextual
+      const menuContextual = document.getElementById("menu-tarjetas-chat");
+      if (menuContextual) {
+        menuContextual.style.display = "none";
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Chat eliminado de tu lista", "🗑️", "#ff4b2b");
       }
 
     } catch (error) {
