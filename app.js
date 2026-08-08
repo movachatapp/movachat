@@ -1393,11 +1393,8 @@ async function enviarMensajeNuevo() {
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
 
-    // 📌 REGISTRO EN MIS_CONTACTOS PARA MOSTRAR LA TARJETA EN INICIO
-    const actualizacionesContactos = {};
-    actualizacionesContactos[`mis_contactos/${miUid}/${contactoUid}`] = true;
-    actualizacionesContactos[`mis_contactos/${contactoUid}/${miUid}`] = true;
-    await update(ref(db), actualizacionesContactos);
+    // 📌 Guardar únicamente en tu lista de chats activos (respeta las reglas de seguridad de Firebase)
+    await set(ref(db, `mis_contactos/${miUid}/${contactoUid}`), true);
 
     // 🔊 SONIDO DE MENSAJE ENVIADO
     if (typeof reproducirSonido === "function") {
@@ -3746,48 +3743,32 @@ const btnCtxFijar = document.getElementById("btn-ctx-fijar");
 const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
-// 🗑️ Lógica para Eliminar Chat por completo de la lista (Firebase Modular)
+// 🗑️ Eliminar chat de la base de datos y de la vista
 const btnEliminarChatCompleto = document.getElementById("btn-ctx-eliminar-chat-completo");
 
 if (btnEliminarChatCompleto) {
   btnEliminarChatCompleto.addEventListener("click", async () => {
-    // Obtener el ID del contacto o chat seleccionado
     const contactoUid = window.chatSeleccionadoId || window.contactoActivoUid;
 
-    if (!contactoUid) {
-      console.warn("No se detectó ningún chat seleccionado.");
-      return;
-    }
+    if (!contactoUid) return;
 
-    const confirmar = confirm("¿Deseas eliminar este chat por completo de tu lista?");
+    const confirmar = confirm("¿Deseas eliminar este chat por completo?");
     if (!confirmar) return;
 
     try {
       const usuarioActual = auth.currentUser;
-      const miUid = usuarioActual ? usuarioActual.uid : null;
+      if (!usuarioActual) return;
 
-      if (!miUid) return;
+      // 1. Eliminar la relación en Firebase
+      await remove(ref(db, `mis_contactos/${usuarioActual.uid}/${contactoUid}`));
 
-      // 1. Eliminar la referencia de 'mis_contactos' en Firebase
-      await remove(ref(db, `mis_contactos/${miUid}/${contactoUid}`));
-
-      // 2. Quitar la tarjeta visualmente del HTML
-      const tarjetaDOM = document.querySelector(`[data-chat-id="${contactoUid}"]`) || 
-                         document.querySelector(`[data-uid="${contactoUid}"]`);
-      if (tarjetaDOM) {
-        tarjetaDOM.remove();
-      }
-
-      // 3. Ocultar el menú contextual
+      // 2. Ocultar menú contextual
       const menuContextual = document.getElementById("menu-tarjetas-chat");
-      if (menuContextual) {
-        menuContextual.style.display = "none";
-      }
+      if (menuContextual) menuContextual.style.display = "none";
 
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Chat eliminado de tu lista", "🗑️", "#ff4b2b");
+        mostrarAvisoPremium("Chat eliminado correctamente", "🗑️", "#00f2fe");
       }
-
     } catch (error) {
       console.error("Error al eliminar el chat:", error);
     }
@@ -5799,25 +5780,39 @@ if (btnVolverChat) {
   });
 }
 
-// 🔄 Muestra en Inicio solo las personas con las que has iniciado chat (Versión Firebase Modular)
+// 🔄 Escucha exclusivamente los chats guardados en mis_contactos
 function escucharChatsActivos(uidActual) {
   if (!uidActual || typeof db === "undefined") return;
 
   const refMisContactos = ref(db, `mis_contactos/${uidActual}`);
 
   onValue(refMisContactos, (snapshot) => {
+    const contenedorChats = document.getElementById("lista-chats") || document.getElementById("contenedor-chats");
     const contactos = snapshot.val();
-    
-    if (!contactos) return;
 
+    // Si eliminaste todos los chats, limpia la pantalla de Inicio
+    if (!contactos) {
+      if (contenedorChats) {
+        // Mantiene solo el elemento de 'Mi Estado' si existe
+        const estadoElem = document.getElementById("tarjeta-mi-estado");
+        contenedorChats.innerHTML = "";
+        if (estadoElem) contenedorChats.appendChild(estadoElem);
+      }
+      return;
+    }
+
+    // Limpiar lista antes de redibujar los chats activos
+    if (contenedorChats) {
+      const estadoElem = document.getElementById("tarjeta-mi-estado");
+      contenedorChats.innerHTML = "";
+      if (estadoElem) contenedorChats.appendChild(estadoElem);
+    }
+
+    // Dibujar únicamente los chats que están en mis_contactos
     Object.keys(contactos).forEach((contactoUid) => {
-      if (typeof cargarContactoEnInicio === "function") {
-        cargarContactoEnInicio(contactoUid);
-      } else if (typeof cargarContactosAprobados === "function") {
-        cargarContactosAprobados(uidActual, contactoUid);
+      if (typeof cargarDatosUsuarioIndividual === "function") {
+        cargarDatosUsuarioIndividual(contactoUid);
       }
     });
-  }, (error) => {
-    console.error("Error escuchando chats activos:", error);
   });
 }

@@ -2,7 +2,7 @@
 // 📱 SERVICE WORKER MOVACHAT (Versión Reparada v5.2)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v5.4';
+const CACHE_NAME = 'movachat-v5.5';
 
 // Recursos esenciales para arranque Offline y caché base
 const ASSETS_TO_CACHE = [
