@@ -3925,7 +3925,7 @@ function eliminarChatAnimado(tarjeta) {
   }
 }
 
-// 🗑️ Lógica de Eliminar Conversación UNILATERAL (Solo para quien elimina)
+// 🗑️ Lógica para ELIMINAR CHAT DEFINITIVAMENTE (Elimina la tarjeta de la lista)
 document.addEventListener("DOMContentLoaded", () => {
   const modalVaciar = document.getElementById("modal-confirmar-vaciar");
   const btnAceptarVaciar = document.getElementById("btn-aceptar-vaciar-modal");
@@ -3949,65 +3949,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (modalVaciar) modalVaciar.classList.add("oculto");
 
-      if (!miUid || !contactoUid) {
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("No se pudo identificar el usuario.", "⚠️", "#ff4b2b");
-        }
-        return;
-      }
+      if (!miUid || !contactoUid) return;
 
       const elemNombre = tarjeta.querySelector(".chat-nombre");
-      const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+      const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este contacto";
 
       try {
-        // 1. Guardar la fecha de vaciado ÚNICAMENTE en tu nodo personal
-        const timestampVaciado = Date.now();
-        await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
+        // 1. 🛑 ELIMINAR EL CONTACTO DE MI LISTA DE CONTACTOS APROBADOS
+        await set(ref(db, `mis_contactos/${miUid}/${contactoUid}`), null);
 
-        // 2. Limpiar solo tus configuraciones locales (fijado y silenciado personales)
+        // 2. Limpiar marcas de vaciado, fijados y silenciados de mi usuario
+        await set(ref(db, `vaciados/${miUid}/${contactoUid}`), Date.now());
         await set(ref(db, `fijados/${miUid}/${contactoUid}`), null);
         await set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
-        await set(ref(db, `lecturas/${miUid}/${contactoUid}`), null);
 
         localStorage.removeItem(`fijado_${contactoUid}`);
         localStorage.removeItem(`silenciado_${contactoUid}`);
-        localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
 
-        // 3. Reseteo visual en tu pantalla
+        // 3. 🎬 Animación y eliminación física del elemento DOM en pantalla
         tarjeta.classList.add("tarjeta-eliminar-anim");
         setTimeout(() => {
-          const elemTexto = tarjeta.querySelector(".chat-texto");
-          const elemHora = tarjeta.querySelector(".chat-hora");
-          const elemBadge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
-          const pinIcono = tarjeta.querySelector(".indicador-pin-neon");
-          const silencioIcono = tarjeta.querySelector(".indicador-silencio-neon");
-
-          tarjeta.classList.remove("tarjeta-eliminar-anim", "tarjeta-fijada", "chat-silenciado-zona");
-          tarjeta.style.order = "";
-
-          if (elemTexto) elemTexto.textContent = "Conversación eliminada";
-          if (elemHora) elemHora.textContent = "--:--";
-          if (elemBadge) {
-            elemBadge.textContent = "0";
-            elemBadge.classList.add("oculto");
-          }
-          if (pinIcono) pinIcono.remove();
-          if (silencioIcono) silencioIcono.remove();
-
-          if (typeof window.actualizarBadgesNotificaciones === "function") {
-            window.actualizarBadgesNotificaciones();
-          }
+          tarjeta.remove(); // Remueve la tarjeta de la lista
         }, 300);
 
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Has eliminado el historial con <b>${nombreContacto}</b> de tu cuenta.`, "🗑️", "#ff4b2b");
+          mostrarAvisoPremium(`Chat con <b>${nombreContacto}</b> eliminado.`, "🗑️", "#ff4b2b");
         }
 
       } catch (error) {
-        console.error("Error al borrar conversación personal en Firebase:", error);
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("No se pudo vaciar la conversación.", "❌", "#ff4b2b");
-        }
+        console.error("Error al eliminar el chat en Firebase:", error);
       } finally {
         tarjetaParaEliminarGlobal = null;
       }

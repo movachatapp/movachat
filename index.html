@@ -513,13 +513,20 @@
       <button class="opcion-menu-ctx texto-rojo" data-accion="eliminar"><i data-lucide="trash-2"></i> Eliminar</button>
     </div>
 
-    <div class="menu-contextual" id="menu-tarjetas-chat" style="width: 190px; display: none;">
-      <button class="opcion-menu-ctx" id="btn-ctx-fijar"><i data-lucide="pin"></i> Fijar chat arriba</button>
-      <hr class="divisor-menu-ctx">
-      <button class="opcion-menu-ctx texto-rojo" id="btn-ctx-eliminar-chat"><i data-lucide="trash-2"></i> Eliminar
-        conversación</button>
-      <hr class="divisor-menu-ctx">
-      <button class="opcion-menu-ctx" id="btn-ctx-cerrar"><i data-lucide="x"></i> Cancelar</button>
+    <!-- Menú Contextual con ambas opciones -->
+    <div id="menu-tarjetas-chat" class="menu-contextual-mova oculto">
+      <button id="btn-ctx-fijar" class="btn-opcion-menu">
+        <i data-lucide="pin"></i> <span>Fijar chat arriba</span>
+      </button>
+      <button id="btn-ctx-vaciar" class="btn-opcion-menu">
+        <i data-lucide="eraser"></i> <span>Vaciar mensajes</span>
+      </button>
+      <button id="btn-ctx-eliminar" class="btn-opcion-menu opcion-peligro">
+        <i data-lucide="trash-2"></i> <span>Eliminar chat</span>
+      </button>
+      <button id="btn-ctx-cancelar" class="btn-opcion-menu">
+        <i data-lucide="x"></i> <span>Cancelar</span>
+      </button>
     </div>
 
     <button class="btn-flotante-contacto" id="btn-abrir-contactos" aria-label="Gestionar Contactos">
