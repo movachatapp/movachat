@@ -252,7 +252,7 @@ onAuthStateChanged(auth, async (user) => {
           //   cargarContactosAprobados(user.uid);
           // }
 
-          // 🚀 3. CARGAR SOLO CHATS ACTIVOS EN LA PANTALLA PRINCIPAL
+          // 🚀 Ejecutar la escucha de chats activos al autenticarse
           if (user && user.uid) {
             escucharChatsActivos(user.uid);
           }
@@ -5780,39 +5780,111 @@ if (btnVolverChat) {
   });
 }
 
-// 🔄 Escucha exclusivamente los chats guardados en mis_contactos
+// 🔄 Escucha los chats activos del usuario y genera las tarjetas directamente en el Inicio
 function escucharChatsActivos(uidActual) {
   if (!uidActual || typeof db === "undefined") return;
 
   const refMisContactos = ref(db, `mis_contactos/${uidActual}`);
 
   onValue(refMisContactos, (snapshot) => {
-    const contenedorChats = document.getElementById("lista-chats") || document.getElementById("contenedor-chats");
+    const contenedor = document.getElementById("lista-chats") || document.getElementById("contenedor-chats");
+    if (!contenedor) return;
+
     const contactos = snapshot.val();
 
-    // Si eliminaste todos los chats, limpia la pantalla de Inicio
+    // 1. Si no hay contactos en la lista, limpiar y mantener solo "Mi Estado"
     if (!contactos) {
-      if (contenedorChats) {
-        // Mantiene solo el elemento de 'Mi Estado' si existe
-        const estadoElem = document.getElementById("tarjeta-mi-estado");
-        contenedorChats.innerHTML = "";
-        if (estadoElem) contenedorChats.appendChild(estadoElem);
-      }
+      const tarjetaEstado = document.getElementById("tarjeta-mi-estado");
+      contenedor.innerHTML = "";
+      if (tarjetaEstado) contenedor.appendChild(tarjetaEstado);
       return;
     }
 
-    // Limpiar lista antes de redibujar los chats activos
-    if (contenedorChats) {
-      const estadoElem = document.getElementById("tarjeta-mi-estado");
-      contenedorChats.innerHTML = "";
-      if (estadoElem) contenedorChats.appendChild(estadoElem);
-    }
+    // 2. Limpiar el contenedor antes de dibujar las tarjetas actualizadas
+    const tarjetaEstado = document.getElementById("tarjeta-mi-estado");
+    contenedor.innerHTML = "";
+    if (tarjetaEstado) contenedor.appendChild(tarjetaEstado);
 
-    // Dibujar únicamente los chats que están en mis_contactos
-    Object.keys(contactos).forEach((contactoUid) => {
-      if (typeof cargarDatosUsuarioIndividual === "function") {
-        cargarDatosUsuarioIndividual(contactoUid);
+    // 3. Recorrer los UIDs guardados en mis_contactos
+    Object.keys(contactos).forEach(async (contactoUid) => {
+      try {
+        // Consultar los datos del contacto desde Firebase
+        const userSnap = await get(ref(db, `usuarios/${contactoUid}`));
+        if (!userSnap.exists()) return;
+
+        const datosUser = userSnap.val();
+        const nombre = datosUser.nombre || datosUser.nombreUsuario || datosUser.email || "Usuario";
+        const inicial = nombre.charAt(0).toUpperCase();
+        const avatarUrl = datosUser.fotoPerfil || datosUser.avatarUrl || null;
+
+        // Crear la tarjeta HTML en memoria
+        const tarjeta = document.createElement("div");
+        tarjeta.className = "tarjeta-chat";
+        tarjeta.setAttribute("data-uid", contactoUid);
+        tarjeta.setAttribute("data-chat-id", contactoUid);
+
+        tarjeta.innerHTML = `
+          <div class="wrapper-avatar">
+            ${avatarUrl 
+              ? `<img src="${avatarUrl}" class="avatar-chat" alt="${nombre}">` 
+              : `<div class="avatar-inicial" style="width: 45px; height: 45px; border-radius: 50%; background: linear-gradient(135deg, #00f2fe, #4facfe); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">${inicial}</div>`
+            }
+            <span class="led-estado"></span>
+          </div>
+          <div class="info-chat" style="flex: 1; margin-left: 12px;">
+            <div class="encabezado-chat" style="display: flex; justify-content: space-between; align-items: center;">
+              <h4 class="nombre-contacto" style="margin: 0; color: #fff; font-size: 1rem;">${nombre}</h4>
+              <span class="hora-ultimo-msg" style="font-size: 0.75rem; color: #888;">--:--</span>
+            </div>
+            <p class="ultimo-mensaje" style="margin: 4px 0 0 0; font-size: 0.85rem; color: #aaa;">Conversación activa</p>
+          </div>
+        `;
+
+        // Evento al hacer clic en la tarjeta para abrir el chat
+        tarjeta.addEventListener("click", () => {
+          window.contactoActivoUid = contactoUid;
+          if (typeof abrirChatConContacto === "function") {
+            abrirChatConContacto(contactoUid, nombre);
+          } else if (typeof abrirConversacion === "function") {
+            abrirConversacion(contactoUid);
+          }
+        });
+
+        // Evento para abrir el menú contextual de "Eliminar Chat"
+        tarjeta.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          window.chatSeleccionadoId = contactoUid;
+          window.contactoActivoUid = contactoUid;
+          
+          const menuCtx = document.getElementById("menu-tarjetas-chat");
+          if (menuCtx) {
+            menuCtx.style.display = "flex";
+            menuCtx.style.flexDirection = "column";
+            menuCtx.style.position = "fixed";
+            menuCtx.style.top = `${e.clientY}px`;
+            menuCtx.style.left = `${Math.min(e.clientX, window.innerWidth - 210)}px`;
+            menuCtx.style.zIndex = "9999";
+          }
+        });
+
+        // Insertar la tarjeta en la pantalla
+        contenedor.appendChild(tarjeta);
+
+      } catch (err) {
+        console.error("Error cargando tarjeta de chat:", err);
       }
     });
   });
+}
+
+// 📌 Función independiente (fuera de escucharChatsActivos)
+async function alSeleccionarContacto(contactoUid) {
+  const usuarioActual = auth ? auth.currentUser : null;
+  if (usuarioActual && contactoUid) {
+    try {
+      await set(ref(db, `mis_contactos/${usuarioActual.uid}/${contactoUid}`), true);
+    } catch (e) {
+      console.error("Error al registrar contacto activo:", e);
+    }
+  }
 }
