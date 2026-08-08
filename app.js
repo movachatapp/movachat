@@ -1324,14 +1324,15 @@ async function enviarMensajeNuevo() {
   // Limpiar el campo de texto INMEDIATAMENTE
   if (inputChat) inputChat.value = "";
 
-  // 🚀 SUBIR A FIREBASE Y REGISTRAR EN MIS_CONTACTOS
+  // 🚀 SUBIR A FIREBASE Y REGISTRAR EN CHATS_ACTIVOS
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
 
-    // 📌 Guardar únicamente en tu lista de chats activos (respeta las reglas de seguridad de Firebase)
-    await set(ref(db, `mis_contactos/${miUid}/${contactoUid}`), true);
+    // 📌 Registrar chat activo para ambos usuarios (se muestra en Inicio)
+    await set(ref(db, `chats_activos/${miUid}/${contactoUid}`), true);
+    await set(ref(db, `chats_activos/${contactoUid}/${miUid}`), true);
 
     // 🔊 SONIDO DE MENSAJE ENVIADO
     if (typeof reproducirSonido === "function") {
@@ -3680,36 +3681,33 @@ const btnCtxFijar = document.getElementById("btn-ctx-fijar");
 const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
-// 🗑️ Eliminar chat de la base de datos y de la vista
+// 🗑️ Rol de Inicio: Elimina la tarjeta del Inicio sin borrar al contacto de tu Agenda
 const btnEliminarChatCompleto = document.getElementById("btn-ctx-eliminar-chat-completo");
 
 if (btnEliminarChatCompleto) {
-  btnEliminarChatCompleto.addEventListener("click", async () => {
+  btnEliminarChatCompleto.onclick = async () => {
     const contactoUid = window.chatSeleccionadoId || window.contactoActivoUid;
+    const usuarioActual = auth.currentUser;
 
-    if (!contactoUid) return;
-
-    const confirmar = confirm("¿Deseas eliminar este chat por completo?");
-    if (!confirmar) return;
+    if (!contactoUid || !usuarioActual) return;
 
     try {
-      const usuarioActual = auth.currentUser;
-      if (!usuarioActual) return;
+      // Borrar únicamente del nodo 'chats_activos'
+      await remove(ref(db, `chats_activos/${usuarioActual.uid}/${contactoUid}`));
 
-      // 1. Eliminar la relación en Firebase
-      await remove(ref(db, `mis_contactos/${usuarioActual.uid}/${contactoUid}`));
-
-      // 2. Ocultar menú contextual
       const menuContextual = document.getElementById("menu-tarjetas-chat");
-      if (menuContextual) menuContextual.style.display = "none";
+      if (menuContextual) {
+        menuContextual.classList.add("oculto");
+        menuContextual.style.display = "none";
+      }
 
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Chat eliminado correctamente", "🗑️", "#00f2fe");
+        mostrarAvisoPremium("Conversación removida del Inicio 🗑️", "✨", "#00f2fe");
       }
     } catch (error) {
-      console.error("Error al eliminar el chat:", error);
+      console.error("Error al quitar chat de Inicio:", error);
     }
-  });
+  };
 }
 
 // 1️⃣ EVENTO Clic Derecho en PC (Directo a nivel de document)
@@ -5056,6 +5054,10 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     btnAccionChat.style.opacity = "1";
   }
 
+  if (miUid && uidTarget) {
+      set(ref(db, `chats_activos/${miUid}/${uidTarget}`), true);
+    }
+
   let uidTarget, nombreTarget, fotoTarget;
 
   if (typeof contactoUid === 'object' && contactoUid !== null) {
@@ -5717,20 +5719,19 @@ if (btnVolverChat) {
   });
 }
 
-// 🔄 Escucha los chats activos en tiempo real con actualización de vista previa, hora y notificaciones
+// 🔄 Escucha ÚNICAMENTE la bandeja de chats activos en Inicio (sin tocar la agenda de contactos)
 function escucharChatsActivos(uidActual) {
   if (!uidActual || typeof db === "undefined") return;
 
-  const refMisContactos = ref(db, `mis_contactos/${uidActual}`);
+  const refChatsActivos = ref(db, `chats_activos/${uidActual}`);
 
-  onValue(refMisContactos, (snapshot) => {
+  onValue(refChatsActivos, (snapshot) => {
     const contenedor = document.getElementById("lista-chats-principal") || document.getElementById("lista-chats");
     if (!contenedor) return;
 
     const contactos = snapshot.val();
     const tarjetaEstado = document.getElementById("tarjeta-mi-estado-propio") || document.getElementById("tarjeta-mi-estado");
 
-    // 1. Si no hay contactos, mantener solo "Mi Estado"
     if (!contactos) {
       contenedor.innerHTML = "";
       if (tarjetaEstado) contenedor.appendChild(tarjetaEstado);
@@ -5740,7 +5741,6 @@ function escucharChatsActivos(uidActual) {
     contenedor.innerHTML = "";
     if (tarjetaEstado) contenedor.appendChild(tarjetaEstado);
 
-    // 2. Recorrer los contactos guardados en mis_contactos
     Object.keys(contactos).forEach(async (contactoUid) => {
       try {
         const userSnap = await get(ref(db, `usuarios/${contactoUid}`));
@@ -5776,14 +5776,12 @@ function escucharChatsActivos(uidActual) {
           </div>
         `;
 
-        // 🟢 Clic en la tarjeta: Llama a la función oficial de tu app
         tarjeta.addEventListener("click", () => {
           if (typeof abrirChatConUsuario === "function") {
             abrirChatConUsuario(contactoUid, nombre, avatarUrl);
           }
         });
 
-        // Evento menú contextual
         tarjeta.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           window.chatSeleccionadoId = contactoUid;
@@ -5803,7 +5801,6 @@ function escucharChatsActivos(uidActual) {
 
         contenedor.appendChild(tarjeta);
 
-        // 🔔 CONEXIÓN EN TIEMPO REAL: Activa el escuchador de mensajes, hora, vista previa y notificaciones
         if (typeof escucharUltimoMensajeContacto === "function") {
           escucharUltimoMensajeContacto(uidActual, contactoUid);
         }
