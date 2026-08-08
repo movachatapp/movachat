@@ -3939,87 +3939,122 @@ async function alternarFijarChat(tarjeta) {
   }
 }
 
-// 🗑️ Lógica para Eliminar Conversación por Completo en Firebase
-async function eliminarChatAnimado(tarjeta) {
+// 🗑️ Lógica para Eliminar Conversación por Completo en Firebase (Modal Glassmorphism)
+let tarjetaParaEliminarGlobal = null;
+
+function eliminarChatAnimado(tarjeta) {
   if (!tarjeta) return;
 
-  const usuarioActual = auth.currentUser;
-  const miUid = usuarioActual ? usuarioActual.uid : null;
-  const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
-
-  if (!miUid || !contactoUid) {
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("No se pudo identificar el usuario para eliminar.", "⚠️", "#ff4b2b");
-    }
-    return;
-  }
+  tarjetaParaEliminarGlobal = tarjeta;
 
   const elemNombre = tarjeta.querySelector(".chat-nombre");
   const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
-  // Pedir confirmación antes de borrar definitivamente
-  if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente la conversación con ${nombreContacto}? Se borrarán todos los mensajes.`)) {
-    return;
+  const modalVaciar = document.getElementById("modal-confirmar-vaciar");
+  const modalTexto = document.getElementById("modal-vaciar-mensaje");
+
+  if (modalTexto) {
+    modalTexto.innerHTML = `¿Estás seguro de que deseas eliminar permanentemente la conversación con <b>${nombreContacto}</b>? Se borrarán todos los mensajes de la nube.`;
   }
 
-  // 1. Obtener el chatId único de la conversación
-  const chatId = typeof obtenerChatId === "function" 
-    ? obtenerChatId(miUid, contactoUid) 
-    : (miUid < contactoUid ? `${miUid}_${contactoUid}` : `${contactoUid}_${miUid}`);
-
-  try {
-    // 2. Borrar permanentemente los mensajes en Firebase Realtime Database
-    const chatRef = ref(db, `chats/${chatId}`);
-    await set(chatRef, null);
-
-    // 3. Borrar registros auxiliares de lecturas, fijados y silenciados de este chat
-    await set(ref(db, `lecturas/${miUid}/${contactoUid}`), null);
-    await set(ref(db, `fijados/${miUid}/${contactoUid}`), null);
-    await set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
-
-    // 4. Limpiar datos locales guardados en LocalStorage
-    localStorage.removeItem(`fijado_${contactoUid}`);
-    localStorage.removeItem(`silenciado_${contactoUid}`);
-    localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
-
-    // 5. Animación de salida fluida en la pantalla
-    tarjeta.classList.add("tarjeta-eliminar-anim");
-    setTimeout(() => {
-      // En lugar de borrar la tarjeta de contacto aprobada, la reseteamos visualmente a estado vacío
-      const elemTexto = tarjeta.querySelector(".chat-texto");
-      const elemHora = tarjeta.querySelector(".chat-hora");
-      const elemBadge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
-      const pinIcono = tarjeta.querySelector(".indicador-pin-neon");
-      const silencioIcono = tarjeta.querySelector(".indicador-silencio-neon");
-
-      tarjeta.classList.remove("tarjeta-eliminar-anim", "tarjeta-fijada", "chat-silenciado-zona");
-      tarjeta.style.order = "";
-
-      if (elemTexto) elemTexto.textContent = "Conversación eliminada";
-      if (elemHora) elemHora.textContent = "--:--";
-      if (elemBadge) {
-        elemBadge.textContent = "0";
-        elemBadge.classList.add("oculto");
-      }
-      if (pinIcono) pinIcono.remove();
-      if (silencioIcono) silencioIcono.remove();
-
-      if (typeof window.actualizarBadgesNotificaciones === "function") {
-        window.actualizarBadgesNotificaciones();
-      }
-    }, 300);
-
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Conversación con <b>${nombreContacto}</b> eliminada por completo.`, "🗑️", "#ff4b2b");
-    }
-
-  } catch (error) {
-    console.error("❌ Error al eliminar la conversación en Firebase:", error);
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("No se pudo eliminar la conversación de la nube.", "❌", "#ff4b2b");
-    }
+  if (modalVaciar) {
+    modalVaciar.classList.remove("oculto");
   }
 }
+
+// Eventos de confirmación y cancelación en el Modal
+document.addEventListener("DOMContentLoaded", () => {
+  const modalVaciar = document.getElementById("modal-confirmar-vaciar");
+  const btnAceptarVaciar = document.getElementById("btn-aceptar-vaciar-modal");
+  const btnCancelarVaciar = document.getElementById("btn-cancelar-vaciar-modal");
+
+  if (btnCancelarVaciar) {
+    btnCancelarVaciar.onclick = () => {
+      if (modalVaciar) modalVaciar.classList.add("oculto");
+      tarjetaParaEliminarGlobal = null;
+    };
+  }
+
+  if (btnAceptarVaciar) {
+    btnAceptarVaciar.onclick = async () => {
+      if (!tarjetaParaEliminarGlobal) return;
+
+      const tarjeta = tarjetaParaEliminarGlobal;
+      const usuarioActual = auth.currentUser;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
+      const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
+
+      if (modalVaciar) modalVaciar.classList.add("oculto");
+
+      if (!miUid || !contactoUid) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se pudo identificar el usuario.", "⚠️", "#ff4b2b");
+        }
+        return;
+      }
+
+      const elemNombre = tarjeta.querySelector(".chat-nombre");
+      const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+      const chatId = typeof obtenerChatId === "function" 
+        ? obtenerChatId(miUid, contactoUid) 
+        : (miUid < contactoUid ? `${miUid}_${contactoUid}` : `${contactoUid}_${miUid}`);
+
+      try {
+        // 1. Borrar conversación en Firebase Realtime Database
+        await set(ref(db, `chats/${chatId}`), null);
+
+        // 2. Borrar registros auxiliares
+        await set(ref(db, `lecturas/${miUid}/${contactoUid}`), null);
+        await set(ref(db, `fijados/${miUid}/${contactoUid}`), null);
+        await set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
+
+        // 3. Limpiar almacenamiento local
+        localStorage.removeItem(`fijado_${contactoUid}`);
+        localStorage.removeItem(`silenciado_${contactoUid}`);
+        localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
+
+        // 4. Reseteo visual fluido
+        tarjeta.classList.add("tarjeta-eliminar-anim");
+        setTimeout(() => {
+          const elemTexto = tarjeta.querySelector(".chat-texto");
+          const elemHora = tarjeta.querySelector(".chat-hora");
+          const elemBadge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
+          const pinIcono = tarjeta.querySelector(".indicador-pin-neon");
+          const silencioIcono = tarjeta.querySelector(".indicador-silencio-neon");
+
+          tarjeta.classList.remove("tarjeta-eliminar-anim", "tarjeta-fijada", "chat-silenciado-zona");
+          tarjeta.style.order = "";
+
+          if (elemTexto) elemTexto.textContent = "Conversación eliminada";
+          if (elemHora) elemHora.textContent = "--:--";
+          if (elemBadge) {
+            elemBadge.textContent = "0";
+            elemBadge.classList.add("oculto");
+          }
+          if (pinIcono) pinIcono.remove();
+          if (silencioIcono) silencioIcono.remove();
+
+          if (typeof window.actualizarBadgesNotificaciones === "function") {
+            window.actualizarBadgesNotificaciones();
+          }
+        }, 300);
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(`Conversación con <b>${nombreContacto}</b> eliminada.`, "🗑️", "#ff4b2b");
+        }
+
+      } catch (error) {
+        console.error("Error al eliminar conversación en Firebase:", error);
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Error al eliminar la conversación.", "❌", "#ff4b2b");
+        }
+      } finally {
+        tarjetaParaEliminarGlobal = null;
+      }
+    };
+  }
+});
 
 // ⚡ FUNCIÓN DEBOUNCE PARA REDUCIR USO DE CPU Y PETICIONES A FIREBASE
 function crearDebounce(funcion, espera = 300) {
