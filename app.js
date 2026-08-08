@@ -247,10 +247,10 @@ onAuthStateChanged(auth, async (user) => {
             }
           }
 
-          // 🚀 3. CARGAR CONTACTOS Y LISTA
-          if (typeof cargarContactosAprobados === "function") {
-            cargarContactosAprobados(user.uid);
-          }
+          // 🚀 3. CARGAR CONTACTOS Y LISTA (Desactivado para privacidad)
+          // if (typeof cargarContactosAprobados === "function") {
+          //   cargarContactosAprobados(user.uid);
+          // }
 
           // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP (CON ICONO VISUAL)
           const refSilenciados = ref(db, `silenciados/${user.uid}`);
@@ -434,7 +434,7 @@ document.addEventListener("click", function desbloquearAudiosMova() {
   if (window.sonidosApp) {
     Object.values(window.sonidosApp).forEach(audio => {
       if (audio) {
-        audio.play().then(() => audio.pause()).catch(() => {});
+        audio.play().then(() => audio.pause()).catch(() => { });
       }
     });
   }
@@ -463,7 +463,7 @@ window.reproducirSonido = function (tipo, contactoUid = null) {
         // El tiempo ya venció -> Reactivar automáticamente
         localStorage.removeItem(`silenciado_${contactoUid}`);
         localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
-        
+
         const miUid = auth.currentUser ? auth.currentUser.uid : null;
         if (miUid) set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
 
@@ -3764,6 +3764,43 @@ const btnCtxFijar = document.getElementById("btn-ctx-fijar");
 const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
+// 🗑️ Lógica para Eliminar Chat por completo de la lista
+const btnEliminarChatCompleto = document.getElementById("btn-ctx-eliminar-chat-completo");
+
+if (btnEliminarChatCompleto) {
+  btnEliminarChatCompleto.addEventListener("click", async () => {
+    // Verificar que exista un chat seleccionado
+    if (typeof chatSeleccionadoId === "undefined" || !chatSeleccionadoId) return;
+
+    const confirmar = confirm("¿Deseas eliminar este chat por completo de tu lista?");
+    if (!confirmar) return;
+
+    try {
+      const uidActual = firebase.auth().currentUser ? firebase.auth().currentUser.uid : null;
+      if (!uidActual) return;
+
+      // 1. Remover la referencia del chat en Firebase para este usuario
+      await firebase.database().ref(`mis_contactos/${uidActual}/${chatSeleccionadoId}`).remove();
+      
+      // 2. Eliminar la tarjeta visualmente de la pantalla
+      const tarjetaDOM = document.querySelector(`[data-chat-id="${chatSeleccionadoId}"]`) || 
+                         document.querySelector(`[data-uid="${chatSeleccionadoId}"]`);
+      if (tarjetaDOM) tarjetaDOM.remove();
+
+      // 3. Ocultar el menú contextual si existe la función
+      if (typeof ocultarMenuContextual === "function") {
+        ocultarMenuContextual();
+      } else {
+        const menu = document.getElementById("menu-tarjetas-chat");
+        if (menu) menu.style.display = "none";
+      }
+
+    } catch (error) {
+      console.error("Error al eliminar el chat:", error);
+    }
+  });
+}
+
 // 1️⃣ EVENTO Clic Derecho en PC (Directo a nivel de document)
 document.addEventListener("contextmenu", (e) => {
   const tarjeta = e.target.closest(".tarjeta-chat");
@@ -3900,7 +3937,7 @@ async function alternarFijarChat(tarjeta) {
 
   const cabecera = tarjeta.querySelector(".chat-cabecera");
   let pinIcono = tarjeta.querySelector(".indicador-pin-neon");
-  
+
   // Evaluar estado real
   const esFijado = tarjeta.classList.contains("tarjeta-fijada") || localStorage.getItem(`fijado_${contactoUid}`) === "true";
 
@@ -4233,7 +4270,7 @@ if (btnConfirmarEliminar) {
         }
 
         mostrarAvisoPremium(`Contacto <b>${contactoParaEliminarNodo.nombre || ''}</b> eliminado.`, "🗑️", "#ff4b2b");
-        
+
         // Recargar vista por si quedó vacía
         renderizarListaContactosModal();
       } catch (err) {
@@ -4355,9 +4392,9 @@ if (inputNuevoContacto && cajaSugerencias) {
 
         htmlSugerencias += `
           <div class="item-sugerencia-usuario" data-nombre="${usuario.nombre}">
-            ${tieneFoto 
-              ? `<img src="${tieneFoto}" class="avatar-sugerencia" alt="Perfil">` 
-              : `<div class="avatar-sugerencia-placeholder">${inicial}</div>`}
+            ${tieneFoto
+            ? `<img src="${tieneFoto}" class="avatar-sugerencia" alt="Perfil">`
+            : `<div class="avatar-sugerencia-placeholder">${inicial}</div>`}
             <span class="nombre-sugerencia-txt">${usuario.nombre}</span>
           </div>
         `;
@@ -4372,7 +4409,7 @@ if (inputNuevoContacto && cajaSugerencias) {
           inputNuevoContacto.value = nombreSeleccionado;
           cajaSugerencias.classList.add("oculto");
           cajaSugerencias.innerHTML = "";
-          
+
           if (btnGuardarContacto) btnGuardarContacto.click();
         });
       });
