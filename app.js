@@ -252,6 +252,11 @@ onAuthStateChanged(auth, async (user) => {
           //   cargarContactosAprobados(user.uid);
           // }
 
+          // 🚀 3. CARGAR SOLO CHATS ACTIVOS EN LA PANTALLA PRINCIPAL
+          if (user && user.uid) {
+            escucharChatsActivos(user.uid);
+          }
+
           // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP (CON ICONO VISUAL)
           const refSilenciados = ref(db, `silenciados/${user.uid}`);
           onValue(refSilenciados, (snapshot) => {
@@ -1244,6 +1249,7 @@ async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
   if (estaEnviandoMensaje) return;
 
+  const inputChat = document.getElementById("input-chat-privado") || document.getElementById("input-chat");
   const texto = inputChat ? inputChat.value.trim() : "";
   const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
 
@@ -1265,9 +1271,7 @@ async function enviarMensajeNuevo() {
 
   // 🛡️ 1. VERIFICACIÓN DE BLOQUEO EN FIREBASE (AMBAS DIRECCIONES)
   try {
-    // ¿El receptor te tiene bloqueado a ti?
     const snapBloqueoReceptor = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
-    // ¿Tú tienes bloqueado al receptor?
     const snapBloqueoPropio = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
 
     const meTieneBloqueado = snapBloqueoReceptor.exists() && snapBloqueoReceptor.val() === true;
@@ -1282,7 +1286,6 @@ async function enviarMensajeNuevo() {
         mostrarAvisoPremium(mensajeAviso, "🚫", "#ff4b2b");
       }
 
-      // Desactivar candado y salir
       estaEnviandoMensaje = false;
       return;
     }
@@ -1316,13 +1319,11 @@ async function enviarMensajeNuevo() {
       }
     }
 
-    // Resetear variables de control de edición
     window.burbujaEnEdicion = null;
     window.mensajeEnEdicionId = null;
     if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
 
-    // Liberar candado
     estaEnviandoMensaje = false;
     return;
   }
@@ -1348,7 +1349,6 @@ async function enviarMensajeNuevo() {
     timestamp: Date.now(),
     esEfimero: duracionEfimeraMs > 0,
     duracionEfimeraMs: duracionEfimeraMs,
-    // ↪️ METADATOS DE REENVÍO (Lee la variable global)
     esReenviado: window.mensajeReenviadoActivo ? true : false,
     autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
     tipoAdjunto: null,
@@ -1356,7 +1356,7 @@ async function enviarMensajeNuevo() {
     nombreDoc: null
   };
 
-  // 🧹 Limpiar la barra visual de reenvío y la variable tras armar el objeto
+  // Limpiar reenvío
   window.mensajeReenviadoActivo = null;
   const vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
   if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
@@ -1376,7 +1376,6 @@ async function enviarMensajeNuevo() {
       objetoMensaje.urlAdjunto = urlVideoCapturado;
     }
 
-    // Limpiar caja de vista previa
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
     if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
@@ -1388,11 +1387,17 @@ async function enviarMensajeNuevo() {
   // Limpiar el campo de texto INMEDIATAMENTE
   if (inputChat) inputChat.value = "";
 
-  // 🚀 SUBIR A FIREBASE
+  // 🚀 SUBIR A FIREBASE Y REGISTRAR EN MIS_CONTACTOS
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
+
+    // 📌 REGISTRO EN MIS_CONTACTOS PARA MOSTRAR LA TARJETA EN INICIO
+    const actualizacionesContactos = {};
+    actualizacionesContactos[`mis_contactos/${miUid}/${contactoUid}`] = true;
+    actualizacionesContactos[`mis_contactos/${contactoUid}/${miUid}`] = true;
+    await update(ref(db), actualizacionesContactos);
 
     // 🔊 SONIDO DE MENSAJE ENVIADO
     if (typeof reproducirSonido === "function") {
@@ -1406,7 +1411,6 @@ async function enviarMensajeNuevo() {
       mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
     }
   } finally {
-    // Liberar el candado tras 300ms para permitir el siguiente mensaje
     setTimeout(() => {
       estaEnviandoMensaje = false;
     }, 300);
@@ -1712,28 +1716,6 @@ function actualizarIconoBotonAccion() {
       targets: [btnAccionChat]
     });
   }
-}
-
-if (inputChat) {
-  inputChat.addEventListener("input", actualizarIconoBotonAccion);
-
-  inputChat.addEventListener("keydown", (evento) => {
-    if (evento.key === "Enter") {
-      enviarMensajeNuevo();
-    }
-  });
-}
-
-if (btnAccionChat) {
-  btnAccionChat.addEventListener("click", (e) => {
-    const tieneTexto = inputChat.value.trim().length > 0;
-    const tieneAdjunto = !cajaVistaPrevia.classList.contains("oculto");
-
-    if (tieneTexto || tieneAdjunto) {
-      e.preventDefault();
-      enviarMensajeNuevo();
-    }
-  });
 }
 
 // Evento para filtrar contactos con el buscador en tiempo real (Soporta @tags)
@@ -3781,10 +3763,10 @@ if (btnEliminarChatCompleto) {
 
       // 1. Remover la referencia del chat en Firebase para este usuario
       await firebase.database().ref(`mis_contactos/${uidActual}/${chatSeleccionadoId}`).remove();
-      
+
       // 2. Eliminar la tarjeta visualmente de la pantalla
-      const tarjetaDOM = document.querySelector(`[data-chat-id="${chatSeleccionadoId}"]`) || 
-                         document.querySelector(`[data-uid="${chatSeleccionadoId}"]`);
+      const tarjetaDOM = document.querySelector(`[data-chat-id="${chatSeleccionadoId}"]`) ||
+        document.querySelector(`[data-uid="${chatSeleccionadoId}"]`);
       if (tarjetaDOM) tarjetaDOM.remove();
 
       // 3. Ocultar el menú contextual si existe la función
@@ -5323,8 +5305,10 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   }
 }
 
-// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES
-const inputChatPrivado = document.getElementById("input-chat-privado");
+// ========================================================
+// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES (MOVACHAT)
+// ========================================================
+const inputChatPrivado = document.getElementById("input-chat-privado") || document.getElementById("input-chat");
 
 if (btnAccionChat) {
   btnAccionChat.onclick = (e) => {
@@ -5339,6 +5323,10 @@ if (btnAccionChat) {
 }
 
 if (inputChatPrivado) {
+  inputChatPrivado.oninput = () => {
+    if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
+  };
+
   inputChatPrivado.onkeydown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -5797,5 +5785,28 @@ if (btnVolverChat) {
     if (pantallaChats) pantallaChats.style.display = "flex";
 
     mostrarEncabezadoPrincipal();
+  });
+}
+
+// 🔄 Muestra en Inicio solo las personas con las que has iniciado chat
+function escucharChatsActivos(uidActual) {
+  const refMisContactos = firebase.database().ref(`mis_contactos/${uidActual}`);
+
+  refMisContactos.on("value", async (snapshot) => {
+    const contactos = snapshot.val();
+    
+    // Si no hay contactos con chats activos, no dibuja nada extra
+    if (!contactos) return;
+
+    // Recorremos los contactos activos y los cargamos en pantalla
+    Object.keys(contactos).forEach(async (contactoUid) => {
+      // Si la función cargarDatosUsuario existe en tu código, la usamos
+      if (typeof cargarContactoEnInicio === "function") {
+        cargarContactoEnInicio(contactoUid);
+      } else if (typeof cargarContactosAprobados === "function") {
+        // Carga el contacto individualmente en la lista
+        cargarContactosAprobados(uidActual, contactoUid);
+      }
+    });
   });
 }
