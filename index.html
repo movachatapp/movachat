@@ -4,13 +4,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>MovaChat</title>
-  <!-- Configuración de PWA y App Instalable -->
+  <meta name="description"
+    content="MovaChat - Tu espacio de conexión premium con chat en tiempo real, historias y privacidad.">
+
+  <!-- Optimización de Carga de Recursos Externos -->
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="dns-prefetch" href="https://unpkg.com">
+
+  <!-- Ícono Principal (Favicon para PC y Navegadores) -->
+  <link rel="icon" type="image/png" href="assets/logo/icon-192.png">
+
+  <!-- Configuración General y PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#090d16">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="format-detection" content="telephone=no">
+
+  <!-- Compatibilidad Específica para iOS (iPhone / iPad) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MovaChat">
   <link rel="apple-touch-icon" href="assets/logo/icon-192.png">
+
+  <!-- Compatibilidad para Windows / Microsoft -->
+  <meta name="msapplication-TileColor" content="#090d16">
+  <meta name="msapplication-TileImage" content="assets/logo/icon-192.png">
+
+  <!-- Estilos e Íconos -->
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -229,12 +250,6 @@
             <i data-lucide="share-2"></i> Compartir MovaChat
           </button>
 
-          <!-- 📲 BOTÓN DE INSTALACIÓN PWA -->
-          <button id="btn-instalar-pwa" class="btn-primario"
-            style="display: none; width: 100%; align-items: center; justify-content: center; gap: 10px; background: linear-gradient(135deg, #00f2fe, #7f00ff);">
-            <i data-lucide="download"></i> Instalar MovaChat App
-          </button>
-
           <div style="display: flex; gap: 12px; width: 100%;">
             <button class="btn-qr" aria-label="Mostrar código QR"
               style="flex: 1; padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500;">
@@ -342,7 +357,8 @@
         </div>
       </div>
 
-      <div class="historial-mensajes"></div>
+      <!-- FASE 5: ÁREA DE CHAT PRIVADO -->
+      <div class="historial-mensajes" id="historial-mensajes"></div>
 
       <!-- PREVISUALIZACIÓN DE ADJUNTOS -->
       <div class="previsualizacion-adjunto oculto" id="caja-vista-previa">
@@ -516,12 +532,11 @@
       <button class="opcion-menu-ctx texto-rojo" data-accion="eliminar"><i data-lucide="trash-2"></i> Eliminar</button>
     </div>
 
-    <div class="menu-contextual" id="menu-tarjetas-chat" style="width: 200px; display: none;">
+    <div class="menu-contextual" id="menu-tarjetas-chat" style="width: 190px; display: none;">
       <button class="opcion-menu-ctx" id="btn-ctx-fijar"><i data-lucide="pin"></i> Fijar chat arriba</button>
       <hr class="divisor-menu-ctx">
-      <button class="opcion-menu-ctx texto-rojo" id="btn-ctx-eliminar-chat"><i data-lucide="broom"></i> Vaciar conversación</button>
-      <hr class="divisor-menu-ctx">
-      <button class="opcion-menu-ctx texto-rojo" id="btn-ctx-eliminar-chat-completo"><i data-lucide="trash-2"></i> Eliminar Chat</button>
+      <button class="opcion-menu-ctx texto-rojo" id="btn-ctx-eliminar-chat"><i data-lucide="trash-2"></i> Eliminar
+        conversación</button>
       <hr class="divisor-menu-ctx">
       <button class="opcion-menu-ctx" id="btn-ctx-cerrar"><i data-lucide="x"></i> Cancelar</button>
     </div>
@@ -570,18 +585,17 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <nav class="menu-flotante">
-    <button class="menu-btn activo">
-      <i data-lucide="home"></i>
-      <span>Inicio</span>
-    </button>
-    <button class="menu-btn">
-      <i data-lucide="user"></i>
-      <span>Perfil</span>
-    </button>
-  </nav>
+    <nav class="menu-flotante">
+      <button class="menu-btn activo">
+        <i data-lucide="home"></i>
+        <span>Inicio</span>
+      </button>
+      <button class="menu-btn">
+        <i data-lucide="user"></i>
+        <span>Perfil</span>
+      </button>
+    </nav>
   </div>
 
   <div id="toast-premium" class="toast-oculto"
@@ -776,7 +790,17 @@
   <script type="module" src="app.js?v=2"></script>
   <script>
     lucide.createIcons();
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('Service Worker registrado correctamente', reg))
+          .catch(err => console.error('Error al registrar Service Worker', err));
+      });
+    }
   </script>
+
+  <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
 
 </body>
 

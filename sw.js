@@ -1,13 +1,11 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (v1.0.0)
+// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v1.0.0)
 // ========================================================
 
 const CACHE_NAME = 'movachat-v1.0.0';
 
-// Recursos esenciales para arranque Offline y caché base
+// Solo guardamos recursos ESTÁTICOS (Imágenes, Fuentes, CSS base)
 const ASSETS_TO_CACHE = [
-  './',
-  './index.html',
   './styles.css',
   './manifest.json',
   './assets/logo/icon-192.png',
@@ -64,25 +62,21 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// 🚀 4. RECEPTOR DE NOTIFICACIONES PUSH UNIFICADO
+// 🚀 4. RECEPTOR DE NOTIFICACIONES PUSH
 self.addEventListener('push', (event) => {
-  let data = {};
+  let data = { titulo: 'MovaChat 💬', cuerpo: 'Tienes un nuevo mensaje recibido 📩', icono: './assets/logo/icon-192.png' };
 
   if (event.data) {
     try {
       data = event.data.json();
     } catch (e) {
-      data = { cuerpo: event.data.text() };
+      data.cuerpo = event.data.text();
     }
   }
 
-  const titulo = data.titulo || data.title || data.nombreRemitente || 'MovaChat 💬';
-  const cuerpo = data.cuerpo || data.body || data.texto || 'Tienes un nuevo mensaje recibido 📩';
-  const icono = data.icono || data.icon || data.avatarUrl || './assets/logo/icon-192.png';
-
   const opciones = {
-    body: cuerpo,
-    icon: icono,
+    body: data.cuerpo || data.texto || 'Tienes un nuevo mensaje recibido 📩',
+    icon: data.icono || data.avatarUrl || './assets/logo/icon-192.png',
     badge: './assets/logo/icon-192.png',
     vibrate: [200, 100, 200],
     data: {
@@ -91,7 +85,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(titulo, opciones)
+    self.registration.showNotification(data.titulo || data.nombreRemitente || 'MovaChat', opciones)
   );
 });
 

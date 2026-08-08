@@ -82,28 +82,26 @@ body {
   transition: background 1.2s ease-in-out;
 }
 
-/* --- ESFERAS RECALIBRADAS (CONFORT VISUAL 60FPS) --- */
+/* --- ESFERAS OPTIMIZADAS PARA GPU Y BATERÍA --- */
 .esfera-cyan {
-  width: 380px;
-  height: 380px;
-  background: rgba(0, 242, 254, 0.15);
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(0, 242, 254, 0.25) 0%, rgba(0, 242, 254, 0) 70%);
   top: 5%;
-  left: -30%;
-  border-radius: 43% 57% 65% 35% / 40% 45% 55% 60%;
-  filter: blur(140px);
+  left: -20%;
+  filter: blur(40px);
   transform: translate3d(0, 0, 0);
   will-change: transform;
   animation: orbitaVelozCyan 25s ease-in-out infinite alternate;
 }
 
 .esfera-morada {
-  width: 400px;
-  height: 400px;
-  background: rgba(127, 0, 255, 0.15);
+  width: 340px;
+  height: 340px;
+  background: radial-gradient(circle, rgba(127, 0, 255, 0.25) 0%, rgba(127, 0, 255, 0) 70%);
   bottom: 5%;
-  right: -30%;
-  border-radius: 60% 40% 45% 55% / 50% 35% 65% 50%;
-  filter: blur(140px);
+  right: -20%;
+  filter: blur(40px);
   transform: translate3d(0, 0, 0);
   will-change: transform;
   animation: orbitaVelozMorada 30s ease-in-out infinite alternate;
@@ -1099,8 +1097,9 @@ body {
   display: none;
   flex-direction: column;
   height: 100%;
-  max-height: calc(100dvh - 70px);
+  max-height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 #pantalla-chat-privado.pantalla-completa {
@@ -2832,16 +2831,16 @@ body {
   min-width: 15px;
   text-align: center;
   box-shadow: 0 0 8px #ff4b2b;
-  transition: transform 0.2s ease;
-}
-
-#badge-campanita:not(.oculto) {
-  transform: scale(1);
+  animation: pulsoBadge 1.5s infinite alternate;
 }
 
 @keyframes pulsoBadge {
   0% { transform: scale(1); }
   100% { transform: scale(1.15); }
+}
+
+.oculto {
+  display: none !important;
 }
 
 /* 🔮 MODAL PERSONALIZADO MOVACHAT */
@@ -3028,7 +3027,6 @@ body.tema-claro .esfera-morada {
 body.tema-claro .encabezado-inicio {
   border-bottom: 1px solid rgba(148, 163, 184, 0.25) !important;
   box-shadow: 0 4px 15px -5px rgba(0, 180, 216, 0.12) !important;
-  padding-top: max(20px, env(safe-area-inset-top));
 }
 
 body.tema-claro .icono-btn {
@@ -3566,4 +3564,30 @@ body.tema-claro .nombre-sugerencia-txt {
 /* Suavizado de desplazamiento fluido en móviles */
 .modal-cristal {
   -webkit-overflow-scrolling: touch;
+}
+
+/* ========================================== */
+/* CORRECCIÓN DE CAPAS (Z-INDEX UNIFICADO)   */
+/* ========================================== */
+
+/* Menús desplegables y contextuales */
+.menu-contextual,
+#menu-desplegable-cabecera,
+#menu-tarjetas-chat {
+  z-index: 500 !important;
+}
+
+/* Modales, Pantallas completas e Historias */
+.modal-overlay,
+.pantalla-auth,
+.visor-estado-flotante,
+.modal-mova-overlay,
+#modal-admin {
+  z-index: 1000 !important;
+}
+
+/* Notificaciones y Avisos Toasts (Siempre arriba de todo) */
+#toast-premium,
+.toast-movachat {
+  z-index: 2000 !important;
 }
