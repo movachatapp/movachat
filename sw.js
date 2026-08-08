@@ -1,15 +1,14 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v5.9)
+// 📱 SERVICE WORKER MOVACHAT (v1.0.0)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v5.9';
+const CACHE_NAME = 'movachat-v1.0.0';
 
 // Recursos esenciales para arranque Offline y caché base
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './styles.css',
-  './app.js',
   './manifest.json',
   './assets/logo/icon-192.png',
   './assets/logo/icon-512.png'
@@ -21,7 +20,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE);
-    }).catch((err) => console.warn('Error precargando caché:', err))
+    })
   );
 });
 
@@ -40,75 +39,50 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Estrategia Red Primero segura para scripts (Evita congelamientos si la red falla)
+// 3. Estrategia RED PRIMERO para scripts (Evita congelar contadores en caché)
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
-  // SI ES CÓDIGO JS, CSS O HTML: Pedir la versión fresca y actualizar caché
-  if (
-    event.request.url.includes('app.js') || 
-    event.request.url.includes('index.html') ||
-    event.request.url.includes('styles.css')
-  ) {
+  // SI ES CÓDIGO JS O HTML: Pedir SIEMPRE la versión fresca de la red
+  if (event.request.url.includes('app.js') || event.request.url.includes('index.html')) {
     event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const copy = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          }
-          return networkResponse;
-        })
-        .catch(async () => {
-          const cachedResponse = await caches.match(event.request);
-          if (cachedResponse) return cachedResponse;
-          
-          // Retorno seguro en caso de fallo crítico de red para evitar la pantalla vacía
-          return new Response('/* Error de conexión */', { 
-            status: 503, 
-            headers: { 'Content-Type': 'text/javascript' } 
-          });
-        })
+      fetch(event.request).catch(() => caches.match(event.request))
     );
     return;
   }
 
-  // Para otros archivos (imágenes/fuentes), buscar en caché primero
+  // Para otros archivos (imágenes/CSS), buscar en caché primero
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
-      return fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const copy = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        }
-        return networkResponse;
-      });
-    }).catch(() => {
-      return new Response('', { status: 404 });
+      return fetch(event.request);
     })
   );
 });
 
-// 🚀 4. RECEPTOR DE NOTIFICACIONES PUSH
+// 🚀 4. RECEPTOR DE NOTIFICACIONES PUSH UNIFICADO
 self.addEventListener('push', (event) => {
-  let data = { titulo: 'MovaChat 💬', cuerpo: 'Tienes un nuevo mensaje recibido 📩', icono: './assets/logo/icon-192.png' };
+  let data = {};
 
   if (event.data) {
     try {
       data = event.data.json();
     } catch (e) {
-      data.cuerpo = event.data.text();
+      data = { cuerpo: event.data.text() };
     }
   }
 
+  const titulo = data.titulo || data.title || data.nombreRemitente || 'MovaChat 💬';
+  const cuerpo = data.cuerpo || data.body || data.texto || 'Tienes un nuevo mensaje recibido 📩';
+  const icono = data.icono || data.icon || data.avatarUrl || './assets/logo/icon-192.png';
+
   const opciones = {
-    body: data.cuerpo || data.texto || 'Tienes un nuevo mensaje recibido 📩',
-    icon: data.icono || data.avatarUrl || './assets/logo/icon-192.png',
+    body: cuerpo,
+    icon: icono,
     badge: './assets/logo/icon-192.png',
     vibrate: [200, 100, 200],
     data: {
@@ -117,7 +91,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.titulo || data.nombreRemitente || 'MovaChat', opciones)
+    self.registration.showNotification(titulo, opciones)
   );
 });
 

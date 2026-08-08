@@ -2832,16 +2832,16 @@ body {
   min-width: 15px;
   text-align: center;
   box-shadow: 0 0 8px #ff4b2b;
-  animation: pulsoBadge 1.5s infinite alternate;
+  transition: transform 0.2s ease;
+}
+
+#badge-campanita:not(.oculto) {
+  transform: scale(1);
 }
 
 @keyframes pulsoBadge {
   0% { transform: scale(1); }
   100% { transform: scale(1.15); }
-}
-
-.oculto {
-  display: none !important;
 }
 
 /* 🔮 MODAL PERSONALIZADO MOVACHAT */

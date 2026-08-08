@@ -8,7 +8,7 @@ import {
   updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, get, child, onValue, update, push, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, get, child, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
@@ -252,11 +252,6 @@ onAuthStateChanged(auth, async (user) => {
           //   cargarContactosAprobados(user.uid);
           // }
 
-          // 🚀 Ejecutar la escucha de chats activos al autenticarse
-          if (user && user.uid) {
-            escucharChatsActivos(user.uid);
-          }
-
           // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP (CON ICONO VISUAL)
           const refSilenciados = ref(db, `silenciados/${user.uid}`);
           onValue(refSilenciados, (snapshot) => {
@@ -338,29 +333,6 @@ onAuthStateChanged(auth, async (user) => {
     }
   } else {
     if (authPantalla) authPantalla.style.display = "flex";
-  }
-});
-
-// --- MOSTRAR / OCULTAR CONTRASEÑA ---
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest("#btn-toggle-password");
-  if (!btn) return;
-
-  e.preventDefault();
-  const inputPass = document.getElementById("auth-password");
-  if (!inputPass) return;
-
-  // Alternar entre password y text
-  const esPassword = inputPass.type === "password";
-  inputPass.type = esPassword ? "text" : "password";
-
-  // Cambiar el icono en Lucide
-  const icono = btn.querySelector("[data-lucide]");
-  if (icono) {
-    icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
-    if (window.lucide) {
-      window.lucide.createIcons();
-    }
   }
 });
 
@@ -527,6 +499,69 @@ function filtrarYRenderizar() {
     });
     badgeFiltro.textContent = totalNoLeidos.toString();
   }
+}
+
+if (contenedorChats) {
+  contenedorChats.addEventListener("click", (e) => {
+    const tarjeta = e.target.closest(".tarjeta-chat");
+    if (!tarjeta) return;
+
+    // 🛑 FRENO DE MANO: Si el menú contextual está visible o activado el bloqueo fantasma, no abrimos chat
+    const menuTarjetas = document.getElementById("menu-tarjetas-chat");
+    if (bloquarClickFantasma || (menuTarjetas && !menuTarjetas.classList.contains("oculto"))) {
+      return;
+    }
+
+    if (isLongPress) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+
+    // Abrir estado al hacer clic en la foto de avatar si tiene historia
+    if (e.target.closest(".chat-avatar-caja")) {
+      e.stopPropagation();
+
+      // Buscar si la tarjeta tiene la clase o indicador de historia/estado activo
+      const tieneEstado = tarjeta.dataset.estadoUrl;
+      if (tieneEstado) {
+        abrirEstadoAmigo(tarjeta.dataset.estadoUrl, tarjeta.dataset.estadoTexto || "");
+      }
+      return;
+    }
+
+    // Clic en la tarjeta para abrir el chat privado
+    const nombreSeleccionado = tarjeta.querySelector(".chat-nombre").textContent;
+    const textoEstadoCabecera = document.querySelector(".amigo-datos .amigo-estado-texto");
+    const ledSuperiorEnfoque = document.getElementById("led-enfoque-app");
+
+    document.querySelector(".amigo-nombre-chat").textContent = nombreSeleccionado;
+
+    cargarMensajesDeAmigo(nombreSeleccionado, historialMensajes);
+
+    const srcImg = tarjeta.querySelector("img") ? tarjeta.querySelector("img").src : "";
+    if (srcImg) document.querySelector(".avatar-mini-caja img").src = srcImg;
+
+    encabezadoGlobal.style.display = "none";
+    menuFlotanteGlobal.style.display = "none";
+    pantallaChatPrivado.classList.add("pantalla-completa");
+    switchPantalla(pantallaChatPrivado, pantallaChats, pantallaPerfil, pantallaBienvenida);
+
+    historialMensajes.scrollTop = historialMensajes.scrollHeight;
+
+    if (window.timerSimuladorLectura) clearTimeout(window.timerSimuladorLectura);
+    if (window.timerSimuladorEscribiendo) clearTimeout(window.timerSimuladorEscribiendo);
+
+    if (textoEstadoCabecera) {
+      textoEstadoCabecera.textContent = "En línea";
+      textoEstadoCabecera.style.color = "rgba(255, 255, 255, 0.5)";
+    }
+
+    if (ledSuperiorEnfoque) {
+      ledSuperiorEnfoque.style.backgroundColor = "#7f00ff";
+      ledSuperiorEnfoque.style.boxShadow = "0 0 8px #7f00ff";
+    }
+  });
 }
 
 // ========================================================
@@ -1186,7 +1221,6 @@ async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
   if (estaEnviandoMensaje) return;
 
-  const inputChat = document.getElementById("input-chat-privado") || document.getElementById("input-chat");
   const texto = inputChat ? inputChat.value.trim() : "";
   const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
 
@@ -1208,7 +1242,9 @@ async function enviarMensajeNuevo() {
 
   // 🛡️ 1. VERIFICACIÓN DE BLOQUEO EN FIREBASE (AMBAS DIRECCIONES)
   try {
+    // ¿El receptor te tiene bloqueado a ti?
     const snapBloqueoReceptor = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
+    // ¿Tú tienes bloqueado al receptor?
     const snapBloqueoPropio = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
 
     const meTieneBloqueado = snapBloqueoReceptor.exists() && snapBloqueoReceptor.val() === true;
@@ -1223,6 +1259,7 @@ async function enviarMensajeNuevo() {
         mostrarAvisoPremium(mensajeAviso, "🚫", "#ff4b2b");
       }
 
+      // Desactivar candado y salir
       estaEnviandoMensaje = false;
       return;
     }
@@ -1256,11 +1293,13 @@ async function enviarMensajeNuevo() {
       }
     }
 
+    // Resetear variables de control de edición
     window.burbujaEnEdicion = null;
     window.mensajeEnEdicionId = null;
     if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
 
+    // Liberar candado
     estaEnviandoMensaje = false;
     return;
   }
@@ -1286,6 +1325,7 @@ async function enviarMensajeNuevo() {
     timestamp: Date.now(),
     esEfimero: duracionEfimeraMs > 0,
     duracionEfimeraMs: duracionEfimeraMs,
+    // ↪️ METADATOS DE REENVÍO (Lee la variable global)
     esReenviado: window.mensajeReenviadoActivo ? true : false,
     autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
     tipoAdjunto: null,
@@ -1293,7 +1333,7 @@ async function enviarMensajeNuevo() {
     nombreDoc: null
   };
 
-  // Limpiar reenvío
+  // 🧹 Limpiar la barra visual de reenvío y la variable tras armar el objeto
   window.mensajeReenviadoActivo = null;
   const vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
   if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
@@ -1313,6 +1353,7 @@ async function enviarMensajeNuevo() {
       objetoMensaje.urlAdjunto = urlVideoCapturado;
     }
 
+    // Limpiar caja de vista previa
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
     if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
@@ -1324,15 +1365,11 @@ async function enviarMensajeNuevo() {
   // Limpiar el campo de texto INMEDIATAMENTE
   if (inputChat) inputChat.value = "";
 
-  // 🚀 SUBIR A FIREBASE Y REGISTRAR EN CHATS_ACTIVOS
+  // 🚀 SUBIR A FIREBASE
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
-
-    // 📌 Registrar chat activo para ambos usuarios (se muestra en Inicio)
-    await set(ref(db, `chats_activos/${miUid}/${contactoUid}`), true);
-    await set(ref(db, `chats_activos/${contactoUid}/${miUid}`), true);
 
     // 🔊 SONIDO DE MENSAJE ENVIADO
     if (typeof reproducirSonido === "function") {
@@ -1346,6 +1383,7 @@ async function enviarMensajeNuevo() {
       mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
     }
   } finally {
+    // Liberar el candado tras 300ms para permitir el siguiente mensaje
     setTimeout(() => {
       estaEnviandoMensaje = false;
     }, 300);
@@ -1651,6 +1689,28 @@ function actualizarIconoBotonAccion() {
       targets: [btnAccionChat]
     });
   }
+}
+
+if (inputChat) {
+  inputChat.addEventListener("input", actualizarIconoBotonAccion);
+
+  inputChat.addEventListener("keydown", (evento) => {
+    if (evento.key === "Enter") {
+      enviarMensajeNuevo();
+    }
+  });
+}
+
+if (btnAccionChat) {
+  btnAccionChat.addEventListener("click", (e) => {
+    const tieneTexto = inputChat.value.trim().length > 0;
+    const tieneAdjunto = !cajaVistaPrevia.classList.contains("oculto");
+
+    if (tieneTexto || tieneAdjunto) {
+      e.preventDefault();
+      enviarMensajeNuevo();
+    }
+  });
 }
 
 // Evento para filtrar contactos con el buscador en tiempo real (Soporta @tags)
@@ -3681,33 +3741,44 @@ const btnCtxFijar = document.getElementById("btn-ctx-fijar");
 const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
-// 🗑️ Rol de Inicio: Elimina la tarjeta del Inicio sin borrar al contacto de tu Agenda
+// 🗑️ Lógica para Eliminar Chat por completo de la lista (Corregido para Firebase v10 Modular)
 const btnEliminarChatCompleto = document.getElementById("btn-ctx-eliminar-chat-completo");
 
 if (btnEliminarChatCompleto) {
-  btnEliminarChatCompleto.onclick = async () => {
-    const contactoUid = window.chatSeleccionadoId || window.contactoActivoUid;
-    const usuarioActual = auth.currentUser;
+  btnEliminarChatCompleto.addEventListener("click", async () => {
+    if (!tarjetaChatSeleccionada) return;
 
-    if (!contactoUid || !usuarioActual) return;
+    const contactoUid = tarjetaChatSeleccionada.dataset.uid || tarjetaChatSeleccionada.id.replace("tarjeta-chat-", "");
+    const elemNombre = tarjetaChatSeleccionada.querySelector(".chat-nombre");
+    const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+    if (!confirm(`¿Deseas eliminar el chat con ${nombreContacto} de tu lista?`)) return;
 
     try {
-      // Borrar únicamente del nodo 'chats_activos'
-      await remove(ref(db, `chats_activos/${usuarioActual.uid}/${contactoUid}`));
+      const usuarioActual = auth.currentUser;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
 
-      const menuContextual = document.getElementById("menu-tarjetas-chat");
-      if (menuContextual) {
-        menuContextual.classList.add("oculto");
-        menuContextual.style.display = "none";
+      if (!miUid || !contactoUid) return;
+
+      // 1. Remover el contacto de Firebase usando el SDK modular
+      await set(ref(db, `mis_contactos/${miUid}/${contactoUid}`), null);
+      
+      // 2. Eliminar la tarjeta visualmente de la lista
+      tarjetaChatSeleccionada.remove();
+
+      // 3. Ocultar el menú contextual
+      if (typeof cerrarMenuContextualMova === "function") {
+        cerrarMenuContextualMova();
       }
 
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Conversación removida del Inicio 🗑️", "✨", "#00f2fe");
+        mostrarAvisoPremium(`Chat con ${nombreContacto} eliminado de la lista.`, "🗑️", "#ff4b2b");
       }
+
     } catch (error) {
-      console.error("Error al quitar chat de Inicio:", error);
+      console.error("Error al eliminar el chat:", error);
     }
-  };
+  });
 }
 
 // 1️⃣ EVENTO Clic Derecho en PC (Directo a nivel de document)
@@ -5054,10 +5125,6 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     btnAccionChat.style.opacity = "1";
   }
 
-  if (miUid && uidTarget) {
-      set(ref(db, `chats_activos/${miUid}/${uidTarget}`), true);
-    }
-
   let uidTarget, nombreTarget, fotoTarget;
 
   if (typeof contactoUid === 'object' && contactoUid !== null) {
@@ -5236,10 +5303,8 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   }
 }
 
-// ========================================================
-// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES (MOVACHAT)
-// ========================================================
-const inputChatPrivado = document.getElementById("input-chat-privado") || document.getElementById("input-chat");
+// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES
+const inputChatPrivado = document.getElementById("input-chat-privado");
 
 if (btnAccionChat) {
   btnAccionChat.onclick = (e) => {
@@ -5254,10 +5319,6 @@ if (btnAccionChat) {
 }
 
 if (inputChatPrivado) {
-  inputChatPrivado.oninput = () => {
-    if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
-  };
-
   inputChatPrivado.onkeydown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -5595,35 +5656,6 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
   }
 };
 
-// 🔔 Función global para lanzar notificación de nuevo mensaje
-function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
-  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
-  if (estaSilenciado) return;
-
-  // Si la app está en segundo plano o minimizada
-  if (document.hidden && Notification.permission === "granted") {
-    const opciones = {
-      body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo.png",
-      badge: "assets/logo.png",
-      vibrate: [100, 50, 100],
-      tag: "movachat-mensaje",
-      renotify: true
-    };
-
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
-      });
-    } else {
-      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
-    }
-  } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
-    actualizarBadgesNotificaciones();
-  }
-}
-
 // --- REGISTRO OFICIAL DEL SERVICE WORKER (Permite instalar la PWA) ---
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -5717,109 +5749,4 @@ if (btnVolverChat) {
 
     mostrarEncabezadoPrincipal();
   });
-}
-
-// 🔄 Escucha ÚNICAMENTE la bandeja de chats activos en Inicio (sin tocar la agenda de contactos)
-function escucharChatsActivos(uidActual) {
-  if (!uidActual || typeof db === "undefined") return;
-
-  const refChatsActivos = ref(db, `chats_activos/${uidActual}`);
-
-  onValue(refChatsActivos, (snapshot) => {
-    const contenedor = document.getElementById("lista-chats-principal") || document.getElementById("lista-chats");
-    if (!contenedor) return;
-
-    const contactos = snapshot.val();
-    const tarjetaEstado = document.getElementById("tarjeta-mi-estado-propio") || document.getElementById("tarjeta-mi-estado");
-
-    if (!contactos) {
-      contenedor.innerHTML = "";
-      if (tarjetaEstado) contenedor.appendChild(tarjetaEstado);
-      return;
-    }
-
-    contenedor.innerHTML = "";
-    if (tarjetaEstado) contenedor.appendChild(tarjetaEstado);
-
-    Object.keys(contactos).forEach(async (contactoUid) => {
-      try {
-        const userSnap = await get(ref(db, `usuarios/${contactoUid}`));
-        if (!userSnap.exists()) return;
-
-        const datosUser = userSnap.val();
-        const nombre = datosUser.nombre || datosUser.nombreUsuario || datosUser.email || "Usuario";
-        const inicial = nombre.charAt(0).toUpperCase();
-        const avatarUrl = datosUser.fotoPerfil || datosUser.fotoUrl || datosUser.avatarUrl || null;
-
-        const tarjeta = document.createElement("div");
-        tarjeta.className = "tarjeta-chat";
-        tarjeta.setAttribute("data-uid", contactoUid);
-        tarjeta.setAttribute("id", `tarjeta-chat-${contactoUid}`);
-
-        tarjeta.innerHTML = `
-          <div class="chat-avatar-caja">
-            ${avatarUrl 
-              ? `<img src="${avatarUrl}" class="avatar-chat" alt="${nombre}">` 
-              : `<div class="avatar-inicial" style="width: 45px; height: 45px; border-radius: 50%; background: linear-gradient(135deg, #00f2fe, #4facfe); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem;">${inicial}</div>`
-            }
-            <span class="punto-online-chat-plus"></span>
-          </div>
-          <div class="chat-info">
-            <div class="chat-cabecera">
-              <h4 class="chat-nombre">${nombre}</h4>
-              <span class="chat-hora">--:--</span>
-            </div>
-            <div class="chat-mensaje-caja">
-              <p class="chat-texto">Conversación activa</p>
-              <div class="badge-chat-no-leido badge-mensaje oculto">0</div>
-            </div>
-          </div>
-        `;
-
-        tarjeta.addEventListener("click", () => {
-          if (typeof abrirChatConUsuario === "function") {
-            abrirChatConUsuario(contactoUid, nombre, avatarUrl);
-          }
-        });
-
-        tarjeta.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          window.chatSeleccionadoId = contactoUid;
-          window.contactoActivoUid = contactoUid;
-          
-          const menuCtx = document.getElementById("menu-tarjetas-chat");
-          if (menuCtx) {
-            menuCtx.classList.remove("oculto");
-            menuCtx.style.display = "flex";
-            menuCtx.style.flexDirection = "column";
-            menuCtx.style.position = "fixed";
-            menuCtx.style.top = `${e.clientY}px`;
-            menuCtx.style.left = `${Math.min(e.clientX, window.innerWidth - 210)}px`;
-            menuCtx.style.zIndex = "9999";
-          }
-        });
-
-        contenedor.appendChild(tarjeta);
-
-        if (typeof escucharUltimoMensajeContacto === "function") {
-          escucharUltimoMensajeContacto(uidActual, contactoUid);
-        }
-
-      } catch (err) {
-        console.error("Error cargando tarjeta de chat:", err);
-      }
-    });
-  });
-}
-
-// 📌 Función independiente para agregar contacto activo al interactuar
-async function alSeleccionarContacto(contactoUid) {
-  const usuarioActual = typeof auth !== "undefined" && auth ? auth.currentUser : null;
-  if (usuarioActual && contactoUid) {
-    try {
-      await set(ref(db, `mis_contactos/${usuarioActual.uid}/${contactoUid}`), true);
-    } catch (e) {
-      console.error("Error al registrar contacto activo:", e);
-    }
-  }
 }
