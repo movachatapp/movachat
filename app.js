@@ -8,7 +8,7 @@ import {
   updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, get, child, onValue, update, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, get, child, onValue, update, push, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
@@ -178,6 +178,10 @@ onAuthStateChanged(auth, async (user) => {
           // 🟢 ACCESO AUTORIZADO -> Entra a MovaChat
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
+
+          if (typeof iniciarControlPresenciaReal === "function") {
+            iniciarControlPresenciaReal();
+          }
 
           // 🚀 2. INYECCIÓN DIRECTA DE DATOS REALES EN EL PERFIL
           // Apuntamos al selector exacto del HTML: <h2 id="texto-perfil-nombre"><span>Tu Nombre</span></h2>
@@ -2156,6 +2160,72 @@ function actualizarDobleLedCabecera(pantallaActual) {
     ledSuperior.style.boxShadow = "0 0 8px #00f2fe";
   }
 }
+
+// 📡 1. GESTIÓN AUTOMÁTICA DEL LED SUPERIOR (PRESENCIA REAL / SISTEMA)
+function iniciarControlPresenciaReal() {
+  const usuarioActual = auth.currentUser;
+  if (!usuarioActual) return;
+
+  const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
+  const connectedRef = ref(db, ".info/connected");
+
+  // Al desconectarse de Firebase, apagar el LED superior automáticamente
+  onDisconnect(userRef).update({ presenciaReal: false });
+
+  // Escuchar si hay conexión activa a Internet
+  onValue(connectedRef, (snap) => {
+    if (snap.val() === true && !document.hidden) {
+      update(userRef, { presenciaReal: true });
+    } else {
+      update(userRef, { presenciaReal: false });
+    }
+  });
+
+  // Escuchar cuando el usuario minimiza o vuelve a abrir la app
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      update(userRef, { presenciaReal: false });
+    } else if (auth.currentUser) {
+      update(userRef, { presenciaReal: true });
+    }
+  });
+}
+
+// 💡 2. RENDERIZAR LOS 2 LEDS DE CUALQUIER CONTACTO EN TIEMPO REAL
+window.actualizarDobleLedContacto = function (datosContacto) {
+  const ledSuperior = document.querySelector(".punto-online-doble-top") || document.querySelector(".led-top") || document.getElementById("led-enfoque-app");
+  const ledInferior = document.querySelector(".punto-online-doble-bottom") || document.querySelector(".led-bottom") || document.getElementById("led-presencia-base");
+
+  if (!datosContacto) return;
+
+  // --- LED SUPERIOR (Presencia Real en App) ---
+  const estaEnApp = datosContacto.presenciaReal === true;
+  const colorTop = estaEnApp ? "#00f2fe" : "#888888";
+  const sombraTop = estaEnApp ? "0 0 8px #00f2fe" : "none";
+
+  if (ledSuperior) {
+    ledSuperior.style.setProperty("background-color", colorTop, "important");
+    ledSuperior.style.boxShadow = sombraTop;
+  }
+
+  // --- LED INFERIOR (Indicador Manual de Conexión) ---
+  const estadoManual = datosContacto.estadoConexion || datosContacto.estadoPresencia || "online";
+  let colorBottom = "#00f2fe";
+  let sombraBottom = "0 0 8px #00f2fe";
+
+  if (estadoManual === "ocupado") {
+    colorBottom = "#ef4444";
+    sombraBottom = "0 0 8px #ef4444";
+  } else if (estadoManual === "offline" || estadoManual === "invisible") {
+    colorBottom = "#888888";
+    sombraBottom = "none";
+  }
+
+  if (ledInferior) {
+    ledInferior.style.setProperty("background-color", colorBottom, "important");
+    ledInferior.style.boxShadow = sombraBottom;
+  }
+};
 
 const btnGuardarEstadoMova = document.getElementById("btn-guardar-estado");
 if (btnGuardarEstadoMova) {
@@ -5168,12 +5238,12 @@ function cargarContactosAprobados(usuarioActualUid) {
 
           Object.keys(usuarios).forEach((uid) => {
             const usuario = usuarios[uid];
-            
+
             // 3. Registrar el escuchador SOLO SI NO se ha registrado previamente
             if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
               if (!contactosRegistradosSet.has(uid)) {
                 contactosRegistradosSet.add(uid);
-                
+
                 if (typeof escucharUltimoMensajeContacto === "function") {
                   escucharUltimoMensajeContacto(usuarioActualUid, uid, usuario, fijadosBD);
                 }
@@ -5327,6 +5397,19 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   if (typeof verificarEstadoBloqueo === "function") {
     verificarEstadoBloqueo(uidTarget);
   }
+
+  // 🎧 ESCUCHAR CAMBIOS DE ESTADO DE LOS 2 LEDS EN TIEMPO REAL
+  if (window.desuscribirLedContacto) window.desuscribirLedContacto();
+
+  const contactoRef = ref(db, `usuarios/${uidTarget}`);
+  window.desuscribirLedContacto = onValue(contactoRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const datosFresh = snapshot.val();
+      if (typeof window.actualizarDobleLedContacto === "function") {
+        window.actualizarDobleLedContacto(datosFresh);
+      }
+    }
+  });
 
   // ↪️ VERIFICAR SI HAY UN PAQUETE DE REENVÍO PENDIENTE
   if (window.objetoPendienteReenviar) {
