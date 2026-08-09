@@ -3786,59 +3786,73 @@ if (btnCancelarVaciar) {
   });
 }
 
-// Evento Aceptar Modal (Vaciar Chat INDIVIDUAL)
-if (btnAceptarVaciar) {
-  btnAceptarVaciar.addEventListener("click", async () => {
-    const miUid = auth.currentUser ? auth.currentUser.uid : null;
-    const contactoUid = window.contactoActivoUid;
-    const elemNombre = document.querySelector(".amigo-nombre-chat");
-    const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+// 🗑️ Lógica de confirmación para Vaciar Chat (Solo dentro del chat privado)
+document.addEventListener("DOMContentLoaded", () => {
+  const modalVaciar = document.getElementById("modal-confirmar-vaciar");
+  const btnAceptarVaciar = document.getElementById("btn-aceptar-vaciar-modal");
+  const btnCancelarVaciar = document.getElementById("btn-cancelar-vaciar-modal");
 
-    if (modalVaciar) modalVaciar.classList.add("oculto");
-    if (!miUid || !contactoUid) return;
+  // 🔴 1. Cancelar Modal
+  if (btnCancelarVaciar) {
+    btnCancelarVaciar.onclick = () => {
+      if (modalVaciar) modalVaciar.classList.add("oculto");
+    };
+  }
 
-    try {
-      // 1. Guardar la marca de vaciado personal en Firebase
-      const timestampVaciado = Date.now();
-      await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
+  // 🟢 2. Aceptar Modal (Vaciar Chat INDIVIDUAL interno)
+  if (btnAceptarVaciar) {
+    btnAceptarVaciar.addEventListener("click", async () => {
+      const miUid = auth.currentUser ? auth.currentUser.uid : null;
+      const contactoUid = window.contactoActivoUid;
+      const elemNombre = document.querySelector(".amigo-nombre-chat");
+      const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
-      // 2. Limpiar visualmente la pantalla del chat
-      const contenedorHistorial = document.querySelector(".historial-mensajes");
-      if (contenedorHistorial) {
-        contenedorHistorial.innerHTML = "";
-      }
+      if (modalVaciar) modalVaciar.classList.add("oculto");
+      if (!miUid || !contactoUid) return;
 
-      // 3. Limpiar inmediatamente la tarjeta de la lista de chats principal
-      const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
-      if (tarjetaAmigoNodo) {
-        const elemTexto = tarjetaAmigoNodo.querySelector(".chat-texto");
-        const elemHora = tarjetaAmigoNodo.querySelector(".chat-hora");
-        const elemBadge = tarjetaAmigoNodo.querySelector(".badge-chat-no-leido") || tarjetaAmigoNodo.querySelector(".badge-mensaje");
+      try {
+        // 1. Guardar la marca de vaciado personal en Firebase
+        const timestampVaciado = Date.now();
+        await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
 
-        if (elemTexto) elemTexto.textContent = "Conversación vaciada";
-        if (elemHora) elemHora.textContent = "--:--";
-        if (elemBadge) {
-          elemBadge.textContent = "0";
-          elemBadge.classList.add("oculto");
+        // 2. Limpiar visualmente la pantalla del chat
+        const contenedorHistorial = document.querySelector(".historial-mensajes");
+        if (contenedorHistorial) {
+          contenedorHistorial.innerHTML = "";
+        }
+
+        // 3. Limpiar inmediatamente la tarjeta de la lista de chats principal
+        const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
+        if (tarjetaAmigoNodo) {
+          const elemTexto = tarjetaAmigoNodo.querySelector(".chat-texto");
+          const elemHora = tarjetaAmigoNodo.querySelector(".chat-hora");
+          const elemBadge = tarjetaAmigoNodo.querySelector(".badge-chat-no-leido") || tarjetaAmigoNodo.querySelector(".badge-mensaje");
+
+          if (elemTexto) elemTexto.textContent = "Conversación vaciada";
+          if (elemHora) elemHora.textContent = "--:--";
+          if (elemBadge) {
+            elemBadge.textContent = "0";
+            elemBadge.classList.add("oculto");
+          }
+        }
+
+        if (typeof window.actualizarBadgesNotificaciones === "function") {
+          window.actualizarBadgesNotificaciones();
+        }
+
+        // 4. Notificación de confirmación
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(`Se ha limpiado tu historial con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
+        }
+      } catch (err) {
+        console.error("Error al vaciar el chat en Firebase:", err);
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se pudo vaciar el chat. Inténtalo de nuevo.", "❌", "#ff4b2b");
         }
       }
-
-      if (typeof window.actualizarBadgesNotificaciones === "function") {
-        window.actualizarBadgesNotificaciones();
-      }
-
-      // 4. Notificación de confirmación
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Se ha limpiado tu historial con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
-      }
-    } catch (err) {
-      console.error("Error al vaciar el chat en Firebase:", err);
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("No se pudo vaciar el chat. Inténtalo de nuevo.", "❌", "#ff4b2b");
-      }
-    }
-  });
-}
+    });
+  }
+});
 
 // ========================================================
 // 🔍 LÓGICA COMPLETA DE BÚSQUEDA EN LA PANTALLA PRINCIPAL
@@ -4212,96 +4226,6 @@ function eliminarChatAnimado(tarjeta) {
     modalVaciar.classList.remove("oculto");
   }
 }
-
-// 🗑️ Lógica de Eliminar Conversación UNILATERAL (Solo para quien elimina)
-document.addEventListener("DOMContentLoaded", () => {
-  const modalVaciar = document.getElementById("modal-confirmar-vaciar");
-  const btnAceptarVaciar = document.getElementById("btn-aceptar-vaciar-modal");
-  const btnCancelarVaciar = document.getElementById("btn-cancelar-vaciar-modal");
-
-  if (btnCancelarVaciar) {
-    btnCancelarVaciar.onclick = () => {
-      if (modalVaciar) modalVaciar.classList.add("oculto");
-      tarjetaParaEliminarGlobal = null;
-    };
-  }
-
-  if (btnAceptarVaciar) {
-    btnAceptarVaciar.onclick = async () => {
-      if (!tarjetaParaEliminarGlobal) return;
-
-      const tarjeta = tarjetaParaEliminarGlobal;
-      const usuarioActual = auth.currentUser;
-      const miUid = usuarioActual ? usuarioActual.uid : null;
-      const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
-
-      if (modalVaciar) modalVaciar.classList.add("oculto");
-
-      if (!miUid || !contactoUid) {
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("No se pudo identificar el usuario.", "⚠️", "#ff4b2b");
-        }
-        return;
-      }
-
-      const elemNombre = tarjeta.querySelector(".chat-nombre");
-      const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
-
-      try {
-        // 1. Guardar la fecha de vaciado ÚNICAMENTE en tu nodo personal
-        const timestampVaciado = Date.now();
-        await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
-
-        // 2. Limpiar solo tus configuraciones locales (fijado y silenciado personales)
-        await set(ref(db, `fijados/${miUid}/${contactoUid}`), null);
-        await set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
-        await set(ref(db, `lecturas/${miUid}/${contactoUid}`), null);
-
-        localStorage.removeItem(`fijado_${contactoUid}`);
-        localStorage.removeItem(`silenciado_${contactoUid}`);
-        localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
-
-        // 3. Reseteo visual en tu pantalla
-        tarjeta.classList.add("tarjeta-eliminar-anim");
-        setTimeout(() => {
-          const elemTexto = tarjeta.querySelector(".chat-texto");
-          const elemHora = tarjeta.querySelector(".chat-hora");
-          const elemBadge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
-          const pinIcono = tarjeta.querySelector(".indicador-pin-neon");
-          const silencioIcono = tarjeta.querySelector(".indicador-silencio-neon");
-
-          tarjeta.classList.remove("tarjeta-eliminar-anim", "tarjeta-fijada", "chat-silenciado-zona");
-          tarjeta.style.order = "";
-
-          if (elemTexto) elemTexto.textContent = "Conversación eliminada";
-          if (elemHora) elemHora.textContent = "--:--";
-          if (elemBadge) {
-            elemBadge.textContent = "0";
-            elemBadge.classList.add("oculto");
-          }
-          if (pinIcono) pinIcono.remove();
-          if (silencioIcono) silencioIcono.remove();
-
-          if (typeof window.actualizarBadgesNotificaciones === "function") {
-            window.actualizarBadgesNotificaciones();
-          }
-        }, 300);
-
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Has eliminado el historial con <b>${nombreContacto}</b> de tu cuenta.`, "🗑️", "#ff4b2b");
-        }
-
-      } catch (error) {
-        console.error("Error al borrar conversación personal en Firebase:", error);
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("No se pudo vaciar la conversación.", "❌", "#ff4b2b");
-        }
-      } finally {
-        tarjetaParaEliminarGlobal = null;
-      }
-    };
-  }
-});
 
 // ⚡ FUNCIÓN DEBOUNCE PARA REDUCIR USO DE CPU Y PETICIONES A FIREBASE
 function crearDebounce(funcion, espera = 300) {
