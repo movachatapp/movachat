@@ -451,7 +451,7 @@ window.reproducirSonido = function (tipo, contactoUid = null) {
         // El tiempo ya venció -> Reactivar automáticamente
         localStorage.removeItem(`silenciado_${contactoUid}`);
         localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
-        
+
         const miUid = auth.currentUser ? auth.currentUser.uid : null;
         if (miUid) set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
 
@@ -511,6 +511,8 @@ function filtrarYRenderizar() {
     badgeFiltro.textContent = totalNoLeidos.toString();
   }
 }
+
+const menuTarjetas = document.getElementById("menu-tarjetas-chat");
 
 if (contenedorChats) {
   contenedorChats.addEventListener("click", (e) => {
@@ -1397,9 +1399,7 @@ async function enviarMensajeNuevo() {
     await set(nuevoMensajeRef, objetoMensaje);
 
     // 🔊 SONIDO DE MENSAJE ENVIADO
-    if (typeof reproducirSonido === "function") {
-      reproducirSonido("enviado");
-    }
+    reproducirSonidoEnviado();
 
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
   } catch (error) {
@@ -2606,12 +2606,13 @@ window.actualizarBadgesNotificaciones = function () {
 // Crear alias global para sincronizar ambas llamadas
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
 
-// 🚀 ESCUCHAR ÚLTIMO MENSAJE Y MOSTRAR TARJETA SOLO SI TIENE CONVERSACIÓN ACTIVA
+// 🚀 ESCUCHAR Y RENDERIZAR BANDEJA DE ENTRADA CON CONTROL DE VACIADO Y ELIMINACIÓN
 function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijadosBD = {}) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
   const lecturaRef = ref(db, `lecturas/${miUid}/${contactoUid}`);
   const vaciadoRef = ref(db, `vaciados/${miUid}/${contactoUid}`);
+  const ocultoRef = ref(db, `chats_ocultos/${miUid}/${contactoUid}`);
 
   onValue(mensajesRef, async (snapshot) => {
     const contenedorLista = document.getElementById("lista-chats-principal");
@@ -2619,53 +2620,61 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     let tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
 
-    // 1. Obtener fecha del último vaciado personal del usuario
+    // Consultar marcas personales de vaciado y eliminación
     let timestampUltimoVaciado = 0;
+    let timestampOculto = 0;
+
     try {
-      const snapVaciado = await get(vaciadoRef);
-      if (snapVaciado.exists()) {
-        timestampUltimoVaciado = snapVaciado.val();
-      }
+      const [snapVaciado, snapOculto] = await Promise.all([
+        get(vaciadoRef),
+        get(ocultoRef)
+      ]);
+
+      if (snapVaciado.exists()) timestampUltimoVaciado = snapVaciado.val();
+      if (snapOculto.exists()) timestampOculto = snapOculto.val();
     } catch (err) {
-      console.error("Error al consultar fecha de vaciado para tarjeta:", err);
+      console.error("Error al consultar estados de vaciado/eliminación:", err);
     }
 
-    let hayMensajesValidos = false;
-    let ultimoMsg = null;
+    let hayMensajesHistoricos = snapshot.exists();
     let mensajesValidosKeys = [];
+    let ultimoMsg = null;
+    let mensajes = {};
 
-    if (snapshot.exists()) {
-      const mensajes = snapshot.val();
+    if (hayMensajesHistoricos) {
+      mensajes = snapshot.val();
       const keys = Object.keys(mensajes);
 
-      // Filtrar únicamente los mensajes posteriores al vaciado personal
+      // Filtrar mensajes posteriores al vaciado
       mensajesValidosKeys = keys.filter((k) => {
         const m = mensajes[k];
         return (m.timestamp || 0) > timestampUltimoVaciado;
       });
 
       if (mensajesValidosKeys.length > 0) {
-        hayMensajesValidos = true;
         const ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
         ultimoMsg = mensajes[ultimoMsgKey];
       }
     }
 
-    // 🛑 CASO 1: NO HAY MENSAJES -> Eliminar la tarjeta si existía previamente
-    if (!hayMensajesValidos) {
-      if (tarjetaContacto) {
-        tarjetaContacto.remove();
-      }
-      if (typeof actualizarEstadoPantallaInicio === "function") {
-        actualizarEstadoPantallaInicio();
-      }
-      if (typeof window.actualizarBadgesNotificaciones === "function") {
-        window.actualizarBadgesNotificaciones();
-      }
+    // 🛑 1. CASO ELIMINADO: Si fue eliminado y no han llegado mensajes nuevos posteriores a la eliminación, SE QUITA DE LA LISTA
+    const ultimoMsgTime = ultimoMsg ? (ultimoMsg.timestamp || 0) : 0;
+    if (timestampOculto > 0 && ultimoMsgTime <= timestampOculto) {
+      if (tarjetaContacto) tarjetaContacto.remove();
+      if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
+      if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
       return;
     }
 
-    // 🟢 CASO 2: SÍ HAY MENSAJES -> Crear la tarjeta si aún no existe en la pantalla principal
+    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS: Nunca se han enviado mensajes ni se ha vaciado
+    if (!hayMensajesHistoricos && timestampUltimoVaciado === 0) {
+      if (tarjetaContacto) tarjetaContacto.remove();
+      if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
+      if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
+      return;
+    }
+
+    // 🟢 3. CREAR TARJETA SI AÚN NO EXISTE EN LA LISTA
     if (!tarjetaContacto) {
       tarjetaContacto = document.createElement("div");
       tarjetaContacto.className = "tarjeta-chat contacto-item";
@@ -2691,7 +2700,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         sombraLed = "0 0 8px #888888";
       }
 
-      // Verificar fijados y silenciados
       const esFijado = fijadosBD[contactoUid] === true || localStorage.getItem(`fijado_${contactoUid}`) === "true";
       if (esFijado) {
         tarjetaContacto.classList.add("tarjeta-fijada");
@@ -2722,7 +2730,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         </div>
       `;
 
-      // Evento de clic en la tarjeta
       tarjetaContacto.addEventListener("click", (e) => {
         e.stopPropagation();
 
@@ -2759,23 +2766,31 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    // 3. Actualizar textos, tiempos y badges de la tarjeta
+    // 4. ACTUALIZAR TEXTO DE LA TARJETA
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
 
-    if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
-    if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
+    if (ultimoMsg) {
+      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
+      if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
+    } else {
+      // Si la conversación fue vaciada
+      if (elemTexto) elemTexto.textContent = "Conversación vaciada";
+      if (elemHora) elemHora.textContent = "--:--";
+    }
 
-    // Verificar si la pantalla del chat con este contacto está abierta
+    // Verificar lectura en vivo
     const pantallaChat = document.getElementById("pantalla-chat-privado");
     const estaAbierto = (window.contactoActivoUid === contactoUid) &&
       pantallaChat &&
       (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
     if (estaAbierto) {
-      const ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
-      set(lecturaRef, ultimoMsgKey);
+      if (mensajesValidosKeys.length > 0) {
+        const ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
+        set(lecturaRef, ultimoMsgKey);
+      }
       if (elemBadge) {
         elemBadge.textContent = "0";
         elemBadge.classList.add("oculto");
@@ -3848,8 +3863,8 @@ let tarjetaChatSeleccionada = null;
 let temporizadorLongPress = null;
 let bloquarClickFantasma = false;
 
-const menuTarjetas = document.getElementById("menu-tarjetas-chat");
 const btnCtxFijar = document.getElementById("btn-ctx-fijar");
+const btnCtxVaciarChat = document.getElementById("btn-ctx-vaciar-chat");
 const btnCtxEliminar = document.getElementById("btn-ctx-eliminar-chat");
 const btnCtxCerrar = document.getElementById("btn-ctx-cerrar");
 
@@ -3885,6 +3900,7 @@ document.addEventListener("touchmove", () => clearTimeout(temporizadorLongPress)
 
 // 3️⃣ Abrir y Posicionar Menú (Cálculo Relativo + Límites de Seguridad)
 function abrirMenuContextualMova(x, y, tarjeta) {
+  const menuTarjetas = document.getElementById("menu-tarjetas-chat");
   if (!menuTarjetas) return;
 
   tarjetaChatSeleccionada = tarjeta;
@@ -3944,13 +3960,14 @@ function abrirMenuContextualMova(x, y, tarjeta) {
 }
 
 function cerrarMenuContextualMova() {
+  const menuTarjetas = document.getElementById("menu-tarjetas-chat");
   if (menuTarjetas) {
-    menuTarjetas.classList.add("oculto");
-    menuTarjetas.style.display = ""; // Limpia el estilo en línea para que mande el CSS
+    menuTarjetas.style.display = "none";
   }
 }
 
-// 4️⃣ Opciones del Menú (Fijar, Eliminar, Cancelar)
+// 📌 GESTIÓN DE ACCIONES DEL MENÚ CONTEXTUAL (Fijar, Vaciar, Eliminar, Cancelar)
+
 if (btnCtxFijar) {
   btnCtxFijar.onclick = (e) => {
     e.preventDefault();
@@ -3960,12 +3977,92 @@ if (btnCtxFijar) {
   };
 }
 
-if (btnCtxEliminar) {
-  btnCtxEliminar.onclick = (e) => {
+// 🧹 OPCIÓN 1: VACIAL CONVERSACIÓN (Mantiene la tarjeta, limpia mensajes)
+if (btnCtxVaciarChat) {
+  btnCtxVaciarChat.onclick = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (tarjetaChatSeleccionada) eliminarChatAnimado(tarjetaChatSeleccionada);
     cerrarMenuContextualMova();
+
+    if (!tarjetaChatSeleccionada) return;
+
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = tarjetaChatSeleccionada.dataset.uid || tarjetaChatSeleccionada.id.replace("tarjeta-chat-", "");
+    const elemNombre = tarjetaChatSeleccionada.querySelector(".chat-nombre");
+    const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+    if (!miUid || !contactoUid) return;
+
+    try {
+      // Marcar timestamp de vaciado personal en Firebase
+      await set(ref(db, `vaciados/${miUid}/${contactoUid}`), Date.now());
+
+      // 🟢 ACTUALIZACIÓN INMEDIATA EN LA PANTALLA PRINCIPAL
+      const elemTexto = tarjetaChatSeleccionada.querySelector(".chat-texto");
+      const elemHora = tarjetaChatSeleccionada.querySelector(".chat-hora");
+      const elemBadge = tarjetaChatSeleccionada.querySelector(".badge-chat-no-leido") || tarjetaChatSeleccionada.querySelector(".badge-mensaje");
+
+      if (elemTexto) {
+        elemTexto.textContent = "Conversación vaciada";
+        elemTexto.classList.remove("texto-resaltado");
+      }
+      if (elemHora) elemHora.textContent = "--:--";
+      if (elemBadge) {
+        elemBadge.textContent = "0";
+        elemBadge.classList.add("oculto");
+      }
+
+      // Si el chat privado con esta persona está abierto en pantalla, vaciar su vista
+      if (window.contactoActivoUid === contactoUid) {
+        const elemHistorial = document.querySelector(".historial-mensajes");
+        if (elemHistorial) elemHistorial.innerHTML = "";
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(`Conversación vaciada con <b>${nombreContacto}</b>.`, "🧹", "#00f2fe");
+      }
+    } catch (err) {
+      console.error("Error al vaciar conversación:", err);
+    }
+  };
+}
+
+// 🗑️ OPCIÓN 2: ELIMINAR CHAT (Quita la tarjeta de la pantalla principal)
+if (btnCtxEliminar) {
+  btnCtxEliminar.onclick = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    cerrarMenuContextualMova();
+
+    if (!tarjetaChatSeleccionada) return;
+
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = tarjetaChatSeleccionada.dataset.uid || tarjetaChatSeleccionada.id.replace("tarjeta-chat-", "");
+    const elemNombre = tarjetaChatSeleccionada.querySelector(".chat-nombre");
+    const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+    if (!miUid || !contactoUid) return;
+
+    try {
+      const ahora = Date.now();
+      // Guardar marcas de vaciado y ocultamiento en Firebase
+      await set(ref(db, `vaciados/${miUid}/${contactoUid}`), ahora);
+      await set(ref(db, `chats_ocultos/${miUid}/${contactoUid}`), ahora);
+
+      // Eliminar tarjeta con animación de salida
+      tarjetaChatSeleccionada.classList.add("tarjeta-eliminar-anim");
+      setTimeout(() => {
+        if (tarjetaChatSeleccionada) tarjetaChatSeleccionada.remove();
+        if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
+        if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
+      }, 300);
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(`Chat con <b>${nombreContacto}</b> eliminado.`, "🗑️", "#ff4b2b");
+      }
+    } catch (err) {
+      console.error("Error al eliminar chat:", err);
+    }
   };
 }
 
@@ -3989,7 +4086,7 @@ async function alternarFijarChat(tarjeta) {
 
   const cabecera = tarjeta.querySelector(".chat-cabecera");
   let pinIcono = tarjeta.querySelector(".indicador-pin-neon");
-  
+
   // Evaluar estado real
   const esFijado = tarjeta.classList.contains("tarjeta-fijada") || localStorage.getItem(`fijado_${contactoUid}`) === "true";
 
@@ -4322,7 +4419,7 @@ if (btnConfirmarEliminar) {
         }
 
         mostrarAvisoPremium(`Contacto <b>${contactoParaEliminarNodo.nombre || ''}</b> eliminado.`, "🗑️", "#ff4b2b");
-        
+
         // Recargar vista por si quedó vacía
         renderizarListaContactosModal();
       } catch (err) {
@@ -4444,9 +4541,9 @@ if (inputNuevoContacto && cajaSugerencias) {
 
         htmlSugerencias += `
           <div class="item-sugerencia-usuario" data-nombre="${usuario.nombre}">
-            ${tieneFoto 
-              ? `<img src="${tieneFoto}" class="avatar-sugerencia" alt="Perfil">` 
-              : `<div class="avatar-sugerencia-placeholder">${inicial}</div>`}
+            ${tieneFoto
+            ? `<img src="${tieneFoto}" class="avatar-sugerencia" alt="Perfil">`
+            : `<div class="avatar-sugerencia-placeholder">${inicial}</div>`}
             <span class="nombre-sugerencia-txt">${usuario.nombre}</span>
           </div>
         `;
@@ -4461,7 +4558,7 @@ if (inputNuevoContacto && cajaSugerencias) {
           inputNuevoContacto.value = nombreSeleccionado;
           cajaSugerencias.classList.add("oculto");
           cajaSugerencias.innerHTML = "";
-          
+
           if (btnGuardarContacto) btnGuardarContacto.click();
         });
       });
@@ -4886,21 +4983,62 @@ function mostrarToast(mensaje) {
   }, 2500);
 }
 
-// 🔊 Función para el sonido de mensaje recibido (Respeta el botón de silenciar)
-function reproducirSonidoRecibido() {
-  // 1. Preguntamos a la memoria si el usuario apagó las notificaciones
-  const notifEstado = localStorage.getItem("movachat-notificaciones");
+// 🔊 1. DESBLOQUEO AUTOMÁTICO DE AUDIO EN EL PRIMER CLIC
+let audioDesbloqueado = false;
 
-  // 2. Si dice "desactivado", nos detenemos aquí y NO suena nada
-  if (notifEstado === "desactivado") {
-    return;
+function desbloquearAudioNavegador() {
+  if (audioDesbloqueado) return;
+
+  const audioRecibido = document.getElementById("sonido-recibido");
+  const audioEnviado = document.getElementById("sonido-enviado");
+
+  const promesas = [];
+  if (audioRecibido) {
+    audioRecibido.volume = 0.01;
+    promesas.push(audioRecibido.play().then(() => {
+      audioRecibido.pause();
+      audioRecibido.currentTime = 0;
+      audioRecibido.volume = 1.0;
+    }).catch(() => {}));
   }
 
-  // 3. Si está activado, reproduce el sonido de recibido
+  if (audioEnviado) {
+    audioEnviado.volume = 0.01;
+    promesas.push(audioEnviado.play().then(() => {
+      audioEnviado.pause();
+      audioEnviado.currentTime = 0;
+      audioEnviado.volume = 1.0;
+    }).catch(() => {}));
+  }
+
+  Promise.all(promesas).then(() => {
+    audioDesbloqueado = true;
+    document.removeEventListener("click", desbloquearAudioNavegador);
+    document.removeEventListener("touchstart", desbloquearAudioNavegador);
+  });
+}
+
+document.addEventListener("click", desbloquearAudioNavegador, { once: true });
+document.addEventListener("touchstart", desbloquearAudioNavegador, { once: true });
+
+// 🔊 2. REPRODUCIR SONIDO RECIBIDO (Respeta el ajuste de silenciar)
+function reproducirSonidoRecibido() {
+  const notifEstado = localStorage.getItem("movachat-notificaciones");
+  if (notifEstado === "desactivado") return;
+
   const audioRecibido = document.getElementById("sonido-recibido");
   if (audioRecibido) {
-    audioRecibido.currentTime = 0; // Detiene cualquier audio previo para que no se encima
-    audioRecibido.play().catch((e) => console.log("Audio bloqueado por el navegador:", e));
+    audioRecibido.currentTime = 0;
+    audioRecibido.play().catch((e) => console.log("Audio de recibido bloqueado:", e));
+  }
+}
+
+// 🔊 3. REPRODUCIR SONIDO ENVIADO
+function reproducirSonidoEnviado() {
+  const audioEnviado = document.getElementById("sonido-enviado");
+  if (audioEnviado) {
+    audioEnviado.currentTime = 0;
+    audioEnviado.play().catch((e) => console.log("Audio de enviado bloqueado:", e));
   }
 }
 

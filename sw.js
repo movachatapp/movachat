@@ -75,13 +75,11 @@ self.addEventListener('push', (event) => {
   }
 
   const opciones = {
-    body: data.cuerpo || data.texto || 'Tienes un nuevo mensaje recibido 📩',
-    icon: data.icono || data.avatarUrl || './assets/logo/icon-192.png',
+    body: data.cuerpo || 'Tienes un nuevo mensaje recibido 📩',
+    icon: './assets/logo/icon-192.png',
     badge: './assets/logo/icon-192.png',
-    vibrate: [200, 100, 200],
-    data: {
-      url: self.registration.scope
-    }
+    vibrate: [200, 100, 200], // 📳 Hace vibrar el celular
+    data: { url: self.registration.scope }
   };
 
   event.waitUntil(
