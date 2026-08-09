@@ -5540,7 +5540,7 @@ if (inputChatPrivado) {
 let listenerChatActivo = null;
 let listenerConfigActivo = null;
 
-// 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL
+// 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL (CORREGIDO)
 let listenerEscribiendoActivo = null;
 let listenerLecturaActivo = null;
 let listenerPresenciaContactoActivo = null;
@@ -5630,26 +5630,35 @@ function escucharMensajesChat(chatId) {
     const lecturaReceptorRef = ref(db, `lecturas/${contactoUid}/${miUid}`);
     listenerLecturaActivo = onValue(lecturaReceptorRef, (snapLectura) => {
       ultimoLeidoKeyReceptor = snapLectura.exists() ? snapLectura.val() : "";
-      actualizarChecksEnPantalla(ultimoLeidoKeyReceptor);
+      if (typeof actualizarChecksEnPantalla === "function") {
+        actualizarChecksEnPantalla(ultimoLeidoKeyReceptor);
+      }
     });
   }
 
-  // 🟢 5. ESCUCHAR LA PRESENCIA EN VIVO DEL RECEPTOR (PARA CAMBIAR 1 A 2 CHECKS)
+  // 🟢 5. ESCUCHAR LA PRESENCIA EN VIVO DEL RECEPTOR
   let estaEnAppReceptorLive = false;
   if (contactoUid) {
     const presenciaContactoRef = ref(db, `usuarios/${contactoUid}/presenciaReal`);
     listenerPresenciaContactoActivo = onValue(presenciaContactoRef, (snapPresencia) => {
       estaEnAppReceptorLive = snapPresencia.exists() && snapPresencia.val() === true;
-      
-      // Si el usuario entra a la app, actualizar inmediatamente las palomitas entregadas
-      document.querySelectorAll(".indicador-checks-mova.enviado").forEach((contenedor) => {
-        if (estaEnAppReceptorLive) {
-          contenedor.className = "indicador-checks-mova entregado";
-          contenedor.innerHTML = `<i data-lucide="check-check"></i>`;
+
+      // Si el contacto se desconecta, refrescar visualmente los mensajes no leídos a 1 check
+      document.querySelectorAll(".indicador-checks-mova").forEach((contenedor) => {
+        const esLeido = contenedor.classList.contains("leido");
+        if (!esLeido) {
+          if (estaEnAppReceptorLive) {
+            contenedor.className = "indicador-checks-mova entregado";
+            contenedor.innerHTML = `<i data-lucide="check-check"></i>`;
+          } else {
+            contenedor.className = "indicador-checks-mova enviado";
+            contenedor.innerHTML = `<i data-lucide="check"></i>`;
+          }
         }
       });
+
       if (window.lucide) {
-        window.lucide.createIcons({ targets: document.querySelectorAll(".indicador-checks-mova.entregado") });
+        window.lucide.createIcons({ targets: document.querySelectorAll(".indicador-checks-mova") });
       }
     });
   }
@@ -5681,8 +5690,6 @@ function escucharMensajesChat(chatId) {
         if (ultimoMsgObj && (ultimoMsgObj.emisor || ultimoMsgObj.emisorUid) !== miUid && miUid && contactoUid) {
           set(ref(db, `lecturas/${miUid}/${contactoUid}`), ultimoMsgKey);
         }
-
-        let yaVioElUltimo = false;
 
         keysMensajes.forEach((msgId) => {
           const msg = mensajes[msgId];
@@ -5738,17 +5745,16 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
-          // ⚡ CÁLCULO DINÁMICO DE CHECKS DE LECTURA
+          // ⚡ EVALUACIÓN INDEPENDIENTE POR CADA MENSAJE
           let htmlChecks = "";
           if (esMio) {
             let claseChecks = "enviado";
             let iconoLucide = "check";
 
-            if (msgId === ultimoLeidoKeyReceptor) {
-              yaVioElUltimo = true;
-            }
+            // Verificar si este mensaje específico es igual o anterior al último leído
+            const esLeido = ultimoLeidoKeyReceptor && (keysMensajes.indexOf(msgId) <= keysMensajes.indexOf(ultimoLeidoKeyReceptor));
 
-            if (yaVioElUltimo || (ultimoLeidoKeyReceptor && keysMensajes.indexOf(msgId) <= keysMensajes.indexOf(ultimoLeidoKeyReceptor))) {
+            if (esLeido) {
               claseChecks = "leido";
               iconoLucide = "check-check";
             } else if (estaEnAppReceptorLive) {
