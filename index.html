@@ -33,7 +33,7 @@
 
   <!-- Estilos e Íconos -->
   <link rel="stylesheet" href="styles.css">
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
 </head>
 
 <body>
@@ -67,8 +67,7 @@
           <i data-lucide="lock"></i>
           <input type="password" id="auth-password" placeholder="Contraseña (mínimo 6 caracteres)"
             autocomplete="current-password" required />
-          <button type="button" class="btn-eye" aria-label="Mostrar contraseña"
-            onclick="event.preventDefault(); togglePasswordVisibility();">
+          <button type="button" class="btn-eye" id="btn-toggle-password" aria-label="Mostrar contraseña">
             <i data-lucide="eye" id="icono-ojito"></i>
           </button>
         </div>
@@ -145,7 +144,7 @@
         <p>Tu espacio de conexión premium. Busca a tus amigos para comenzar a chatear.</p>
 
         <div class="botones-bienvenida">
-          <button id="btn-vacio-buscar-amigo" class="btn-primario">
+          <button type="button" id="btn-vacio-buscar-amigo" class="btn-primario">
             <i data-lucide="user-plus"></i> Buscar amigo
           </button>
         </div>
@@ -179,7 +178,7 @@
               <span class="chat-hora" id="tiempo-mi-estado">Toca para subir foto</span>
             </div>
             <div class="chat-mensaje-caja">
-              <p class="chat-texto" id="texto-subtulo-mi-estado">Comparte imágenes con tus amigos...</p>
+              <p class="chat-texto" id="texto-subtitulo-mi-estado">Comparte imágenes con tus amigos...</p>
             </div>
           </div>
         </div>
@@ -214,28 +213,28 @@
           <div class="selector-aura-pastilla">
             <div class="glizzy-deslizante" id="indicador-aura"></div>
 
-            <button type="button" class="opcion-aura activa" onclick="cambiarAura('cyan-morado')">
+            <button type="button" class="opcion-aura activa" data-aura="cyan-morado">
               <div class="aura-contenido-interno">
                 <span class="orbe-aura cyan-morado"></span>
                 <span>Cyber</span>
               </div>
             </button>
 
-            <button type="button" class="opcion-aura" onclick="cambiarAura('fuego')">
+            <button type="button" class="opcion-aura" data-aura="fuego">
               <div class="aura-contenido-interno">
                 <span class="orbe-aura fuego"></span>
                 <span>Fuego</span>
               </div>
             </button>
 
-            <button type="button" class="opcion-aura" onclick="cambiarAura('oceano')">
+            <button type="button" class="opcion-aura" data-aura="oceano">
               <div class="aura-contenido-interno">
                 <span class="orbe-aura oceano"></span>
                 <span>Océano</span>
               </div>
             </button>
 
-            <button type="button" class="opcion-aura" onclick="cambiarAura('matrix')">
+            <button type="button" class="opcion-aura" data-aura="matrix">
               <div class="aura-contenido-interno">
                 <span class="orbe-aura matrix"></span>
                 <span>Matrix</span>
@@ -251,13 +250,12 @@
           </button>
 
           <div style="display: flex; gap: 12px; width: 100%;">
-            <button class="btn-qr" aria-label="Mostrar código QR"
+            <button class="btn-qr" id="btn-abrir-qr" aria-label="Mostrar código QR"
               style="flex: 1; padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500;">
               <i data-lucide="qr-code"></i> QR Pro
             </button>
 
-            <button id="btn-limpiar-historial-global"
-              style="flex: 1; background: rgba(255, 75, 43, 0.05); border: 1px solid rgba(255, 75, 43, 0.15); border-radius: 20px; color: rgba(255, 75, 43, 0.9); padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">
+            <button type="button" id="btn-limpiar-historial-global" style="flex: 1; background: rgba(255, 75, 43, 0.05); border: 1px solid rgba(255, 75, 43, 0.15); border-radius: 20px; color: rgba(255, 75, 43, 0.9); padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">
               <i data-lucide="trash-2" style="color: #ff4b2b; width: 18px; height: 18px;"></i> Limpiar
             </button>
           </div>
@@ -357,7 +355,7 @@
         </div>
       </div>
 
-      <!-- FASE 5: ÁREA DE CHAT PRIVADO -->
+      <!-- HISTORIAL DE MENSAJES -->
       <div class="historial-mensajes" id="historial-mensajes"></div>
 
       <!-- PREVISUALIZACIÓN DE ADJUNTOS -->
@@ -374,7 +372,7 @@
       </div>
 
       <div class="barra-escribir-chat">
-        <button class="btn-adjuntar"><i data-lucide="plus"></i></button>
+        <button class="btn-adjuntar" id="btn-adjuntar"><i data-lucide="plus"></i></button>
 
         <div class="contenedor-grabando-voz oculto" id="panel-grabacion">
           <span class="punto-grabando-rojo"></span>
@@ -387,7 +385,7 @@
             placeholder="Escribe un mensaje privado...">
         </div>
 
-        <button class="btn-enviar-mensaje" id="btn-accion-chat">
+        <button type="button" class="btn-enviar-mensaje" id="btn-accion-chat">
           <i data-lucide="mic"></i>
         </button>
       </div>
@@ -557,8 +555,7 @@
           style="display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 4px 8px; margin-bottom: 12px; position: relative;">
           <input type="text" id="input-nuevo-contacto" placeholder="Nombre de nuevo contacto..." autocomplete="off"
             style="width: 100%; background: transparent; border: none; padding: 10px; color: white; font-size: 13.5px; outline: none;">
-          <button id="btn-guardar-contacto" class="btn-primario"
-            style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
+          <button type="button" id="btn-guardar-contacto" class="btn-primario" style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
 
           <!-- Lista flotante de autocompletado de usuarios Firebase -->
           <div id="sugerencias-busqueda-contactos" class="sugerencias-contactos-caja oculto"></div>
@@ -787,9 +784,16 @@
     </div>
   </div>
 
+  <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
+  <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
+
   <script type="module" src="app.js?v=2"></script>
   <script>
-    lucide.createIcons();
+    document.addEventListener("DOMContentLoaded", () => {
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+    });
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -799,10 +803,6 @@
       });
     }
   </script>
-
-  <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
-<audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
-  
 
 </body>
 

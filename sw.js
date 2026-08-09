@@ -1,10 +1,10 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Reparada v1.0.0)
+// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada v1.0.1)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.0';
+const CACHE_NAME = 'movachat-v1.0.1';
 
-// Solo guardamos recursos ESTÁTICOS (Imágenes, Fuentes, CSS base)
+// Recursos estáticos base
 const ASSETS_TO_CACHE = [
   './styles.css',
   './manifest.json',
@@ -22,7 +22,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activar y borrar cachés viejas
+// 2. Activar y borrar cachés antiguas
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -37,34 +37,50 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Estrategia RED PRIMERO para scripts (Evita congelar contadores en caché)
+// 3. Estrategia RED PRIMERO para código (HTML/JS) y CACHÉ PRIMERO para estáticos
 self.addEventListener('fetch', (event) => {
+  // Ignorar peticiones que no sean GET o que provengan de extensiones del navegador
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
-  // SI ES CÓDIGO JS O HTML: Pedir SIEMPRE la versión fresca de la red
-  if (event.request.url.includes('app.js') || event.request.url.includes('index.html')) {
+  const url = event.request.url;
+
+  // CÓDIGO DINÁMICO (HTML y JS): Siempre pedir versión fresca de la red
+  if (url.endsWith('.js') || url.includes('.html') || url === self.location.origin + '/') {
     event.respondWith(
       fetch(event.request).catch(() => caches.match(event.request))
     );
     return;
   }
 
-  // Para otros archivos (imágenes/CSS), buscar en caché primero
+  // OTROS RECURSOS (Imágenes, Fuentes, CSS): Buscar en caché primero
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
-      return fetch(event.request);
+      return fetch(event.request).then((networkResponse) => {
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+          return networkResponse;
+        }
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseToCache);
+        });
+        return networkResponse;
+      });
     })
   );
 });
 
-// 🚀 4. RECEPTOR DE NOTIFICACIONES PUSH
+// 4. RECEPTOR DE NOTIFICACIONES PUSH
 self.addEventListener('push', (event) => {
-  let data = { titulo: 'MovaChat 💬', cuerpo: 'Tienes un nuevo mensaje recibido 📩', icono: './assets/logo/icon-192.png' };
+  let data = { 
+    titulo: 'MovaChat 💬', 
+    cuerpo: 'Tienes un nuevo mensaje recibido 📩', 
+    icono: './assets/logo/icon-192.png' 
+  };
 
   if (event.data) {
     try {
@@ -76,14 +92,14 @@ self.addEventListener('push', (event) => {
 
   const opciones = {
     body: data.cuerpo || 'Tienes un nuevo mensaje recibido 📩',
-    icon: './assets/logo/icon-192.png',
+    icon: data.icono || './assets/logo/icon-192.png',
     badge: './assets/logo/icon-192.png',
-    vibrate: [200, 100, 200], // 📳 Hace vibrar el celular
+    vibrate: [200, 100, 200],
     data: { url: self.registration.scope }
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.titulo || data.nombreRemitente || 'MovaChat', opciones)
+    self.registration.showNotification(data.titulo || 'MovaChat', opciones)
   );
 });
 

@@ -77,38 +77,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// --- MOSTRAR / OCULTAR CONTRASEÑA ---
-document.addEventListener("click", (e) => {
-  // Encuentra el botón sin importar si se hizo clic en el SVG o en sus rutas internas
-  const btn = e.target.closest("#btn-toggle-password");
-  if (!btn) return;
-
-  e.preventDefault();
-  const inputPass = document.getElementById("auth-password");
-  if (!inputPass) return;
-
-  // 1. Alternar tipo de input entre password y text
-  const esPassword = inputPass.type === "password";
-  inputPass.type = esPassword ? "text" : "password";
-
-  // 2. Buscar el elemento del icono (sea <i> o <svg> que genera Lucide)
-  const icono = btn.querySelector("[data-lucide]") || btn.querySelector("svg");
-
-  if (icono) {
-    const nuevoIcono = esPassword ? "eye-off" : "eye";
-
-    // Si ya se convirtió en SVG, actualizamos la propiedad interna de Lucide y data-lucide
-    icono.setAttribute("data-lucide", nuevoIcono);
-
-    // Si Lucide está activo, reconstruimos los iconos del botón
-    if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [btn] // Re-renderiza únicamente el botón del ojito
-      });
-    }
-  }
-});
-
 // Enviar Formulario (Login / Registro)
 if (authForm) {
   authForm.addEventListener("submit", async (e) => {
@@ -5727,7 +5695,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Global para que Firebase la encuentre)
+// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada y corregida)
 window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
@@ -5736,8 +5704,8 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
   if (document.hidden && Notification.permission === "granted") {
     const opciones = {
       body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo.png",
-      badge: "assets/logo.png",
+      icon: avatarUrl || "assets/logo/icon-192.png",
+      badge: "assets/logo/icon-192.png",
       vibrate: [100, 50, 100],
       tag: "movachat-mensaje",
       renotify: true
@@ -5881,3 +5849,16 @@ if (btnVolverChat) {
     mostrarEncabezadoPrincipal();
   });
 }
+
+// 🌐 DETECTOR DE ESTADO DE RED EN TIEMPO REAL
+window.addEventListener("online", () => {
+  if (typeof mostrarAvisoPremium === "function") {
+    mostrarAvisoPremium("Conexión restablecida 🟢", "📡", "#00f2fe");
+  }
+});
+
+window.addEventListener("offline", () => {
+  if (typeof mostrarAvisoPremium === "function") {
+    mostrarAvisoPremium("Sin conexión a Internet. Modo Offline 🔴", "⚠️", "#ff4b2b");
+  }
+});
