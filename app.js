@@ -5169,10 +5169,9 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
   }
 };
 
-// Variable global para guardar el contacto seleccionado actualmente
-let contactoSeleccionado = null;
+const contactosRegistradosSet = new Set();
 
-// 🟢 Cargar presencia y escuchadores de chats activos (SOLO CON MENSAJES REALES)
+// 🟢 Cargar presencia y escuchadores de chats activos (OPTIMIZADO ANTI-CALENTAMIENTO)
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
@@ -5180,22 +5179,27 @@ function cargarContactosAprobados(usuarioActualUid) {
   const usuariosRef = ref(db, 'usuarios');
   const fijadosRef = ref(db, `fijados/${usuarioActualUid}`);
 
-  // Escuchar fijados en tiempo real
-  onValue(fijadosRef, (snapFijados) => {
+  // 1. Obtener fijados solo una vez al cargar
+  get(fijadosRef).then((snapFijados) => {
     const fijadosBD = snapFijados.exists() ? snapFijados.val() : {};
 
-    onValue(usuariosRef, (snapshot) => {
+    // 2. Obtener usuarios solo una vez al cargar
+    get(usuariosRef).then((snapshot) => {
       try {
         if (snapshot.exists()) {
           const usuarios = snapshot.val();
 
-          // Escuchar la actividad de cada usuario registrado
           Object.keys(usuarios).forEach((uid) => {
             const usuario = usuarios[uid];
+            
+            // 3. Registrar el escuchador SOLO SI NO se ha registrado previamente
             if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
-              // Conectamos el escuchador de mensajes para cada contacto
-              if (typeof escucharUltimoMensajeContacto === "function") {
-                escucharUltimoMensajeContacto(usuarioActualUid, uid, usuario, fijadosBD);
+              if (!contactosRegistradosSet.has(uid)) {
+                contactosRegistradosSet.add(uid);
+                
+                if (typeof escucharUltimoMensajeContacto === "function") {
+                  escucharUltimoMensajeContacto(usuarioActualUid, uid, usuario, fijadosBD);
+                }
               }
             }
           });
