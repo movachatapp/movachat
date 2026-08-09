@@ -3648,32 +3648,39 @@ body.tema-claro .nombre-sugerencia-txt {
   display: none !important;
 }
 
-/* ⚡ CHECKS DE ESTADO MOVACHAT */
+/* ⚡ CHECKS DE ESTADO MOVACHAT (CORREGIDO PARA LUCIDE SVG) */
 .indicador-checks-mova {
   display: inline-flex;
   align-items: center;
-  margin-left: 4px;
+  margin-left: 5px;
   vertical-align: middle;
 }
 
-.indicador-checks-mova i {
-  width: 13px;
-  height: 13px;
+.indicador-checks-mova i,
+.indicador-checks-mova svg {
+  width: 14px !important;
+  height: 14px !important;
   transition: all 0.25s ease;
 }
 
 /* 1. Enviado (1 Check Gris) */
-.indicador-checks-mova.enviado i {
-  color: rgba(255, 255, 255, 0.4);
+.indicador-checks-mova.enviado i,
+.indicador-checks-mova.enviado svg {
+  color: rgba(255, 255, 255, 0.45) !important;
+  stroke: rgba(255, 255, 255, 0.45) !important;
 }
 
-/* 2. Entregado (2 Checks Grises) */
-.indicador-checks-mova.entregado i {
-  color: rgba(255, 255, 255, 0.6);
+/* 2. Entregado (2 Checks Blanco Suave / App Abierta) */
+.indicador-checks-mova.entregado i,
+.indicador-checks-mova.entregado svg {
+  color: rgba(255, 255, 255, 0.8) !important;
+  stroke: rgba(255, 255, 255, 0.8) !important;
 }
 
-/* 3. Leído (2 Checks Cian Neón con brillo) */
-.indicador-checks-mova.leido i {
+/* 3. Leído (2 Checks Cian Neón con Luz) */
+.indicador-checks-mova.leido i,
+.indicador-checks-mova.leido svg {
   color: #00f2fe !important;
-  filter: drop-shadow(0 0 4px #00f2fe);
+  stroke: #00f2fe !important;
+  filter: drop-shadow(0 0 5px #00f2fe);
 }
