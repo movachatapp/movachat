@@ -5543,6 +5543,7 @@ let listenerConfigActivo = null;
 // 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL
 let listenerEscribiendoActivo = null;
 let listenerLecturaActivo = null;
+let listenerPresenciaContactoActivo = null;
 
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
@@ -5564,6 +5565,10 @@ function escucharMensajesChat(chatId) {
   if (typeof listenerLecturaActivo === "function") {
     listenerLecturaActivo();
     listenerLecturaActivo = null;
+  }
+  if (typeof listenerPresenciaContactoActivo === "function") {
+    listenerPresenciaContactoActivo();
+    listenerPresenciaContactoActivo = null;
   }
 
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -5619,36 +5624,50 @@ function escucharMensajesChat(chatId) {
     });
   }
 
-  let esCargaInicial = true;
-
   // 👁️ 4. ESCUCHAR EN TIEMPO REAL CUÁNDO EL RECEPTOR LEE LOS MENSAJES
   let ultimoLeidoKeyReceptor = "";
   if (contactoUid && miUid) {
     const lecturaReceptorRef = ref(db, `lecturas/${contactoUid}/${miUid}`);
     listenerLecturaActivo = onValue(lecturaReceptorRef, (snapLectura) => {
       ultimoLeidoKeyReceptor = snapLectura.exists() ? snapLectura.val() : "";
-      
-      // Si cambia la lectura, re-evaluar inmediatamente las palomitas en pantalla
       actualizarChecksEnPantalla(ultimoLeidoKeyReceptor);
     });
   }
 
-  // 🚀 5. ESCUCHAR MENSAJES EN TIEMPO REAL
+  // 🟢 5. ESCUCHAR LA PRESENCIA EN VIVO DEL RECEPTOR (PARA CAMBIAR 1 A 2 CHECKS)
+  let estaEnAppReceptorLive = false;
+  if (contactoUid) {
+    const presenciaContactoRef = ref(db, `usuarios/${contactoUid}/presenciaReal`);
+    listenerPresenciaContactoActivo = onValue(presenciaContactoRef, (snapPresencia) => {
+      estaEnAppReceptorLive = snapPresencia.exists() && snapPresencia.val() === true;
+      
+      // Si el usuario entra a la app, actualizar inmediatamente las palomitas entregadas
+      document.querySelectorAll(".indicador-checks-mova.enviado").forEach((contenedor) => {
+        if (estaEnAppReceptorLive) {
+          contenedor.className = "indicador-checks-mova entregado";
+          contenedor.innerHTML = `<i data-lucide="check-check"></i>`;
+        }
+      });
+      if (window.lucide) {
+        window.lucide.createIcons({ targets: document.querySelectorAll(".indicador-checks-mova.entregado") });
+      }
+    });
+  }
+
+  let esCargaInicial = true;
+
+  // 🚀 6. ESCUCHAR MENSAJES EN TIEMPO REAL
   listenerChatActivo = onValue(mensajesRef, (snapshot) => {
     const elemHistorial = document.querySelector(".historial-mensajes");
     if (!elemHistorial) return;
 
     Promise.all([
       miUid && contactoUid ? get(ref(db, `vaciados/${miUid}/${contactoUid}`)) : Promise.resolve(null),
-      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null),
-      contactoUid ? get(ref(db, `usuarios/${contactoUid}`)) : Promise.resolve(null)
-    ]).then(([snapVaciado, snapBloqueo, snapContactoInfo]) => {
+      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null)
+    ]).then(([snapVaciado, snapBloqueo]) => {
 
       const timestampUltimoVaciado = (snapVaciado && snapVaciado.exists()) ? snapVaciado.val() : 0;
       const estaBloqueadoElContacto = (snapBloqueo && snapBloqueo.exists()) ? (snapBloqueo.val() === true) : false;
-
-      const datosContacto = (snapContactoInfo && snapContactoInfo.exists()) ? snapContactoInfo.val() : {};
-      const estaEnAppReceptor = datosContacto.presenciaReal === true;
 
       elemHistorial.innerHTML = "";
 
@@ -5656,7 +5675,7 @@ function escucharMensajesChat(chatId) {
         const mensajes = snapshot.val();
         const keysMensajes = Object.keys(mensajes);
 
-        // 👁️ Si yo tengo el chat abierto y llegan mensajes nuevos del contacto, marcar como leído
+        // Marcar como leído automáticamente si yo tengo la ventana abierta
         const ultimoMsgKey = keysMensajes[keysMensajes.length - 1];
         const ultimoMsgObj = mensajes[ultimoMsgKey];
         if (ultimoMsgObj && (ultimoMsgObj.emisor || ultimoMsgObj.emisorUid) !== miUid && miUid && contactoUid) {
@@ -5719,7 +5738,7 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
-          // ⚡ CÁLCULO INICIAL DE CHECKS DE LECTURA
+          // ⚡ CÁLCULO DINÁMICO DE CHECKS DE LECTURA
           let htmlChecks = "";
           if (esMio) {
             let claseChecks = "enviado";
@@ -5732,7 +5751,7 @@ function escucharMensajesChat(chatId) {
             if (yaVioElUltimo || (ultimoLeidoKeyReceptor && keysMensajes.indexOf(msgId) <= keysMensajes.indexOf(ultimoLeidoKeyReceptor))) {
               claseChecks = "leido";
               iconoLucide = "check-check";
-            } else if (estaEnAppReceptor) {
+            } else if (estaEnAppReceptorLive) {
               claseChecks = "entregado";
               iconoLucide = "check-check";
             }

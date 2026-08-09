@@ -3648,7 +3648,7 @@ body.tema-claro .nombre-sugerencia-txt {
   display: none !important;
 }
 
-/* ⚡ CHECKS DE ESTADO MOVACHAT (CORREGIDO PARA LUCIDE SVG) */
+/* ⚡ CHECKS DE ESTADO MOVACHAT (ALTO CONTRASTE Y TIEMPO REAL) */
 .indicador-checks-mova {
   display: inline-flex;
   align-items: center;
@@ -3660,27 +3660,29 @@ body.tema-claro .nombre-sugerencia-txt {
 .indicador-checks-mova svg {
   width: 14px !important;
   height: 14px !important;
-  transition: all 0.25s ease;
+  transition: all 0.2s ease-in-out;
 }
 
-/* 1. Enviado (1 Check Gris) */
+/* 1. Enviado (1 Check Gris Claro - Servidor) */
 .indicador-checks-mova.enviado i,
 .indicador-checks-mova.enviado svg {
-  color: rgba(255, 255, 255, 0.45) !important;
-  stroke: rgba(255, 255, 255, 0.45) !important;
+  color: #94a3b8 !important;
+  stroke: #94a3b8 !important;
+  filter: none !important;
 }
 
-/* 2. Entregado (2 Checks Blanco Suave / App Abierta) */
+/* 2. Entregado (2 Checks Blanco Puro - Receptor en la App) */
 .indicador-checks-mova.entregado i,
 .indicador-checks-mova.entregado svg {
-  color: rgba(255, 255, 255, 0.8) !important;
-  stroke: rgba(255, 255, 255, 0.8) !important;
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8)) !important;
 }
 
-/* 3. Leído (2 Checks Cian Neón con Luz) */
+/* 3. Leído (2 Checks Verde Neón Esmeralda - Chat Abierto) */
 .indicador-checks-mova.leido i,
 .indicador-checks-mova.leido svg {
-  color: #00f2fe !important;
-  stroke: #00f2fe !important;
-  filter: drop-shadow(0 0 5px #00f2fe);
+  color: #00ff88 !important;
+  stroke: #00ff88 !important;
+  filter: drop-shadow(0 0 6px #00ff88) !important;
 }
