@@ -2135,57 +2135,36 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
-// 💡 FUNCIÓN CORREGIDA: Actualiza solo los leds de la cabecera del usuario (sin afectar a otros contactos)
-function actualizarDobleLedCabecera(pantallaActual) {
-  const ledSuperior = document.getElementById("led-enfoque-app");
-  const ledInferior = document.getElementById("led-presencia-base");
+// 💡 FUNCIÓN CORREGIDA: Separa el LED 1 (En vivo / Foco app) del LED 2 (Estado del perfil)
+function actualizarDobleLedCabecera(datosContacto = {}) {
+  const ledSuperior = document.getElementById("led-enfoque-app"); // LED 1
+  const ledInferior = document.getElementById("led-presencia-base"); // LED 2
 
   if (!ledSuperior || !ledInferior) return;
 
-  const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
-  let colorEstadoActual = "#00f2fe";
+  // 1. LED 1: ENFOQUE Y ACTIVIDAD EN LA APP (En línea / Inactivo)
+  const estaEnAppEnVivo = datosContacto.estaActivoEnVivo !== false;
 
-  if (ledPerfil) {
-    colorEstadoActual = window.getComputedStyle(ledPerfil).backgroundColor;
-  }
-
-  // Detectar el color propio de tu perfil
-  let esOcupado = colorEstadoActual.includes("255, 75, 43") || colorEstadoActual === "rgb(255, 75, 43)" || colorEstadoActual === "#ff4b2b" || colorEstadoActual.includes("239, 68, 68");
-  let esInvisible = colorEstadoActual.includes("136, 136, 136") || colorEstadoActual === "rgb(136, 136, 136)" || colorEstadoActual === "#888888";
-
-  // 1. Si tu estado es INVISIBLE
-  if (esInvisible) {
-    ledInferior.style.setProperty("background-color", "#888888", "important");
-    ledInferior.style.boxShadow = "none";
-
+  if (estaEnAppEnVivo) {
+    ledSuperior.style.setProperty("background-color", "#00f2fe", "important");
+    ledSuperior.style.boxShadow = "0 0 8px #00f2fe";
+  } else {
     ledSuperior.style.setProperty("background-color", "#888888", "important");
     ledSuperior.style.boxShadow = "none";
-    return;
   }
 
-  // 2. Si tu estado es OCUPADO
-  if (esOcupado) {
+  // 2. LED 2: ESTADO CONFIGURADO DEL PERFIL (Disponible, Ocupado, Invisible)
+  const estadoConexion = datosContacto.estadoConexion || datosContacto.estadoPresencia || "online";
+
+  if (estadoConexion === "ocupado") {
     ledInferior.style.setProperty("background-color", "#ef4444", "important");
     ledInferior.style.boxShadow = "0 0 8px #ef4444";
-
-    ledSuperior.style.setProperty("background-color", "#ef4444", "important");
-    ledSuperior.style.boxShadow = "0 0 8px #ef4444";
-    return;
-  }
-
-  // 3. Estado DISPONIBLE (Default en cabecera)
-  if (pantallaActual === "perfil") {
-    ledInferior.style.setProperty("background-color", "rgba(255, 255, 255, 0.05)", "important");
+  } else if (estadoConexion === "offline" || estadoConexion === "invisible") {
+    ledInferior.style.setProperty("background-color", "#888888", "important");
     ledInferior.style.boxShadow = "none";
-
-    ledSuperior.style.setProperty("background-color", "rgba(255, 255, 255, 0.05)", "important");
-    ledSuperior.style.boxShadow = "none";
   } else {
     ledInferior.style.setProperty("background-color", "#00f2fe", "important");
     ledInferior.style.boxShadow = "0 0 8px #00f2fe";
-
-    ledSuperior.style.setProperty("background-color", "#00f2fe", "important");
-    ledSuperior.style.boxShadow = "0 0 8px #00f2fe";
   }
 }
 
@@ -5457,6 +5436,16 @@ function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
   if (!contenedorHistorial) return;
 
+  // 🟢 Escuchar estado del contacto activo para los 2 LEDs de la cabecera
+  if (contactoUid) {
+    onValue(ref(db, `usuarios/${contactoUid}`), (snap) => {
+      if (snap.exists()) {
+        const datos = snap.val();
+        actualizarDobleLedCabecera(datos);
+      }
+    });
+  }
+
   // 1. 🧹 CANCELAR SUSCRIPCIONES ANTERIORES PARA EVITAR MULTIPLICACIÓN DE EVENTOS
   if (typeof listenerChatActivo === "function") {
     listenerChatActivo(); // Ejecuta la función de desuscripción de Firebase
@@ -5881,3 +5870,23 @@ if (btnVolverChat) {
     mostrarEncabezadoPrincipal();
   });
 }
+
+// 📡 TRANSMITIR SI LA APP ESTÁ ACTIVA O MINIMIZADA EN TIEMPO REAL
+function reportarPresenciaEnVivo(estaActivo) {
+  const usuarioActual = auth.currentUser;
+  if (!usuarioActual) return;
+
+  set(ref(db, `usuarios/${usuarioActual.uid}/estaActivoEnVivo`), estaActivo).catch(() => {});
+}
+
+// Detectar cuando la app se minimiza o regresa al frente
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    reportarPresenciaEnVivo(true);
+  } else {
+    reportarPresenciaEnVivo(false);
+  }
+});
+
+window.addEventListener("focus", () => reportarPresenciaEnVivo(true));
+window.addEventListener("blur", () => reportarPresenciaEnVivo(false));
