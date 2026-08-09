@@ -2447,12 +2447,12 @@ botonesLed.forEach(boton => {
   });
 });
 
-// 💾 Guardar en el perfil local y enviar a Firebase
+// 💾 Guardar en el perfil local y enviar a Firebase en tiempo real
 if (btnGuardarEstado && modalEstado) {
-  btnGuardarEstado.addEventListener("click", () => {
+  btnGuardarEstado.addEventListener("click", async () => {
     const fraseIngresada = inputNuevoEstado ? inputNuevoEstado.value.trim() : "";
 
-    // Si escribió una frase personalizada la usa, si no, usa "Disponible", "Ocupado" o "Invisible"
+    // Si escribió una frase personalizada la usa, si no, usa el nombre del estado
     const textoFinal = fraseIngresada !== "" ? fraseIngresada : nombreEstadoSeleccionado;
 
     // 1. Actualizar pantalla propia
@@ -2464,25 +2464,24 @@ if (btnGuardarEstado && modalEstado) {
       ledPerfil.style.boxShadow = `0 0 10px ${colorLedSeleccionado}`;
     }
 
-    // 2. Guardar en memoria local del teléfono
+    // 2. Guardar en memoria local
     localStorage.setItem("movachat-estado-texto", textoFinal);
     localStorage.setItem("movachat-estado-tipo", tipoEstadoSeleccionado);
 
-    // 3. AMARRAR A FIREBASE: Escribir en el perfil del usuario activo
+    // 3. ENVIAR A FIREBASE EN TIEMPO REAL A TODOS LOS CONTACTOS
     const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
-    if (usuarioActual && typeof db !== "undefined" && typeof ref !== "undefined") {
-
+    if (usuarioActual && typeof db !== "undefined") {
       const datosActualizar = {
         estadoTexto: textoFinal,
+        estado: textoFinal,
         estadoConexion: tipoEstadoSeleccionado,
         estadoPresencia: tipoEstadoSeleccionado
       };
 
-      if (typeof update !== "undefined") {
-        update(ref(db, `usuarios/${usuarioActual.uid}`), datosActualizar);
-      } else if (typeof set !== "undefined") {
-        set(ref(db, `usuarios/${usuarioActual.uid}/estadoTexto`), textoFinal);
-        set(ref(db, `usuarios/${usuarioActual.uid}/estadoConexion`), tipoEstadoSeleccionado);
+      try {
+        await update(ref(db, `usuarios/${usuarioActual.uid}`), datosActualizar);
+      } catch (err) {
+        console.error("Error al actualizar estado en Firebase:", err);
       }
     }
 
@@ -2490,6 +2489,11 @@ if (btnGuardarEstado && modalEstado) {
     modalEstado.classList.add("oculto");
     if (typeof mostrarAvisoPremium === "function") {
       mostrarAvisoPremium(`Perfil actualizado: ${nombreEstadoSeleccionado} ✨`);
+    }
+
+    // 5. Refrescar leds de la cabecera
+    if (typeof actualizarDobleLedCabecera === "function") {
+      actualizarDobleLedCabecera("perfil");
     }
   });
 }
@@ -2574,7 +2578,7 @@ window.actualizarBadgesNotificaciones = function () {
 // Crear alias global para sincronizar ambas llamadas
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
 
-// 🚀 ESCUCHAR Y RENDERIZAR BANDEJA DE ENTRADA CON CONTROL DE VACIADO Y ELIMINACIÓN
+// 🚀 ESCUCHAR Y RENDERIZAR BANDEJA DE ENTRADA CON CONTROL DE VACIADO, TEMPORALES Y ELIMINACIÓN
 function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijadosBD = {}) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -2582,9 +2586,13 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   const vaciadoRef = ref(db, `vaciados/${miUid}/${contactoUid}`);
   const ocultoRef = ref(db, `chats_ocultos/${miUid}/${contactoUid}`);
 
+  let timerExpiracionEfimera = null;
+
   onValue(mensajesRef, async (snapshot) => {
     const contenedorLista = document.getElementById("lista-chats-principal");
     if (!contenedorLista) return;
+
+    if (timerExpiracionEfimera) clearTimeout(timerExpiracionEfimera);
 
     let tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
 
@@ -2607,25 +2615,53 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     let hayMensajesHistoricos = snapshot.exists();
     let mensajesValidosKeys = [];
     let ultimoMsg = null;
+    let ultimoMsgKey = null;
     let mensajes = {};
 
     if (hayMensajesHistoricos) {
       mensajes = snapshot.val();
       const keys = Object.keys(mensajes);
+      const ahora = Date.now();
 
-      // Filtrar mensajes posteriores al vaciado
+      // ⏳ Filtrar mensajes posteriores al vaciado Y eliminar/omitir los temporales expirados
       mensajesValidosKeys = keys.filter((k) => {
         const m = mensajes[k];
-        return (m.timestamp || 0) > timestampUltimoVaciado;
+        const esPosteriorVaciado = (m.timestamp || 0) > timestampUltimoVaciado;
+
+        if (m.esEfimero) {
+          const limiteMs = m.duracionEfimeraMs || 10000;
+          const transcurrido = ahora - (m.timestamp || ahora);
+
+          if (transcurrido >= limiteMs) {
+            // Borrar de Firebase si ya expiró
+            set(ref(db, `chats/${chatId}/mensajes/${k}`), null);
+            return false;
+          }
+        }
+
+        return esPosteriorVaciado;
       });
 
       if (mensajesValidosKeys.length > 0) {
-        const ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
+        ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
         ultimoMsg = mensajes[ultimoMsgKey];
+
+        // ⏱️ Si el último mensaje es efímero y aún no expira, programar su borrado exacto
+        if (ultimoMsg && ultimoMsg.esEfimero) {
+          const limiteMs = ultimoMsg.duracionEfimeraMs || 10000;
+          const transcurrido = ahora - (ultimoMsg.timestamp || ahora);
+          const tiempoRestante = limiteMs - transcurrido;
+
+          if (tiempoRestante > 0) {
+            timerExpiracionEfimera = setTimeout(() => {
+              set(ref(db, `chats/${chatId}/mensajes/${ultimoMsgKey}`), null);
+            }, tiempoRestante);
+          }
+        }
       }
     }
 
-    // 🛑 1. CASO ELIMINADO: Si fue eliminado y no han llegado mensajes nuevos posteriores a la eliminación, SE QUITA DE LA LISTA
+    // 🛑 1. CASO ELIMINADO: Si fue eliminado y no han llegado mensajes nuevos posteriores
     const ultimoMsgTime = ultimoMsg ? (ultimoMsg.timestamp || 0) : 0;
     if (timestampOculto > 0 && ultimoMsgTime <= timestampOculto) {
       if (tarjetaContacto) tarjetaContacto.remove();
@@ -2634,8 +2670,8 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       return;
     }
 
-    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS: Nunca se han enviado mensajes ni se ha vaciado
-    if (!hayMensajesHistoricos && timestampUltimoVaciado === 0) {
+    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS O MENSAJES TEMPORALES EXPIRADOS
+    if ((!hayMensajesHistoricos || mensajesValidosKeys.length === 0) && timestampUltimoVaciado === 0) {
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
       if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
@@ -2698,6 +2734,30 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         </div>
       `;
 
+      // 🔴 ESCUCHADOR EN TIEMPO REAL PARA EL INDICADOR LED DEL CONTACTO
+      onValue(ref(db, `usuarios/${contactoUid}`), (uSnap) => {
+        if (!uSnap.exists()) return;
+        const uFresh = uSnap.val();
+        const estContacto = uFresh.estadoConexion || uFresh.estadoPresencia || uFresh.estado || "online";
+
+        let cLed = "#00f2fe";
+        let sLed = "0 0 8px #00f2fe";
+
+        if (estContacto === "ocupado") {
+          cLed = "#ef4444";
+          sLed = "0 0 8px #ef4444";
+        } else if (estContacto === "offline" || estContacto === "invisible") {
+          cLed = "#888888";
+          sLed = "0 0 8px #888888";
+        }
+
+        const nodoLed = tarjetaContacto ? tarjetaContacto.querySelector(".punto-online-chat") : null;
+        if (nodoLed) {
+          nodoLed.style.backgroundColor = cLed;
+          nodoLed.style.boxShadow = sLed;
+        }
+      });
+
       tarjetaContacto.addEventListener("click", (e) => {
         e.stopPropagation();
 
@@ -2743,7 +2803,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
     } else {
-      // Si la conversación fue vaciada
+      // Si la conversación fue vaciada o todos los mensajes temporales se borraron
       if (elemTexto) elemTexto.textContent = "Conversación vaciada";
       if (elemHora) elemHora.textContent = "--:--";
     }
@@ -2756,7 +2816,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     if (estaAbierto) {
       if (mensajesValidosKeys.length > 0) {
-        const ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
         set(lecturaRef, ultimoMsgKey);
       }
       if (elemBadge) {
@@ -2804,6 +2863,11 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     if (typeof actualizarEstadoPantallaInicio === "function") {
       actualizarEstadoPantallaInicio();
+    }
+
+    // 🔴 Sincronizar estado visual de bloqueo al cargar/actualizar la tarjeta
+    if (typeof window.verificarEstadoBloqueo === "function") {
+      window.verificarEstadoBloqueo(contactoUid);
     }
   });
 }
@@ -3601,7 +3665,7 @@ if (btnCtxBloquear) {
   });
 }
 
-// 🟢 VERIFICAR ESTADO DE BLOQUEO EN FIREBASE Y SINCRONIZAR INTERFAZ
+// 🟢 VERIFICAR ESTADO DE BLOQUEO EN FIREBASE Y SINCRONIZAR INTERFAZ (CON CAMPANITA ROJA)
 window.verificarEstadoBloqueo = async function (contactoUid) {
   const usuarioActual = auth.currentUser;
   const miUid = usuarioActual ? usuarioActual.uid : null;
@@ -3610,6 +3674,13 @@ window.verificarEstadoBloqueo = async function (contactoUid) {
   try {
     const snap = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
     const estaBloqueado = snap.exists() && snap.val() === true;
+
+    // Guardar en almacenamiento local para respuesta instantánea
+    if (estaBloqueado) {
+      localStorage.setItem(`bloqueado_${contactoUid}`, "true");
+    } else {
+      localStorage.removeItem(`bloqueado_${contactoUid}`);
+    }
 
     // 1. Actualizar botón en el menú desplegable
     const btnCtxBloquear = document.getElementById("btn-ctx-bloquear");
@@ -3644,15 +3715,29 @@ window.verificarEstadoBloqueo = async function (contactoUid) {
       }
     }
 
-    // 3. Actualizar aspecto visual de la tarjeta en la lista principal
+    // 3. Actualizar aspecto visual y campanita roja en la tarjeta de la lista
     const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
     if (tarjetaAmigoNodo) {
+      const cabecera = tarjetaAmigoNodo.querySelector(".chat-cabecera");
+      let iconoBloqueo = tarjetaAmigoNodo.querySelector(".indicador-bloqueo-neon");
+
       if (estaBloqueado) {
-        tarjetaAmigoNodo.style.opacity = "0.4";
+        tarjetaAmigoNodo.style.opacity = "0.45";
         tarjetaAmigoNodo.style.filter = "grayscale(100%)";
+
+        if (!iconoBloqueo && cabecera) {
+          cabecera.insertAdjacentHTML(
+            "beforeend",
+            `<span class="indicador-bloqueo-neon" title="Usuario bloqueado" style="margin-left: 4px; display: inline-flex; align-items: center;"><i data-lucide="bell-off" style="width:14px; height:14px; color: #ff4b2b;"></i></span>`
+          );
+          if (window.lucide) {
+            window.lucide.createIcons({ targets: [tarjetaAmigoNodo] });
+          }
+        }
       } else {
         tarjetaAmigoNodo.style.opacity = "1";
         tarjetaAmigoNodo.style.filter = "none";
+        if (iconoBloqueo) iconoBloqueo.remove();
       }
     }
 
