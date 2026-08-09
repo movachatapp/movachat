@@ -5540,7 +5540,7 @@ if (inputChatPrivado) {
 let listenerChatActivo = null;
 let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes y estado "Escribiendo..." en tiempo real desde Firebase
+// 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL
 let listenerEscribiendoActivo = null;
 
 function escucharMensajesChat(chatId) {
@@ -5581,7 +5581,7 @@ function escucharMensajesChat(chatId) {
     }
   });
 
-  // 💬 PASO 4: ESCUCHAR SI EL OTRO USUARIO ESTÁ ESCRIBIENDO EN TIEMPO REAL
+  // 💬 ESCUCHAR SI EL OTRO USUARIO ESTÁ ESCRIBIENDO
   if (contactoUid) {
     const escribiendoContactoRef = ref(db, `escribiendo/${chatId}/${contactoUid}`);
     
@@ -5622,20 +5622,36 @@ function escucharMensajesChat(chatId) {
     const elemHistorial = document.querySelector(".historial-mensajes");
     if (!elemHistorial) return;
 
+    // Consultar lectura del receptor, vaciados y bloqueos
     Promise.all([
       miUid && contactoUid ? get(ref(db, `vaciados/${miUid}/${contactoUid}`)) : Promise.resolve(null),
-      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null)
-    ]).then(([snapVaciado, snapBloqueo]) => {
+      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null),
+      miUid && contactoUid ? get(ref(db, `lecturas/${contactoUid}/${miUid}`)) : Promise.resolve(null),
+      contactoUid ? get(ref(db, `usuarios/${contactoUid}`)) : Promise.resolve(null)
+    ]).then(([snapVaciado, snapBloqueo, snapLectura, snapContactoInfo]) => {
 
       const timestampUltimoVaciado = (snapVaciado && snapVaciado.exists()) ? snapVaciado.val() : 0;
       const estaBloqueadoElContacto = (snapBloqueo && snapBloqueo.exists()) ? (snapBloqueo.val() === true) : false;
+      const ultimoLeidoKeyReceptor = (snapLectura && snapLectura.exists()) ? snapLectura.val() : "";
+      
+      const datosContacto = (snapContactoInfo && snapContactoInfo.exists()) ? snapContactoInfo.val() : {};
+      const estaEnAppReceptor = datosContacto.presenciaReal === true;
 
       elemHistorial.innerHTML = "";
 
       if (snapshot.exists()) {
         const mensajes = snapshot.val();
+        const keysMensajes = Object.keys(mensajes);
+        let yaVioElUltimo = false;
 
-        Object.keys(mensajes).forEach((msgId) => {
+        // 👁️ MARCAR COMO LEÍDO AUTOMÁTICAMENTE SI TIENES EL CHAT ABIERTO
+        const ultimoMsgKey = keysMensajes[keysMensajes.length - 1];
+        const ultimoMsg = mensajes[ultimoMsgKey];
+        if (ultimoMsg && (ultimoMsg.emisor || ultimoMsg.emisorUid) !== miUid && miUid && contactoUid) {
+          set(ref(db, `lecturas/${miUid}/${contactoUid}`), ultimoMsgKey);
+        }
+
+        keysMensajes.forEach((msgId) => {
           const msg = mensajes[msgId];
           if (!msg) return;
 
@@ -5689,6 +5705,32 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
+          // ⚡ CÁLCULO DE CHECKS DE LECTURA (Solo para mensajes propios)
+          let htmlChecks = "";
+          if (esMio) {
+            let claseChecks = "enviado";
+            let iconoLucide = "check";
+
+            // Si el mensaje actual es igual o anterior al último mensaje leído registrado por el receptor
+            if (msgId === ultimoLeidoKeyReceptor) {
+              yaVioElUltimo = true;
+            }
+
+            if (yaVioElUltimo || (ultimoLeidoKeyReceptor && keysMensajes.indexOf(msgId) <= keysMensajes.indexOf(ultimoLeidoKeyReceptor))) {
+              claseChecks = "leido";
+              iconoLucide = "check-check";
+            } else if (estaEnAppReceptor) {
+              claseChecks = "entregado";
+              iconoLucide = "check-check";
+            }
+
+            htmlChecks = `
+              <span class="indicador-checks-mova ${claseChecks}">
+                <i data-lucide="${iconoLucide}"></i>
+              </span>
+            `;
+          }
+
           let contenidoBurbuja = "";
           let estiloEspecialBurbuja = "";
 
@@ -5710,7 +5752,7 @@ function escucharMensajesChat(chatId) {
                 <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
               </div>
               ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
             `;
           } else if (msg.tipoAdjunto === 'documento') {
             contenidoBurbuja = `
@@ -5720,7 +5762,7 @@ function escucharMensajesChat(chatId) {
                 <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
               </div>
               ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
             `;
           } else if (msg.tipoAdjunto === 'video') {
             estiloEspecialBurbuja = "padding: 10px;";
@@ -5738,7 +5780,7 @@ function escucharMensajesChat(chatId) {
                 </div>
               </div>
               ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+              <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
             `;
           } else if (msg.tipoAdjunto === 'audio') {
             contenidoBurbuja = `
@@ -5754,13 +5796,13 @@ function escucharMensajesChat(chatId) {
                 <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
                 <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
               </div>
-              <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+              <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
             `;
           } else {
             contenidoBurbuja = `
               ${htmlReenviado}
               <p class="mensaje-texto">${msg.texto || ''}</p>
-              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}</span>
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
             `;
           }
 

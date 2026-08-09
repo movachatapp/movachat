@@ -3647,3 +3647,33 @@ body.tema-claro .nombre-sugerencia-txt {
 .amigo-datos .amigo-estado-texto {
   display: none !important;
 }
+
+/* ⚡ CHECKS DE ESTADO MOVACHAT */
+.indicador-checks-mova {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.indicador-checks-mova i {
+  width: 13px;
+  height: 13px;
+  transition: all 0.25s ease;
+}
+
+/* 1. Enviado (1 Check Gris) */
+.indicador-checks-mova.enviado i {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* 2. Entregado (2 Checks Grises) */
+.indicador-checks-mova.entregado i {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* 3. Leído (2 Checks Cian Neón con brillo) */
+.indicador-checks-mova.leido i {
+  color: #00f2fe !important;
+  filter: drop-shadow(0 0 4px #00f2fe);
+}
