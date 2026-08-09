@@ -3591,3 +3591,59 @@ body.tema-claro .nombre-sugerencia-txt {
 .toast-movachat {
   z-index: 2000 !important;
 }
+
+/* 💬 BURBUJA ANIMADA "ESCRIBIENDO..." */
+.burbuja-escribiendo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 18px !important;
+  max-width: 80px !important;
+  border-radius: 18px 18px 18px 4px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-bottom: 8px;
+  align-self: flex-start;
+  animation: entradaBurbuja 0.25s ease-out forwards;
+}
+
+.puntos-escribiendo-anim {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.puntos-escribiendo-anim span {
+  width: 7px;
+  height: 7px;
+  background-color: #00f2fe;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 6px #00f2fe;
+  animation: saltoPuntosEscribiendo 1.4s infinite ease-in-out both;
+}
+
+.puntos-escribiendo-anim span:nth-child(1) { animation-delay: -0.32s; }
+.puntos-escribiendo-anim span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes saltoPuntosEscribiendo {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1.2) translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@keyframes entradaBurbuja {
+  from { opacity: 0; transform: translateY(8px) scale(0.9); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Ocultar texto En Línea de la cabecera */
+.amigo-datos .amigo-estado-texto {
+  display: none !important;
+}

@@ -1364,6 +1364,11 @@ async function enviarMensajeNuevo() {
   // Limpiar el campo de texto INMEDIATAMENTE
   if (inputChat) inputChat.value = "";
 
+  // 🔴 PEGAR EL CÓDIGO AQUÍ:
+  if (miUid && contactoUid) {
+    set(ref(db, `escribiendo/${chatId}/${miUid}`), false);
+  }
+
   // 🚀 SUBIR A FIREBASE
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -1688,8 +1693,31 @@ function actualizarIconoBotonAccion() {
   }
 }
 
+// ✏️ REEMPLAZAR POR ESTE BLOQUE:
+let timerNotificarEscribiendo = null;
+
 if (inputChat) {
-  inputChat.addEventListener("input", actualizarIconoBotonAccion);
+  inputChat.addEventListener("input", () => {
+    if (typeof actualizarIconoBotonAccion === "function") {
+      actualizarIconoBotonAccion();
+    }
+
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    const contactoUid = window.contactoActivoUid;
+    if (!miUid || !contactoUid) return;
+
+    const chatId = obtenerChatId(miUid, contactoUid);
+    const escribiendoRef = ref(db, `escribiendo/${chatId}/${miUid}`);
+
+    // Activar estado escribiendo en Firebase
+    set(escribiendoRef, true);
+
+    // Apagar a los 2.5s si el usuario deja de escribir
+    if (timerNotificarEscribiendo) clearTimeout(timerNotificarEscribiendo);
+    timerNotificarEscribiendo = setTimeout(() => {
+      set(escribiendoRef, false);
+    }, 2500);
+  });
 
   inputChat.addEventListener("keydown", (evento) => {
     if (evento.key === "Enter") {
@@ -5512,19 +5540,25 @@ if (inputChatPrivado) {
 let listenerChatActivo = null;
 let listenerConfigActivo = null;
 
-// 📌 Escuchar mensajes en tiempo real desde Firebase (CON VACIADO UNILATERAL Y FILTRADO DE BLOQUEOS)
+// 📌 Escuchar mensajes y estado "Escribiendo..." en tiempo real desde Firebase
+let listenerEscribiendoActivo = null;
+
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
   if (!contenedorHistorial) return;
 
   // 1. 🧹 CANCELAR SUSCRIPCIONES ANTERIORES PARA EVITAR MULTIPLICACIÓN DE EVENTOS
   if (typeof listenerChatActivo === "function") {
-    listenerChatActivo(); // Ejecuta la función de desuscripción de Firebase
+    listenerChatActivo();
     listenerChatActivo = null;
   }
   if (typeof listenerConfigActivo === "function") {
     listenerConfigActivo();
     listenerConfigActivo = null;
+  }
+  if (typeof listenerEscribiendoActivo === "function") {
+    listenerEscribiendoActivo();
+    listenerEscribiendoActivo = null;
   }
 
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -5547,6 +5581,40 @@ function escucharMensajesChat(chatId) {
     }
   });
 
+  // 💬 PASO 4: ESCUCHAR SI EL OTRO USUARIO ESTÁ ESCRIBIENDO EN TIEMPO REAL
+  if (contactoUid) {
+    const escribiendoContactoRef = ref(db, `escribiendo/${chatId}/${contactoUid}`);
+    
+    listenerEscribiendoActivo = onValue(escribiendoContactoRef, (snapEscribiendo) => {
+      const estaEscribiendo = snapEscribiendo.exists() && snapEscribiendo.val() === true;
+      const elemHistorial = document.querySelector(".historial-mensajes");
+      if (!elemHistorial) return;
+
+      let burbujaEscribiendo = document.getElementById("burbuja-escribiendo-animada");
+
+      if (estaEscribiendo) {
+        if (!burbujaEscribiendo) {
+          burbujaEscribiendo = document.createElement("div");
+          burbujaEscribiendo.id = "burbuja-escribiendo-animada";
+          burbujaEscribiendo.className = "mensaje-burbuja recibido burbuja-escribiendo";
+          burbujaEscribiendo.innerHTML = `
+            <div class="puntos-escribiendo-anim">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          `;
+          elemHistorial.appendChild(burbujaEscribiendo);
+          elemHistorial.scrollTop = elemHistorial.scrollHeight;
+        }
+      } else {
+        if (burbujaEscribiendo) {
+          burbujaEscribiendo.remove();
+        }
+      }
+    });
+  }
+
   let esCargaInicial = true;
 
   // 3. Escuchar mensajes en tiempo real guardando la referencia de desuscripción
@@ -5554,7 +5622,6 @@ function escucharMensajesChat(chatId) {
     const elemHistorial = document.querySelector(".historial-mensajes");
     if (!elemHistorial) return;
 
-    // Resolver promesas de vaciado y bloqueo antes de renderizar para evitar bloqueos del DOM
     Promise.all([
       miUid && contactoUid ? get(ref(db, `vaciados/${miUid}/${contactoUid}`)) : Promise.resolve(null),
       miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null)
@@ -5563,7 +5630,6 @@ function escucharMensajesChat(chatId) {
       const timestampUltimoVaciado = (snapVaciado && snapVaciado.exists()) ? snapVaciado.val() : 0;
       const estaBloqueadoElContacto = (snapBloqueo && snapBloqueo.exists()) ? (snapBloqueo.val() === true) : false;
 
-      // Limpieza total del contenedor de mensajes
       elemHistorial.innerHTML = "";
 
       if (snapshot.exists()) {
@@ -5573,17 +5639,14 @@ function escucharMensajesChat(chatId) {
           const msg = mensajes[msgId];
           if (!msg) return;
 
-          // 🗑️ Ignorar mensajes anteriores al vaciado personal
           const msgTimestamp = msg.timestamp || 0;
           if (msgTimestamp <= timestampUltimoVaciado) return;
 
           const idEmisorReal = msg.emisor || msg.emisorUid || msg.remitente || msg.remitenteId || msg.uid;
           const esMio = idEmisorReal === miUid;
 
-          // 🛑 Ignorar mensajes de contactos bloqueados
           if (estaBloqueadoElContacto && !esMio) return;
 
-          // A) Lógica de mensajes efímeros dinámica
           if (msg.esEfimero) {
             const limiteMs = msg.duracionEfimeraMs || 10000;
             const transcurrido = Date.now() - (msg.timestamp || Date.now());
@@ -5629,7 +5692,6 @@ function escucharMensajesChat(chatId) {
           let contenidoBurbuja = "";
           let estiloEspecialBurbuja = "";
 
-          // ↪️ ETIQUETA VISUAL SI EL MENSAJE ES REENVIADO
           let htmlReenviado = "";
           if (msg.esReenviado) {
             const autor = msg.autorOriginal || "Contacto";
