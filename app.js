@@ -4983,45 +4983,44 @@ function mostrarToast(mensaje) {
   }, 2500);
 }
 
-// 🔊 1. DESBLOQUEO AUTOMÁTICO DE AUDIO EN EL PRIMER CLIC
+// ========================================================
+// 🔊 SISTEMA DE DESBLOQUEO Y DESPERTARES DE AUDIO FORZADO
+// ========================================================
 let audioDesbloqueado = false;
 
-function desbloquearAudioNavegador() {
+function despertarAudioForzado() {
   if (audioDesbloqueado) return;
 
   const audioRecibido = document.getElementById("sonido-recibido");
   const audioEnviado = document.getElementById("sonido-enviado");
 
-  const promesas = [];
-  if (audioRecibido) {
-    audioRecibido.volume = 0.01;
-    promesas.push(audioRecibido.play().then(() => {
-      audioRecibido.pause();
-      audioRecibido.currentTime = 0;
-      audioRecibido.volume = 1.0;
-    }).catch(() => {}));
-  }
+  const activarAudio = (elem) => {
+    if (!elem) return Promise.resolve();
+    elem.volume = 0.01;
+    return elem.play()
+      .then(() => {
+        elem.pause();
+        elem.currentTime = 0;
+        elem.volume = 1.0;
+      })
+      .catch((e) => console.log("Intento de activación bloqueado:", e));
+  };
 
-  if (audioEnviado) {
-    audioEnviado.volume = 0.01;
-    promesas.push(audioEnviado.play().then(() => {
-      audioEnviado.pause();
-      audioEnviado.currentTime = 0;
-      audioEnviado.volume = 1.0;
-    }).catch(() => {}));
-  }
-
-  Promise.all(promesas).then(() => {
+  Promise.all([activarAudio(audioRecibido), activarAudio(audioEnviado)]).then(() => {
     audioDesbloqueado = true;
-    document.removeEventListener("click", desbloquearAudioNavegador);
-    document.removeEventListener("touchstart", desbloquearAudioNavegador);
+    console.log("🔊 Motor de audio despertado y listo.");
+
+    document.removeEventListener("click", despertarAudioForzado);
+    document.removeEventListener("touchstart", despertarAudioForzado);
+    document.removeEventListener("pointerdown", despertarAudioForzado);
   });
 }
 
-document.addEventListener("click", desbloquearAudioNavegador, { once: true });
-document.addEventListener("touchstart", desbloquearAudioNavegador, { once: true });
+document.addEventListener("click", despertarAudioForzado, { once: true });
+document.addEventListener("touchstart", despertarAudioForzado, { once: true });
+document.addEventListener("pointerdown", despertarAudioForzado, { once: true });
 
-// 🔊 2. REPRODUCIR SONIDO RECIBIDO (Respeta el ajuste de silenciar)
+// 🔊 Función para reproducir sonido de mensaje recibido
 function reproducirSonidoRecibido() {
   const notifEstado = localStorage.getItem("movachat-notificaciones");
   if (notifEstado === "desactivado") return;
@@ -5029,16 +5028,20 @@ function reproducirSonidoRecibido() {
   const audioRecibido = document.getElementById("sonido-recibido");
   if (audioRecibido) {
     audioRecibido.currentTime = 0;
-    audioRecibido.play().catch((e) => console.log("Audio de recibido bloqueado:", e));
+    audioRecibido.play().catch(() => {
+      despertarAudioForzado();
+    });
   }
 }
 
-// 🔊 3. REPRODUCIR SONIDO ENVIADO
+// 🔊 Función para reproducir sonido de mensaje enviado
 function reproducirSonidoEnviado() {
   const audioEnviado = document.getElementById("sonido-enviado");
   if (audioEnviado) {
     audioEnviado.currentTime = 0;
-    audioEnviado.play().catch((e) => console.log("Audio de enviado bloqueado:", e));
+    audioEnviado.play().catch(() => {
+      despertarAudioForzado();
+    });
   }
 }
 
