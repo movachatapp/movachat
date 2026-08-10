@@ -3736,11 +3736,17 @@ document.querySelectorAll(".btn-opcion-tiempo").forEach((btnTiempo) => {
   });
 });
 
-// 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP
+// 🔕 SINCRONIZAR SILENCIADOS Y OYENTE GLOBAL AL ABRIR LA APP
 if (typeof auth !== "undefined" && auth) {
   onAuthStateChanged(auth, (user) => {
     if (!user) return;
 
+    // 🔊 1. ACTIVAR OYENTE GLOBAL DE SONIDOS/VIBRACIÓN PARA PRINCIPAL Y PERFIL
+    if (typeof activarOyenteGlobalMensajes === "function") {
+      activarOyenteGlobalMensajes(user.uid);
+    }
+
+    // 🔕 2. SINCRONIZAR ESTADOS DE SILENCIO DESDE FIREBASE
     const refSilenciados = ref(db, `silenciados/${user.uid}`);
     onValue(refSilenciados, (snapshot) => {
       if (snapshot.exists()) {
@@ -3759,10 +3765,14 @@ if (typeof auth !== "undefined" && auth) {
             if (!isNaN(hastaMs) && ahora < hastaMs) {
               estaVigente = true;
               // Programar el temporizador para los minutos restantes
-              programarAutoDesactivacionSilencio(contactoUid, hastaMs);
+              if (typeof programarAutoDesactivacionSilencio === "function") {
+                programarAutoDesactivacionSilencio(contactoUid, hastaMs);
+              }
             } else {
               // Expiró mientras la app estaba cerrada
-              limpiarSilencioExpirado(contactoUid);
+              if (typeof limpiarSilencioExpirado === "function") {
+                limpiarSilencioExpirado(contactoUid);
+              }
             }
           }
 
@@ -5398,34 +5408,55 @@ document.addEventListener("click", despertarAudioForzado);
 document.addEventListener("touchstart", despertarAudioForzado);
 document.addEventListener("pointerdown", despertarAudioForzado);
 
-// 🔊 Función para reproducir sonido de mensaje recibido (Compatible con pantalla principal y perfil)
+// 🔊 FUNCIÓN DE REPRODUCCIÓN Y VIBRACIÓN CON DIAGNÓSTICO EN CONSOLA
 window.reproducirSonidoRecibido = function (contactoUid = null) {
-  // 1. Verificar si las notificaciones generales están apagadas
-  const notifEstado = localStorage.getItem("movachat-notificaciones");
-  if (notifEstado === "desactivado") return;
+  console.log("🔔 Intentando reproducir sonido para el contacto:", contactoUid);
 
-  // 2. Verificar si este contacto en específico está silenciado
-  if (contactoUid) {
-    const estaSilenciado = localStorage.getItem(`silenciado_${contactoUid}`) === "true";
-    if (estaSilenciado) return;
+  // 1. Verificar si las notificaciones generales están desactivadas
+  const notifEstado = localStorage.getItem("movachat-notificaciones");
+  if (notifEstado === "desactivado") {
+    console.warn("🚫 Notificaciones globales desactivadas en LocalStorage.");
+    return;
   }
 
-  // 3. Vibración háptica en Android/Chrome (Suena o vibra incluso si la pestaña está en segundo plano)
-  if ("vibrate" in navigator) {
-    try {
-      navigator.vibrate([180, 80, 180]);
-    } catch (e) {
-      console.warn("Vibración no permitida en este dispositivo");
+  // 2. Verificar si este contacto específico está silenciado
+  if (contactoUid) {
+    const tiempoGuardado = localStorage.getItem(`silenciado_hasta_${contactoUid}`);
+    if (tiempoGuardado) {
+      if (tiempoGuardado === "indefinido") {
+        console.warn("🔇 Contacto silenciado de forma indefinida.");
+        return;
+      }
+      const hastaMs = parseInt(tiempoGuardado, 10);
+      if (Date.now() < hastaMs) {
+        console.warn("🔇 Contacto silenciado temporalmente (Tiempo vigente).");
+        return;
+      }
     }
   }
 
-  // 4. Reproducción del audio HTML
+  // 3. VIBRACIÓN HÁPTICA (Se dispara primero)
+  if ("vibrate" in navigator) {
+    try {
+      navigator.vibrate([200, 100, 200]);
+      console.log("📳 Vibración ejecutada.");
+    } catch (e) {
+      console.warn("⚠️ No se pudo activar la vibración:", e);
+    }
+  }
+
+  // 4. REPRODUCCIÓN DE AUDIO (Usando la etiqueta HTML)
   const audioRecibido = document.getElementById("sonido-recibido");
   if (audioRecibido) {
     audioRecibido.currentTime = 0;
-    audioRecibido.play().catch(() => {
-      despertarAudioForzado();
-    });
+    audioRecibido.play()
+      .then(() => console.log("🔊 ¡Sonido reproducido con éxito!"))
+      .catch((err) => {
+        console.error("❌ Chrome bloqueó la reproducción de audio:", err);
+        if (typeof despertarAudioForzado === "function") despertarAudioForzado();
+      });
+  } else {
+    console.error("❌ No se encontró el elemento HTML <audio id='sonido-recibido'>");
   }
 };
 
