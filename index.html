@@ -255,8 +255,9 @@
               <i data-lucide="qr-code"></i> QR Pro
             </button>
 
-            <button type="button" id="btn-limpiar-historial-global" style="flex: 1; background: rgba(255, 75, 43, 0.05); border: 1px solid rgba(255, 75, 43, 0.15); border-radius: 20px; color: rgba(255, 75, 43, 0.9); padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">
-              <i data-lucide="trash-2" style="color: #ff4b2b; width: 18px; height: 18px;"></i> Limpiar
+            <button id="btn-limpiar-historial-global" class="btn-perfil-accion btn-limpiar-mova">
+              <i data-lucide="trash-2"></i>
+              <span>Vaciar Chats</span>
             </button>
           </div>
         </div>
@@ -533,7 +534,8 @@
     <div class="menu-contextual" id="menu-tarjetas-chat" style="width: 210px; display: none;">
       <button class="opcion-menu-ctx" id="btn-ctx-fijar"><i data-lucide="pin"></i> Fijar chat arriba</button>
       <hr class="divisor-menu-ctx">
-      <button class="opcion-menu-ctx texto-rojo" id="btn-ctx-eliminar-chat"><i data-lucide="trash-2"></i> Eliminar chat</button>
+      <button class="opcion-menu-ctx texto-rojo" id="btn-ctx-eliminar-chat"><i data-lucide="trash-2"></i> Eliminar
+        chat</button>
       <hr class="divisor-menu-ctx">
       <button class="opcion-menu-ctx" id="btn-ctx-cerrar"><i data-lucide="x"></i> Cancelar</button>
     </div>
@@ -554,7 +556,8 @@
           style="display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 4px 8px; margin-bottom: 12px; position: relative;">
           <input type="text" id="input-nuevo-contacto" placeholder="Nombre de nuevo contacto..." autocomplete="off"
             style="width: 100%; background: transparent; border: none; padding: 10px; color: white; font-size: 13.5px; outline: none;">
-          <button type="button" id="btn-guardar-contacto" class="btn-primario" style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
+          <button type="button" id="btn-guardar-contacto" class="btn-primario"
+            style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
 
           <!-- Lista flotante de autocompletado de usuarios Firebase -->
           <div id="sugerencias-busqueda-contactos" class="sugerencias-contactos-caja oculto"></div>

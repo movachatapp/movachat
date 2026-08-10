@@ -2559,71 +2559,130 @@ if (typeof mostrarAvisoPremium === "undefined") {
   };
 }
 
-// --- 1. COMPARTIR MOVACHAT ---
-const btnCompartirMova = document.querySelector(".btn-compartir");
+// ========================================================
+// 🔗 SISTEMA DE COMPARTIR MOVACHAT (NATIVO + PORTAPAPELES)
+// ========================================================
 
-if (btnCompartirMova) {
-  const nuevoBtnCompartir = btnCompartirMova.cloneNode(true);
-  btnCompartirMova.parentNode.replaceChild(nuevoBtnCompartir, btnCompartirMova);
+async function ejecutarCompartirMova() {
+  // Enlace oficial o la URL actual de la PWA
+  const urlCompartir = window.location.origin && window.location.origin !== "null" 
+    ? window.location.origin 
+    : window.location.href;
 
-  nuevoBtnCompartir.addEventListener("click", async function () {
-    const urlCompartir = window.location.href;
+  const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+  const nombreUsuario = usuarioActual?.displayName || "un amigo";
 
-    // Si tiene HTTPS y el móvil/navegador lo soporta, abre el menú nativo
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'MovaChat',
-          text: '¡Únete a MovaChat! La app de chat premium con diseño futurista. 🌌🔥',
-          url: urlCompartir
-        });
-        mostrarAvisoPremium("¡Contenido compartido con éxito! 🪐");
-      } catch (error) {
-        if (error.name !== "AbortError") {
-          console.log("MovaChat: Error al compartir.", error);
-        }
+  const datosCompartir = {
+    title: 'MovaChat PWA',
+    text: `¡Hola! ${nombreUsuario} te invita a chatear en MovaChat. La app de mensajería con diseño futurista 🌌🔥`,
+    url: urlCompartir
+  };
+
+  // 1. En móviles (iOS/Android) abre la ventana nativa (WhatsApp, Telegram, etc.)
+  if (navigator.share) {
+    try {
+      await navigator.share(datosCompartir);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("¡MovaChat compartido con éxito! 🪐", "✨", "#00f2fe");
       }
-    } else {
-      // Fallback seguro usando API de Portapapeles moderna
-      try {
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        console.log("Error al compartir nativo:", err);
+      }
+    }
+  } 
+  // 2. En PC copia directamente el enlace
+  else {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(urlCompartir);
-        mostrarAvisoPremium("¡Enlace copiado al portapapeles! Listo para enviar. 🚀");
-      } catch (err) {
-        // Fallback antiguo por si el navegador es legacy
+      } else {
         const cajaTemporal = document.createElement("textarea");
         cajaTemporal.value = urlCompartir;
+        cajaTemporal.style.position = "fixed";
+        cajaTemporal.style.left = "-9999px";
         document.body.appendChild(cajaTemporal);
         cajaTemporal.select();
         document.execCommand("copy");
         document.body.removeChild(cajaTemporal);
-        mostrarAvisoPremium("¡Enlace copiado al portapapeles! Listo para enviar. 🚀");
       }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("¡Enlace de MovaChat copiado al portapapeles! 🚀", "📋", "#00f2fe");
+      }
+    } catch (err) {
+      console.error("Error al copiar enlace:", err);
     }
-  });
+  }
 }
 
-// --- 2. CÓDIGO QR PRO ---
-const btnQrMova = document.querySelector(".btn-qr");
-const modalQr = document.getElementById("modal-qr-mova");
-const btnCerrarQr = document.getElementById("btn-cerrar-qr");
-const imgQrDinamico = document.getElementById("img-qr-dinamico");
+// Escuchador delegado global (captura cualquier botón con clase .btn-compartir o texto 'Compartir MovaChat')
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-compartir") || 
+              e.target.closest("#btn-compartir-mova") || 
+              (e.target.textContent && e.target.textContent.includes("Compartir MovaChat") ? e.target.closest("button, div") : null);
 
-if (btnQrMova) {
-  btnQrMova.addEventListener("click", () => {
-    const urlActual = window.location.href;
-    if (imgQrDinamico) {
-      imgQrDinamico.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(urlActual)}`;
+  if (btn) {
+    e.preventDefault();
+    e.stopPropagation();
+    ejecutarCompartirMova();
+  }
+});
+
+// ========================================================
+// 📲 SISTEMA DE CÓDIGO QR PRO (GENERADOR DINÁMICO)
+// ========================================================
+
+function abrirModalQRPro() {
+  const modalQr = document.getElementById("modal-qr-mova");
+  const imgQrDinamico = document.getElementById("img-qr-dinamico");
+
+  const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+  const urlBase = window.location.origin && window.location.origin !== "null" 
+    ? window.location.origin 
+    : window.location.href;
+
+  // Enlace dinámico con el UID del usuario activo para invitar directo a su perfil
+  const urlACompartir = usuarioActual 
+    ? `${urlBase}?user=${usuarioActual.uid}` 
+    : urlBase;
+
+  if (imgQrDinamico) {
+    // Genera el código QR con los colores neón e identitarios de MovaChat
+    imgQrDinamico.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlACompartir)}&color=00f2fe&bgcolor=0a0a12`;
+  }
+
+  if (modalQr) {
+    modalQr.classList.remove("oculto");
+    modalQr.style.display = "flex";
+  }
+
+  if (typeof mostrarAvisoPremium === "function") {
+    mostrarAvisoPremium("Código QR Pro generado con éxito 📲", "✨", "#00f2fe");
+  }
+}
+
+// Escuchador delegado global (detecta si presionan por clase, por ID o por texto 'QR Pro')
+document.addEventListener("click", (e) => {
+  const btnQr = e.target.closest(".btn-qr") || 
+                e.target.closest("#btn-qr-mova") || 
+                (e.target.textContent && e.target.textContent.includes("QR Pro") ? e.target.closest("button, div") : null);
+
+  if (btnQr) {
+    e.preventDefault();
+    e.stopPropagation();
+    abrirModalQRPro();
+  }
+
+  // Cerrar el modal al tocar la 'X' o la capa del fondo
+  if (e.target.closest("#btn-cerrar-qr") || e.target.id === "modal-qr-mova") {
+    const modalQr = document.getElementById("modal-qr-mova");
+    if (modalQr) {
+      modalQr.classList.add("oculto");
+      modalQr.style.display = "none";
     }
-    if (modalQr) modalQr.classList.remove("oculto");
-    mostrarAvisoPremium("Código QR Pro generado con éxito. 📲");
-  });
-}
-
-if (btnCerrarQr && modalQr) {
-  btnCerrarQr.addEventListener("click", () => {
-    modalQr.classList.add("oculto");
-  });
-}
+  }
+});
 
 // --- 3. EDITAR ESTADO DE PERFIL Y LED (AMARRADO TOTALMENTE A FIREBASE) ---
 const btnEditarEstado = document.getElementById("btn-editar-estado");
@@ -5056,34 +5115,150 @@ if (modalNombre) {
   };
 }
 
-// ==========================================================
-// 🗑️ BOTÓN LIMPIAR: BORRAR CHATS CON ALERTA VISUAL (TOAST)
-// ==========================================================
+// ========================================================
+// 💥 LÓGICA DE BORRADO TOTAL DE LA NUBE (OPCIÓN B)
+// ========================================================
+
+let modoVaciarGlobal = false;
+
+// 1. Clic en el botón del Perfil (Abre el Modal con advertencia destructiva)
 document.addEventListener("click", (e) => {
-  // Atrapamos el botón exacto mediante su ID
-  const btnLimpiar = e.target.closest("#btn-limpiar-historial-global");
+  const btnLimpiar = e.target.closest("#btn-limpiar-historial-global") || 
+                     (e.target.textContent && e.target.textContent.includes("Limpiar") ? e.target.closest("button") : null);
+
   if (!btnLimpiar) return;
 
-  const tarjetasChat = document.querySelectorAll(".lista-chats .tarjeta-chat");
+  const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
 
   if (tarjetasChat.length === 0) {
-    mostrarToast("La lista ya está vacía");
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("La lista de chats ya está vacía 📭", "ℹ️", "#00f2fe");
+    }
     return;
   }
 
-  // Animación de salida fluida
-  tarjetasChat.forEach((tarjeta) => {
-    tarjeta.style.transition = "all 0.3s ease";
-    tarjeta.style.opacity = "0";
-    tarjeta.style.transform = "scale(0.95)";
-  });
+  modoVaciarGlobal = true;
+  const modalVaciar = document.getElementById("modal-confirmar-vaciar");
+  const modalTexto = document.getElementById("modal-vaciar-mensaje");
 
-  // Limpiar el DOM y mostrar la notificación
-  setTimeout(() => {
-    tarjetasChat.forEach(t => t.remove());
-    mostrarToast("¡Lista de chats limpiada!");
-  }, 300);
+  if (modalTexto) {
+    modalTexto.innerHTML = `⚠️ <b>¡ATENCIÓN!</b> ¿Deseas eliminar permanentemente todas las conversaciones? Se borrarán <b>todos los mensajes de la nube de forma definitiva para ti y tus contactos</b>.`;
+  }
+
+  if (modalVaciar) {
+    modalVaciar.classList.remove("oculto");
+  }
 });
+
+// 2. Confirmación del Modal
+const btnAceptarVaciarModal = document.getElementById("btn-aceptar-vaciar-modal");
+
+if (btnAceptarVaciarModal) {
+  const nuevoBtnAceptar = btnAceptarVaciarModal.cloneNode(true);
+  btnAceptarVaciarModal.parentNode.replaceChild(nuevoBtnAceptar, btnAceptarVaciarModal);
+
+  nuevoBtnAceptar.addEventListener("click", async () => {
+    const modalVaciar = document.getElementById("modal-confirmar-vaciar");
+    if (modalVaciar) modalVaciar.classList.add("oculto");
+
+    const miUid = auth.currentUser ? auth.currentUser.uid : null;
+    if (!miUid) return;
+
+    // 💥 VACIADO TOTAL DE LA BASE DE DATOS
+    if (modoVaciarGlobal) {
+      modoVaciarGlobal = false;
+
+      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+      const promesasFirebase = [];
+
+      tarjetasChat.forEach((tarjeta) => {
+        const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
+        if (contactoUid) {
+          const chatId = typeof obtenerChatId === "function" 
+            ? obtenerChatId(miUid, contactoUid) 
+            : (miUid < contactoUid ? `${miUid}_${contactoUid}` : `${contactoUid}_${miUid}`);
+
+          // Destruye el nodo completo de la conversación en Firebase Realtime Database
+          promesasFirebase.push(set(ref(db, `chats/${chatId}`), null));
+          promesasFirebase.push(set(ref(db, `vaciados/${miUid}/${contactoUid}`), null));
+          promesasFirebase.push(set(ref(db, `chats_ocultos/${miUid}/${contactoUid}`), null));
+        }
+
+        // Animación de salida
+        tarjeta.style.transition = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+        tarjeta.style.opacity = "0";
+        tarjeta.style.transform = "scale(0.9) translateY(10px)";
+      });
+
+      try {
+        await Promise.all(promesasFirebase);
+
+        setTimeout(() => {
+          tarjetasChat.forEach(t => t.remove());
+
+          if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
+          if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
+
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Se destruyeron permanentemente todas las conversaciones de la nube 🗑️", "⚠️", "#ff4b2b");
+          }
+        }, 300);
+
+      } catch (err) {
+        console.error("Error al eliminar conversaciones de la nube:", err);
+      }
+
+    } 
+    // VACIADO INDIVIDUAL (Mantiene el funcionamiento interno del chat)
+    else {
+      const contactoUid = window.contactoActivoUid;
+      const elemNombre = document.querySelector(".amigo-nombre-chat");
+      const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+      if (!contactoUid) return;
+
+      try {
+        const timestampVaciado = Date.now();
+        await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
+
+        const contenedorHistorial = document.querySelector(".historial-mensajes");
+        if (contenedorHistorial) contenedorHistorial.innerHTML = "";
+
+        const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
+        if (tarjetaAmigoNodo) {
+          const elemTexto = tarjetaAmigoNodo.querySelector(".chat-texto");
+          const elemHora = tarjetaAmigoNodo.querySelector(".chat-hora");
+          const elemBadge = tarjetaAmigoNodo.querySelector(".badge-chat-no-leido") || tarjetaAmigoNodo.querySelector(".badge-mensaje");
+
+          if (elemTexto) elemTexto.textContent = "Conversación vaciada";
+          if (elemHora) elemHora.textContent = "--:--";
+          if (elemBadge) {
+            elemBadge.textContent = "0";
+            elemBadge.classList.add("oculto");
+          }
+        }
+
+        if (typeof window.actualizarBadgesNotificaciones === "function") {
+          window.actualizarBadgesNotificaciones();
+        }
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(`Se ha limpiado tu historial con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
+        }
+      } catch (err) {
+        console.error("Error al vaciar el chat en Firebase:", err);
+      }
+    }
+  });
+}
+
+// Resetear bandera si cancela
+const btnCancelarVaciarModal = document.getElementById("btn-cancelar-vaciar-modal");
+if (btnCancelarVaciarModal) {
+  btnCancelarVaciarModal.addEventListener("click", () => {
+    modoVaciarGlobal = false;
+  });
+}
 
 // Variable para controlar el temporizador activo del toast
 let toastTimeoutId = null;
