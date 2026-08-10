@@ -451,6 +451,36 @@ window.reproducirSonido = function (tipo, contactoUid = null) {
   }
 };
 
+// 🔊 DESBLOQUEADOR GLOBAL DE AUDIO PARA CHROME / PWA
+let audioDesbloqueado = false;
+
+function desbloquearAudioGlobal() {
+  if (audioDesbloqueado) return;
+
+  Object.values(window.sonidosApp).forEach((audio) => {
+    if (audio) {
+      audio.play().then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      }).catch(() => {
+        // Bloqueado temporalmente hasta el primer toque
+      });
+    }
+  });
+
+  audioDesbloqueado = true;
+
+  // Remover escuchadores una vez desbloqueado
+  ["click", "touchstart", "keydown"].forEach((evento) => {
+    document.removeEventListener(evento, desbloquearAudioGlobal);
+  });
+}
+
+// Escuchar la primera interacción en cualquier parte de la app
+["click", "touchstart", "keydown"].forEach((evento) => {
+  document.addEventListener(evento, desbloquearAudioGlobal, { once: true });
+});
+
 // ========================================================
 // 2. PERSISTENCIA LOCALSTORAGE Y BANDEJA DE ENTRADA
 // ========================================================
@@ -5184,19 +5214,36 @@ document.addEventListener("click", despertarAudioForzado, { once: true });
 document.addEventListener("touchstart", despertarAudioForzado, { once: true });
 document.addEventListener("pointerdown", despertarAudioForzado, { once: true });
 
-// 🔊 Función para reproducir sonido de mensaje recibido
+// 🔊 Función unificada para reproducir sonido de mensaje recibido
 function reproducirSonidoRecibido() {
-  const notifEstado = localStorage.getItem("movachat-notificaciones");
-  if (notifEstado === "desactivado") return;
+  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
+  if (estaSilenciado) return;
 
-  const audioRecibido = document.getElementById("sonido-recibido");
-  if (audioRecibido) {
-    audioRecibido.currentTime = 0;
-    audioRecibido.play().catch(() => {
-      despertarAudioForzado();
+  if (window.sonidosApp && window.sonidosApp.recibido) {
+    window.sonidosApp.recibido.currentTime = 0;
+    window.sonidosApp.recibido.play().catch((err) => {
+      console.warn("Autoplay bloqueado por el navegador hasta interactuar:", err);
     });
   }
 }
+
+// 📩 Verificar si hay mensajes no leídos al abrir la app (10 min después)
+function verificarMensajesPendientesAlAbrir() {
+  const contadorNotificaciones = parseInt(localStorage.getItem("movachat-pendientes") || "0", 10);
+
+  if (contadorNotificaciones > 0) {
+    const reproducirAlInteractuar = () => {
+      reproducirSonidoRecibido();
+      document.removeEventListener("click", reproducirAlInteractuar);
+      document.removeEventListener("touchstart", reproducirAlInteractuar);
+    };
+
+    document.addEventListener("click", reproducirAlInteractuar);
+    document.addEventListener("touchstart", reproducirAlInteractuar);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", verificarMensajesPendientesAlAbrir);
 
 // 🔊 Función para reproducir sonido de mensaje enviado
 function reproducirSonidoEnviado() {
@@ -6057,11 +6104,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-// 🔔 NOTIFICACIONES PUSH NATIVAS (Versión Única Limpia)
+// 🔔 NOTIFICACIONES PUSH NATIVAS Y EFECTO DE SONIDO (Versión Integrada)
 window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
+  // 🔊 Reproducir sonido 'recibido.mp3' siempre que llegue un mensaje
+  if (typeof reproducirSonidoRecibido === "function") {
+    reproducirSonidoRecibido();
+  }
+
+  // 📱 Si la pestaña/app está en segundo plano o minimizada, lanzar notificación Push
   if (document.hidden && Notification.permission === "granted") {
     const opciones = {
       body: textoMensaje || "Te ha enviado un mensaje.",
@@ -6080,6 +6133,7 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
       new Notification(`Mensaje de ${nombreRemitente}`, opciones);
     }
   } else {
+    // 📊 Si la app está abierta (Perfil, Ajustes o lista de chats), actualizar contadores visuales
     if (typeof window.actualizarBadgesNotificaciones === "function") {
       window.actualizarBadgesNotificaciones();
     }
