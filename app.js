@@ -452,25 +452,24 @@ window.reproducirSonido = function (tipo, contactoUid = null) {
 };
 
 // 🔊 DESBLOQUEADOR GLOBAL DE AUDIO PARA CHROME / PWA
-let audioDesbloqueado = false;
+window.audioDesbloqueado = window.audioDesbloqueado || false;
 
 function desbloquearAudioGlobal() {
-  if (audioDesbloqueado) return;
+  if (window.audioDesbloqueado) return;
 
-  Object.values(window.sonidosApp).forEach((audio) => {
-    if (audio) {
-      audio.play().then(() => {
-        audio.pause();
-        audio.currentTime = 0;
-      }).catch(() => {
-        // Bloqueado temporalmente hasta el primer toque
-      });
-    }
-  });
+  if (window.sonidosApp) {
+    Object.values(window.sonidosApp).forEach((audio) => {
+      if (audio && typeof audio.play === "function") {
+        audio.play().then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+        }).catch(() => {});
+      }
+    });
+  }
 
-  audioDesbloqueado = true;
+  window.audioDesbloqueado = true;
 
-  // Remover escuchadores una vez desbloqueado
   ["click", "touchstart", "keydown"].forEach((evento) => {
     document.removeEventListener(evento, desbloquearAudioGlobal);
   });
