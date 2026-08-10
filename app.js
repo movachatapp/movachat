@@ -8,7 +8,7 @@ import {
   updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, get, child, onValue, update, push, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, get, child, onValue, onChildChanged, update, push, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
@@ -3736,6 +3736,35 @@ document.querySelectorAll(".btn-opcion-tiempo").forEach((btnTiempo) => {
   });
 });
 
+// 📡 ESCUCHA GLOBAL DE MENSAJES PARA PANTALLA PRINCIPAL Y PERFIL
+function activarOyenteGlobalMensajes(miUid) {
+  if (!miUid) return;
+  const refMisChats = ref(db, 'chats');
+
+  onChildChanged(refMisChats, (snapshot) => {
+    const chatId = snapshot.key;
+    if (!chatId || !chatId.includes(miUid)) return;
+
+    const datosChat = snapshot.val();
+    if (!datosChat || !datosChat.mensajes) return;
+
+    const keys = Object.keys(datosChat.mensajes);
+    const ultimoMsg = datosChat.mensajes[keys[keys.length - 1]];
+
+    if (ultimoMsg) {
+      const emisorReal = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente;
+      const haceCuanto = Date.now() - (ultimoMsg.timestamp || 0);
+
+      // Si el mensaje es entrante y llegó hace menos de 5 segundos
+      if (emisorReal !== miUid && haceCuanto < 5000) {
+        if (typeof window.reproducirSonidoRecibido === "function") {
+          window.reproducirSonidoRecibido(emisorReal);
+        }
+      }
+    }
+  });
+}
+
 // 🔕 SINCRONIZAR SILENCIADOS Y OYENTE GLOBAL AL ABRIR LA APP
 if (typeof auth !== "undefined" && auth) {
   onAuthStateChanged(auth, (user) => {
@@ -6076,6 +6105,25 @@ function escucharMensajesChat(chatId) {
               setTimeout(() => {
                 set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
               }, tiempoRestante);
+            }
+          }
+
+          // 🟢 CORRECCIÓN: DEFINICIÓN DE TIEMPO PARA MENSAJES EN VIVO
+          const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
+          const esMensajeNuevoEnVivo = haceCuantoEnviado < 5000;
+
+          if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto) {
+            const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
+            const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
+            const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
+
+            if (typeof notificarNuevoMensaje === "function") {
+              notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
+            }
+
+            // 🔊 DISPARAR REPRODUCCIÓN Y VIBRACIÓN
+            if (typeof window.reproducirSonidoRecibido === "function") {
+              window.reproducirSonidoRecibido(idEmisorReal);
             }
           }
 
