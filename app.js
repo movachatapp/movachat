@@ -4023,9 +4023,9 @@ if (btnCancelarVaciar) {
 
 // 🗑️ Lógica de confirmación para Vaciar Chat (Solo dentro del chat privado)
 document.addEventListener("DOMContentLoaded", () => {
-  const modalVaciar = document.getElementById("modal-confirmar-vaciar");
-  const btnAceptarVaciar = document.getElementById("btn-aceptar-vaciar-modal");
-  const btnCancelarVaciar = document.getElementById("btn-cancelar-vaciar-modal");
+  const modalVaciarModal = document.getElementById("modal-confirmar-vaciar");
+  const btnAceptarVaciarModal = document.getElementById("btn-aceptar-vaciar-modal");
+  const btnCancelarVaciarModal = document.getElementById("btn-cancelar-vaciar-modal");
 
   // 🔴 1. Cancelar Modal
   if (btnCancelarVaciar) {
@@ -6057,12 +6057,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada y corregida)
+// 🔔 NOTIFICACIONES PUSH NATIVAS (Versión Única Limpia)
 window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
-  // Si la app está en segundo plano o minimizada
   if (document.hidden && Notification.permission === "granted") {
     const opciones = {
       body: textoMensaje || "Te ha enviado un mensaje.",
@@ -6081,41 +6080,11 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
       new Notification(`Mensaje de ${nombreRemitente}`, opciones);
     }
   } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
-    if (typeof actualizarBadgesNotificaciones === "function") {
-      actualizarBadgesNotificaciones();
+    if (typeof window.actualizarBadgesNotificaciones === "function") {
+      window.actualizarBadgesNotificaciones();
     }
   }
 };
-
-// 🔔 Función global para lanzar notificación de nuevo mensaje
-function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
-  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
-  if (estaSilenciado) return;
-
-  // Si la app está en segundo plano o minimizada
-  if (document.hidden && Notification.permission === "granted") {
-    const opciones = {
-      body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo.png",
-      badge: "assets/logo.png",
-      vibrate: [100, 50, 100],
-      tag: "movachat-mensaje",
-      renotify: true
-    };
-
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
-      });
-    } else {
-      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
-    }
-  } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
-    actualizarBadgesNotificaciones();
-  }
-}
 
 // --- REGISTRO OFICIAL DEL SERVICE WORKER (Permite instalar la PWA) ---
 if ('serviceWorker' in navigator) {

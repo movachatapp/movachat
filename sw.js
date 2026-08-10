@@ -9,7 +9,10 @@ const ASSETS_TO_CACHE = [
   './styles.css',
   './manifest.json',
   './assets/logo/icon-192.png',
-  './assets/logo/icon-512.png'
+  './assets/logo/icon-512.png',
+  './assets/sounds/enviado.mp3',
+  './assets/sounds/recibido.mp3',
+  './assets/sounds/grabando.mp3'
 ];
 
 // 1. Instalar el Service Worker
