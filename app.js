@@ -3238,6 +3238,7 @@ if (toggleSigilo) {
       }
 
     } else {
+
       // 1. Guardar preferencia local
       localStorage.setItem("movachat-sigilo", "inactivo");
 
@@ -5363,36 +5364,62 @@ function despertarAudioForzado() {
   const audioEnviado = document.getElementById("sonido-enviado");
 
   const activarAudio = (elem) => {
-    if (!elem) return Promise.resolve();
+    if (!elem) return Promise.resolve(false);
     elem.volume = 0.01;
     return elem.play()
       .then(() => {
         elem.pause();
         elem.currentTime = 0;
         elem.volume = 1.0;
+        return true;
       })
-      .catch((e) => console.log("Intento de activación bloqueado:", e));
+      .catch((e) => {
+        console.log("Intento de activación de audio diferido:", e);
+        return false;
+      });
   };
 
-  Promise.all([activarAudio(audioRecibido), activarAudio(audioEnviado)]).then(() => {
-    audioDesbloqueado = true;
-    console.log("🔊 Motor de audio despertado y listo.");
+  Promise.all([activarAudio(audioRecibido), activarAudio(audioEnviado)]).then((resultados) => {
+    // Si al menos un elemento de audio se activó correctamente
+    if (resultados.some((res) => res === true)) {
+      audioDesbloqueado = true;
+      console.log("🔊 Motor de audio despertado y listo para todas las pantallas.");
 
-    document.removeEventListener("click", despertarAudioForzado);
-    document.removeEventListener("touchstart", despertarAudioForzado);
-    document.removeEventListener("pointerdown", despertarAudioForzado);
+      // Retiramos los eventos solo cuando la activación ha sido exitosa
+      document.removeEventListener("click", despertarAudioForzado);
+      document.removeEventListener("touchstart", despertarAudioForzado);
+      document.removeEventListener("pointerdown", despertarAudioForzado);
+    }
   });
 }
 
-document.addEventListener("click", despertarAudioForzado, { once: true });
-document.addEventListener("touchstart", despertarAudioForzado, { once: true });
-document.addEventListener("pointerdown", despertarAudioForzado, { once: true });
+// Escuchadores de interacción inicial (Sin 'once: true' para reintentar si el navegador falla la primera vez)
+document.addEventListener("click", despertarAudioForzado);
+document.addEventListener("touchstart", despertarAudioForzado);
+document.addEventListener("pointerdown", despertarAudioForzado);
 
-// 🔊 Función para reproducir sonido de mensaje recibido
-function reproducirSonidoRecibido() {
+// 🔊 Función para reproducir sonido de mensaje recibido (Compatible con pantalla principal y perfil)
+window.reproducirSonidoRecibido = function (contactoUid = null) {
+  // 1. Verificar si las notificaciones generales están apagadas
   const notifEstado = localStorage.getItem("movachat-notificaciones");
   if (notifEstado === "desactivado") return;
 
+  // 2. Verificar si este contacto en específico está silenciado
+  if (contactoUid) {
+    const estaSilenciado = localStorage.getItem(`silenciado_${contactoUid}`) === "true";
+    if (estaSilenciado) return;
+  }
+
+  // 3. Vibración háptica en Android/Chrome (Suena o vibra incluso si la pestaña está en segundo plano)
+  if ("vibrate" in navigator) {
+    try {
+      navigator.vibrate([180, 80, 180]);
+    } catch (e) {
+      console.warn("Vibración no permitida en este dispositivo");
+    }
+  }
+
+  // 4. Reproducción del audio HTML
   const audioRecibido = document.getElementById("sonido-recibido");
   if (audioRecibido) {
     audioRecibido.currentTime = 0;
@@ -5400,10 +5427,10 @@ function reproducirSonidoRecibido() {
       despertarAudioForzado();
     });
   }
-}
+};
 
 // 🔊 Función para reproducir sonido de mensaje enviado
-function reproducirSonidoEnviado() {
+window.reproducirSonidoEnviado = function () {
   const audioEnviado = document.getElementById("sonido-enviado");
   if (audioEnviado) {
     audioEnviado.currentTime = 0;
@@ -5411,7 +5438,7 @@ function reproducirSonidoEnviado() {
       despertarAudioForzado();
     });
   }
-}
+};
 
 // Función global para alternar visibilidad de contraseña
 window.togglePasswordVisibility = function () {
@@ -6021,9 +6048,6 @@ function escucharMensajesChat(chatId) {
             }
           }
 
-          const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
-          const esMensajeNuevoEnVivo = haceCuantoEnviado < 4000;
-
           if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto) {
             const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
             const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
@@ -6032,8 +6056,10 @@ function escucharMensajesChat(chatId) {
             if (typeof notificarNuevoMensaje === "function") {
               notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
             }
-            if (typeof reproducirSonido === "function") {
-              reproducirSonido("recibido", idEmisorReal);
+
+            // 🔊 EJECUCIÓN CON VERIFICACIÓN DE SILENCIO Y VIBRACIÓN (USANDO idEmisorReal)
+            if (typeof window.reproducirSonidoRecibido === "function") {
+              window.reproducirSonidoRecibido(idEmisorReal);
             }
           }
 
