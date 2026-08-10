@@ -1361,10 +1361,11 @@ async function enviarMensajeNuevo() {
     if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
   }
 
-  // Limpiar el campo de texto INMEDIATAMENTE
-  if (inputChat) inputChat.value = "";
+  if (inputChat) {
+    inputChat.value = "";
+    inputChat.readOnly = false; // 🔓 DESBLOQUEAR CAJA PARA MENSAJES FUTUROS
+  }
 
-  // 🔴 PEGAR EL CÓDIGO AQUÍ:
   if (miUid && contactoUid) {
     set(ref(db, `escribiendo/${chatId}/${miUid}`), false);
   }
@@ -2432,9 +2433,9 @@ window.cambiarAura = function (nombreTema) {
 
   botones.forEach((btn) => {
     const attrAura = btn.getAttribute("data-aura") || "";
-    const esSeleccionado = (attrAura === nombreTema) || 
-                           (attrAura === temaFinal) || 
-                           (temaFinal === "cyan-morado" && (attrAura === "cyber" || attrAura === "cyan-morado"));
+    const esSeleccionado = (attrAura === nombreTema) ||
+      (attrAura === temaFinal) ||
+      (temaFinal === "cyan-morado" && (attrAura === "cyber" || attrAura === "cyan-morado"));
 
     if (esSeleccionado) {
       btn.classList.add("activa");
@@ -2451,7 +2452,7 @@ window.cambiarAura = function (nombreTema) {
 
   // 5. Sincronizar en Firebase si existe usuario activo
   if (typeof auth !== "undefined" && auth.currentUser) {
-    update(ref(db, `usuarios/${auth.currentUser.uid}`), { aura: temaFinal }).catch(() => {});
+    update(ref(db, `usuarios/${auth.currentUser.uid}`), { aura: temaFinal }).catch(() => { });
   }
 };
 
@@ -5472,7 +5473,7 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
 
     if (cajaEntrada) {
       cajaEntrada.value = window.mensajeReenviadoActivo.texto;
-      cajaEntrada.focus();
+      cajaEntrada.readOnly = true; // 🔒 BLOQUEAR EDICIÓN DEL TEXTO REENVIADO
 
       // Banner flotante elegante
       let vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
@@ -5480,7 +5481,6 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
         vistaPreviaReenvio = document.createElement("div");
         vistaPreviaReenvio.id = "vista-previa-reenvio";
 
-        // 🎯 Buscar el contenedor principal del pie de chat para ponerse justo arriba
         const pieDeChat = cajaEntrada.closest(".footer-chat") || cajaEntrada.closest(".caja-input-privado") || cajaEntrada.parentElement.parentElement;
 
         if (pieDeChat && pieDeChat.parentNode) {
@@ -5490,21 +5490,26 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
         }
       }
 
+      // ❌ CONTENEDOR SEGURO PARA EL BOTÓN DE CANCELAR
       vistaPreviaReenvio.innerHTML = `
         <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
           <i data-lucide="forward" style="width: 14px; height: 14px; stroke: #00f2fe; flex-shrink: 0;"></i>
           <span>Reenviando mensaje de <b>${window.mensajeReenviadoActivo.autorOriginal}</b></span>
         </div>
-        <i data-lucide="x" id="btn-cancelar-reenvio" style="width: 16px; height: 16px; cursor: pointer; opacity: 0.8; flex-shrink: 0;"></i>
+        <span id="btn-cancelar-reenvio" style="cursor: pointer; opacity: 0.8; flex-shrink: 0; padding: 4px; display: flex; align-items: center;">
+          <i data-lucide="x" style="width: 16px; height: 16px; pointer-events: none;"></i>
+        </span>
       `;
 
       if (window.lucide) window.lucide.createIcons({ targets: [vistaPreviaReenvio] });
 
       const btnCancelar = document.getElementById("btn-cancelar-reenvio");
       if (btnCancelar) {
-        btnCancelar.onclick = () => {
+        btnCancelar.onclick = (e) => {
+          e.stopPropagation();
           window.mensajeReenviadoActivo = null;
           cajaEntrada.value = "";
+          cajaEntrada.readOnly = false; // 🔓 DESBLOQUEAR CAJA AL CANCELAR
           if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
           if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
         };
