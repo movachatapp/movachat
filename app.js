@@ -2061,6 +2061,14 @@ document.addEventListener("click", () => {
 
 if (btnVolver) {
   btnVolver.addEventListener("click", () => {
+    // ⚠️ Limpiar contacto activo y apagar escuchador de mensajes al salir del chat
+    window.contactoActivoUid = null;
+    contactoActivoUid = null;
+    if (typeof listenerChatActivo === "function") {
+      listenerChatActivo();
+      listenerChatActivo = null;
+    }
+
     const menuTarjetas = document.getElementById("menu-tarjetas-chat");
     if (menuTarjetas) menuTarjetas.classList.add("oculto");
 
@@ -5700,10 +5708,16 @@ function escucharMensajesChat(chatId) {
         const mensajes = snapshot.val();
         const keysMensajes = Object.keys(mensajes);
 
-        // Marcar como leído automáticamente si yo tengo la ventana abierta
+        // Marcar como leído ÚNICAMENTE si el chat privado está visible en pantalla
+        const pantallaChat = document.getElementById("pantalla-chat-privado");
+        const chatEstaAbierto = (window.contactoActivoUid === contactoUid) &&
+          pantallaChat &&
+          (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
+
         const ultimoMsgKey = keysMensajes[keysMensajes.length - 1];
         const ultimoMsgObj = mensajes[ultimoMsgKey];
-        if (ultimoMsgObj && (ultimoMsgObj.emisor || ultimoMsgObj.emisorUid) !== miUid && miUid && contactoUid) {
+
+        if (chatEstaAbierto && ultimoMsgObj && (ultimoMsgObj.emisor || ultimoMsgObj.emisorUid) !== miUid && miUid && contactoUid) {
           set(ref(db, `lecturas/${miUid}/${contactoUid}`), ultimoMsgKey);
         }
 
@@ -6118,6 +6132,14 @@ const btnVolverChat = document.querySelector(".chat-privado-header .btn-volver")
 
 if (btnVolverChat) {
   btnVolverChat.addEventListener("click", () => {
+    // ⚠️ Limpiar contacto activo al regresar a la lista de chats
+    window.contactoActivoUid = null;
+    contactoActivoUid = null;
+    if (typeof listenerChatActivo === "function") {
+      listenerChatActivo();
+      listenerChatActivo = null;
+    }
+
     const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
     const pantallaChats = document.getElementById("pantalla-chats");
 
