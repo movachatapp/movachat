@@ -5263,7 +5263,7 @@ if (btnAceptarVaciarModal) {
   });
 }
 
-// Resetear bandera y cerrar modal al cancelar
+// Resetear bandera y cerrar modal al cancelar (Unificado)
 const btnCancelarVaciarModal = document.getElementById("btn-cancelar-vaciar-modal");
 if (btnCancelarVaciarModal) {
   btnCancelarVaciarModal.addEventListener("click", () => {
@@ -5273,14 +5273,6 @@ if (btnCancelarVaciarModal) {
       modalVaciar.classList.add("oculto");
       modalVaciar.style.display = "none";
     }
-  });
-}
-
-// Resetear bandera si cancela
-const btnCancelarVaciarModal = document.getElementById("btn-cancelar-vaciar-modal");
-if (btnCancelarVaciarModal) {
-  btnCancelarVaciarModal.addEventListener("click", () => {
-    modoVaciarGlobal = false;
   });
 }
 
