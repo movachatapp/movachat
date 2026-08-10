@@ -5116,23 +5116,29 @@ if (modalNombre) {
 }
 
 // ========================================================
-// 💥 LÓGICA DE BORRADO TOTAL DE LA NUBE (OPCIÓN B)
+// 🧹 LÓGICA DE VACIADO PERSONAL (PROTEGE "MI ESTADO" Y A TUS CONTACTOS)
 // ========================================================
 
 let modoVaciarGlobal = false;
 
-// 1. Clic en el botón del Perfil (Abre el Modal con advertencia destructiva)
+// 1. Clic en el botón del Perfil (Abre el Modal)
 document.addEventListener("click", (e) => {
   const btnLimpiar = e.target.closest("#btn-limpiar-historial-global") || 
-                     (e.target.textContent && e.target.textContent.includes("Limpiar") ? e.target.closest("button") : null);
+                     e.target.closest(".btn-limpiar-mova") ||
+                     (e.target.textContent && (e.target.textContent.includes("Vaciar Chats") || e.target.textContent.includes("Limpiar")) ? e.target.closest("button, div") : null);
 
   if (!btnLimpiar) return;
 
-  const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+  // 🛡️ Filtro estricto: Selecciona chats reales e IGNORA "Mi Estado"
+  const tarjetasChat = Array.from(document.querySelectorAll(".lista-chats .tarjeta-chat, #lista-chats-principal .tarjeta-chat"))
+    .filter(tarjeta => {
+      const esEstado = tarjeta.classList.contains("tarjeta-estado") || tarjeta.id.includes("estado") || tarjeta.innerText.includes("Mi Estado");
+      return !esEstado && (tarjeta.dataset.uid || tarjeta.id.includes("tarjeta-chat-"));
+    });
 
   if (tarjetasChat.length === 0) {
     if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("La lista de chats ya está vacía 📭", "ℹ️", "#00f2fe");
+      mostrarAvisoPremium("No tienes chats activos para vaciar 📭", "ℹ️", "#00f2fe");
     }
     return;
   }
@@ -5142,11 +5148,12 @@ document.addEventListener("click", (e) => {
   const modalTexto = document.getElementById("modal-vaciar-mensaje");
 
   if (modalTexto) {
-    modalTexto.innerHTML = `⚠️ <b>¡ATENCIÓN!</b> ¿Deseas eliminar permanentemente todas las conversaciones? Se borrarán <b>todos los mensajes de la nube de forma definitiva para ti y tus contactos</b>.`;
+    modalTexto.innerHTML = `¿Deseas <b>vaciar tus conversaciones</b>? Se ocultarán únicamente de tu pantalla sin borrar los mensajes de tus contactos.`;
   }
 
   if (modalVaciar) {
     modalVaciar.classList.remove("oculto");
+    modalVaciar.style.display = "flex";
   }
 });
 
@@ -5159,32 +5166,37 @@ if (btnAceptarVaciarModal) {
 
   nuevoBtnAceptar.addEventListener("click", async () => {
     const modalVaciar = document.getElementById("modal-confirmar-vaciar");
-    if (modalVaciar) modalVaciar.classList.add("oculto");
+    if (modalVaciar) {
+      modalVaciar.classList.add("oculto");
+      modalVaciar.style.display = "none";
+    }
 
     const miUid = auth.currentUser ? auth.currentUser.uid : null;
     if (!miUid) return;
 
-    // 💥 VACIADO TOTAL DE LA BASE DE DATOS
+    // 🔒 VACIADO PRIVADO Y PERSONAL
     if (modoVaciarGlobal) {
       modoVaciarGlobal = false;
 
-      const tarjetasChat = document.querySelectorAll("#lista-chats-principal .tarjeta-chat");
+      // Volvemos a filtrar excluyendo "Mi Estado"
+      const tarjetasChat = Array.from(document.querySelectorAll(".lista-chats .tarjeta-chat, #lista-chats-principal .tarjeta-chat"))
+        .filter(tarjeta => {
+          const esEstado = tarjeta.classList.contains("tarjeta-estado") || tarjeta.id.includes("estado") || tarjeta.innerText.includes("Mi Estado");
+          return !esEstado && (tarjeta.dataset.uid || tarjeta.id.includes("tarjeta-chat-"));
+        });
+
+      const timestampVaciar = Date.now();
       const promesasFirebase = [];
 
       tarjetasChat.forEach((tarjeta) => {
         const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
         if (contactoUid) {
-          const chatId = typeof obtenerChatId === "function" 
-            ? obtenerChatId(miUid, contactoUid) 
-            : (miUid < contactoUid ? `${miUid}_${contactoUid}` : `${contactoUid}_${miUid}`);
-
-          // Destruye el nodo completo de la conversación en Firebase Realtime Database
-          promesasFirebase.push(set(ref(db, `chats/${chatId}`), null));
-          promesasFirebase.push(set(ref(db, `vaciados/${miUid}/${contactoUid}`), null));
-          promesasFirebase.push(set(ref(db, `chats_ocultos/${miUid}/${contactoUid}`), null));
+          // Solo afecta a tu propia vista en Firebase
+          promesasFirebase.push(set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciar));
+          promesasFirebase.push(set(ref(db, `chats_ocultos/${miUid}/${contactoUid}`), timestampVaciar));
         }
 
-        // Animación de salida
+        // Animación de salida respetando "Mi Estado"
         tarjeta.style.transition = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
         tarjeta.style.opacity = "0";
         tarjeta.style.transform = "scale(0.9) translateY(10px)";
@@ -5200,17 +5212,16 @@ if (btnAceptarVaciarModal) {
           if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
 
           if (typeof mostrarAvisoPremium === "function") {
-            mostrarAvisoPremium("Se destruyeron permanentemente todas las conversaciones de la nube 🗑️", "⚠️", "#ff4b2b");
+            mostrarAvisoPremium("Tus chats han sido vaciados con éxito 🧹", "✨", "#00f2fe");
           }
         }, 300);
 
       } catch (err) {
-        console.error("Error al eliminar conversaciones de la nube:", err);
+        console.error("Error al vaciar conversaciones:", err);
       }
 
-    } 
-    // VACIADO INDIVIDUAL (Mantiene el funcionamiento interno del chat)
-    else {
+    } else {
+      // VACIADO INDIVIDUAL (Mantiene lógica interna del chat activo)
       const contactoUid = window.contactoActivoUid;
       const elemNombre = document.querySelector(".amigo-nombre-chat");
       const nombreAmigoActual = elemNombre ? elemNombre.textContent.trim() : "este usuario";
@@ -5248,6 +5259,19 @@ if (btnAceptarVaciarModal) {
       } catch (err) {
         console.error("Error al vaciar el chat en Firebase:", err);
       }
+    }
+  });
+}
+
+// Resetear bandera y cerrar modal al cancelar
+const btnCancelarVaciarModal = document.getElementById("btn-cancelar-vaciar-modal");
+if (btnCancelarVaciarModal) {
+  btnCancelarVaciarModal.addEventListener("click", () => {
+    modoVaciarGlobal = false;
+    const modalVaciar = document.getElementById("modal-confirmar-vaciar");
+    if (modalVaciar) {
+      modalVaciar.classList.add("oculto");
+      modalVaciar.style.display = "none";
     }
   });
 }
