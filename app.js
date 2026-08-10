@@ -1524,11 +1524,19 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // ✏️ OPCIÓN 2: EDITAR (Solo mensajes propios)
+    // ✏️ OPCIÓN 2: EDITAR (Solo mensajes propios dentro de los primeros 15 minutos)
     else if (accion === "editar") {
+      const timestampMsg = parseInt(nodoMensaje ? nodoMensaje.getAttribute("data-timestamp") : "0", 10);
+      const tiempoTranscurrido = Date.now() - timestampMsg;
+      const limite15MinutosMs = 15 * 60 * 1000; // 15 minutos en milisegundos (900,000 ms)
+
       if (!esMio) {
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium("Solo puedes editar tus propios mensajes.", "⚠️", "#ff4b2b");
+        }
+      } else if (timestampMsg > 0 && tiempoTranscurrido > limite15MinutosMs) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Ha pasado el límite de 15 minutos para editar este mensaje.", "⏳", "#ff4b2b");
         }
       } else if (textoMensaje && typeof inputChat !== "undefined") {
         inputChat.value = textoMensaje;
@@ -2003,19 +2011,45 @@ function asignarEventosMenuCabecera() {
       }
 
       else if (accion === "sincronizar") {
+        const usuarioActual = auth.currentUser;
+        if (!usuarioActual) return;
+
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Sincronizando chats con la nube...", "🔄", "#00f2fe");
+          mostrarAvisoPremium("Sincronizando chats y reconectando nube...", "🔄", "#00f2fe");
         }
 
-        if (typeof escucharListaChats === "function") {
-          escucharListaChats();
-        }
+        try {
+          // 1. Forzar reconexión física de Firebase Realtime Database
+          const { goOffline, goOnline } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
+          goOffline(db);
+          goOnline(db);
 
-        setTimeout(() => {
-          if (typeof mostrarAvisoPremium === "function") {
-            mostrarAvisoPremium("Aplicación actualizada y conectada ✨", "✅", "#00f2fe");
+          // 2. Volver a cargar la lista de contactos y reenganchar escuchadores
+          if (typeof cargarContactosAprobados === "function") {
+            cargarContactosAprobados(usuarioActual.uid);
           }
-        }, 1000);
+
+          // 3. Recalcular la campanita y los contadores no leídos
+          if (typeof actualizarBadgesNotificaciones === "function") {
+            actualizarBadgesNotificaciones();
+          }
+
+          // 4. Refrescar presencia del usuario
+          if (typeof iniciarControlPresenciaReal === "function") {
+            iniciarControlPresenciaReal();
+          }
+
+          setTimeout(() => {
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("Conexión restablecida y chats sincronizados ✨", "✅", "#00f2fe");
+            }
+          }, 600);
+        } catch (err) {
+          console.error("Error durante la sincronización:", err);
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Error al intentar reconectar.", "❌", "#ff4b2b");
+          }
+        }
       }
 
       // --- OPCIONES PANTALLA MI PERFIL ---
@@ -5882,6 +5916,7 @@ function escucharMensajesChat(chatId) {
           const burbujaHTML = document.createElement("div");
           burbujaHTML.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'} ${msg.esEfimero ? 'mensaje-efimero' : ''}`;
           burbujaHTML.setAttribute("data-msg-id", msgId);
+          burbujaHTML.setAttribute("data-timestamp", msg.timestamp || Date.now());
           if (estiloEspecialBurbuja) burbujaHTML.style.cssText = estiloEspecialBurbuja;
           burbujaHTML.innerHTML = contenidoBurbuja;
 
