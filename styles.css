@@ -1920,16 +1920,6 @@ body {
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
-/* --- TEMAS DE COLOR PARA "TU AURA" --- */
-.esfera-cyan.aura-cyan-morado { background: rgba(0, 242, 254, 0.15); }
-.esfera-morada.aura-cyan-morado { background: rgba(127, 0, 255, 0.15); }
-.esfera-cyan.aura-fuego { background: rgba(255, 65, 108, 0.15); }
-.esfera-morada.aura-fuego { background: rgba(255, 75, 43, 0.15); }
-.esfera-cyan.aura-oceano { background: rgba(0, 198, 255, 0.15); }
-.esfera-morada.aura-oceano { background: rgba(0, 114, 255, 0.15); }
-.esfera-cyan.aura-matrix { background: rgba(17, 153, 142, 0.15); }
-.esfera-morada.aura-matrix { background: rgba(56, 239, 125, 0.15); }
-
 /* --- OTROS COMPONENTES Y UTILIDADES --- */
 .toast-oculto {
   pointer-events: none;
@@ -2493,86 +2483,6 @@ body {
   z-index: 2147483647 !important;
 }
 
-/* --- SELECTOR DE AURA EN PASTILLA SLIDER --- */
-.selector-aura-pastilla {
-  position: relative;
-  display: flex;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 4px;
-  gap: 4px;
-  overflow: hidden;
-  justify-content: space-around;
-}
-
-.glizzy-deslizante {
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 4px;
-  width: 25%;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(0, 242, 254, 0.4);
-  border-radius: 12px;
-  box-shadow: 0 0 15px rgba(0, 242, 254, 0.25), inset 0 0 8px rgba(255, 255, 255, 0.1);
-  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-  pointer-events: none;
-}
-
-.opcion-aura {
-  flex: 1;
-  background: transparent;
-  border: none;
-  padding: 8px 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 2;
-}
-
-.aura-contenido-interno {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 11px;
-  font-weight: 500;
-  transition: color 0.3s ease;
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-.opcion-aura.activa .aura-contenido-interno {
-  color: #ffffff;
-  font-weight: 600;
-  text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-}
-
-.opcion-aura span {
-  pointer-events: none;
-}
-
-.opcion-aura.activa {
-  color: #ffffff;
-  font-weight: 600;
-  text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-}
-
-.orbe-aura {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.orbe-aura.cyan-morado { background: #00f2fe; box-shadow: 0 0 8px #00f2fe; }
-.orbe-aura.fuego       { background: #ff4b2b; box-shadow: 0 0 8px #ff4b2b; }
-.orbe-aura.oceano      { background: #0072ff; box-shadow: 0 0 8px #0072ff; }
-.orbe-aura.matrix      { background: #38ef7d; box-shadow: 0 0 8px #38ef7d; }
-
 /* --- TOAST DE NOTIFICACIÓN FLOTANTE --- */
 .toast-movachat {
   position: fixed;
@@ -2937,27 +2847,6 @@ body {
 .btn-mova-peligro:hover {
   transform: translateY(-2px);
   box-shadow: 0 0 18px rgba(255, 75, 43, 0.6);
-}
-
-/* Borde y sombra dinámicos según el botón activo */
-.opcion-aura[data-aura*="cyan-morado"].activa {
-  border-color: #00f2fe;
-  box-shadow: 0 0 12px rgba(0, 242, 254, 0.4);
-}
-
-.opcion-aura[data-aura*="fuego"].activa {
-  border-color: #ff4b2b;
-  box-shadow: 0 0 12px rgba(255, 75, 43, 0.4);
-}
-
-.opcion-aura[data-aura*="oceano"].activa {
-  border-color: #2b6cb0;
-  box-shadow: 0 0 12px rgba(43, 108, 176, 0.4);
-}
-
-.opcion-aura[data-aura*="matrix"].activa {
-  border-color: #00ff87;
-  box-shadow: 0 0 12px rgba(0, 255, 135, 0.4);
 }
 
 /* ↪️ ETIQUETA DE MENSAJE REENVIADO */
@@ -3686,3 +3575,114 @@ body.tema-claro .nombre-sugerencia-txt {
   stroke: #00ff88 !important;
   filter: drop-shadow(0 0 6px #00ff88) !important;
 }
+
+/* ========================================================
+   🔮 SISTEMA DE AURAS MOVACHAT (ESTILOS UNIFICADOS)
+   ======================================================== */
+
+/* --- 1. ESFERAS DE FONDO DE CORRECCIÓN DE AURA --- */
+.esfera-cyan.aura-cyan-morado { background: rgba(0, 242, 254, 0.15); }
+.esfera-morada.aura-cyan-morado { background: rgba(127, 0, 255, 0.15); }
+.esfera-cyan.aura-fuego { background: rgba(255, 65, 108, 0.15); }
+.esfera-morada.aura-fuego { background: rgba(255, 75, 43, 0.15); }
+.esfera-cyan.aura-oceano { background: rgba(0, 198, 255, 0.15); }
+.esfera-morada.aura-oceano { background: rgba(0, 114, 255, 0.15); }
+.esfera-cyan.aura-matrix { background: rgba(17, 153, 142, 0.15); }
+.esfera-morada.aura-matrix { background: rgba(56, 239, 125, 0.15); }
+
+/* --- 2. CONTENEDOR CONTENEDOR EN PASTILLA SLIDER --- */
+.selector-aura-pastilla {
+  position: relative;
+  display: flex;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 4px;
+  gap: 4px;
+  overflow: hidden;
+  justify-content: space-around;
+}
+
+/* --- 3. CÁPSULA DESLIZANTE (Único elemento con marco/borde dinámico) --- */
+.glizzy-deslizante,
+#indicador-aura {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 1;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Colores dinámicos aplicados a la cápsula según el tema seleccionado */
+[data-aura="cyan-morado"] .glizzy-deslizante,
+[data-aura="cyber"] .glizzy-deslizante {
+  border: 1px solid #00f2fe;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.1);
+}
+
+[data-aura="fuego"] .glizzy-deslizante {
+  border: 1px solid #ff4b2b;
+  box-shadow: 0 0 15px rgba(255, 75, 43, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.1);
+}
+
+[data-aura="oceano"] .glizzy-deslizante {
+  border: 1px solid #0072ff;
+  box-shadow: 0 0 15px rgba(0, 114, 255, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.1);
+}
+
+[data-aura="matrix"] .glizzy-deslizante {
+  border: 1px solid #38ef7d;
+  box-shadow: 0 0 15px rgba(56, 239, 125, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.1);
+}
+
+/* --- 4. BOTONES (Sin bordes propios para eliminar el doble marco) --- */
+.opcion-aura {
+  flex: 1;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 8px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  position: relative;
+}
+
+.aura-contenido-interno {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 500;
+  transition: color 0.3s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.opcion-aura.activa .aura-contenido-interno {
+  color: #ffffff;
+  font-weight: 600;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+/* --- 5. ORBES Y PUNTOS DE COLOR --- */
+.orbe-aura {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.orbe-aura.cyan-morado { background: #00f2fe; box-shadow: 0 0 8px #00f2fe; }
+.orbe-aura.fuego       { background: #ff4b2b; box-shadow: 0 0 8px #ff4b2b; }
+.orbe-aura.oceano      { background: #0072ff; box-shadow: 0 0 8px #0072ff; }
+.orbe-aura.matrix      { background: #38ef7d; box-shadow: 0 0 8px #38ef7d; }

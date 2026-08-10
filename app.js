@@ -1863,7 +1863,13 @@ if (btnPerfilMenu) {
 
     switchPantalla(pantallaPerfil, pantallaBienvenida, pantallaChats, pantallaChatPrivado);
 
+    // 🔮 REFLEJAR LA POSICIÓN DE LA CÁPSULA AURA AL ENTRAR AL PERFIL
     setTimeout(() => {
+      const auraGuardada = localStorage.getItem("movachat-aura-tema") || "cyber";
+      const valorAttrHTML = (auraGuardada === "cyber") ? "cyan-morado" : auraGuardada;
+      if (typeof window.cambiarAura === "function") {
+        window.cambiarAura(valorAttrHTML);
+      }
       if (window.lucide) {
         window.lucide.createIcons();
       }
@@ -2337,41 +2343,6 @@ if (btnCorazonEstado) {
   });
 }
 
-// Al hacer clic en la opción de Aura
-window.cambiarAura = function (nombreTema) {
-  const esfera1 = document.querySelector(".esfera-cyan");
-  const esfera2 = document.querySelector(".esfera-morada");
-
-  if (esfera1 && esfera2) {
-    esfera1.classList.remove("aura-cyan-morado", "aura-fuego", "aura-oceano", "aura-matrix");
-    esfera2.classList.remove("aura-cyan-morado", "aura-fuego", "aura-oceano", "aura-matrix");
-
-    esfera1.classList.add(`aura-${nombreTema}`);
-    esfera2.classList.add(`aura-${nombreTema}`);
-
-    // 💾 Guardar preferencia en memoria local
-    localStorage.setItem("movachat-aura", nombreTema);
-
-    // 🎨 Sincronizar el botón activo y la cápsula deslizante en la UI
-    const botones = Array.from(document.querySelectorAll(".opcion-aura"));
-    const indicador = document.getElementById("indicador-aura");
-
-    botones.forEach((btn, index) => {
-      const onclickAttr = btn.getAttribute("onclick") || "";
-      if (onclickAttr.includes(nombreTema)) {
-        botones.forEach(b => b.classList.remove("activa"));
-        btn.classList.add("activa");
-
-        if (indicador) {
-          indicador.style.transform = `translateX(${index * 100}%)`;
-        }
-      }
-    });
-
-    mostrarAvisoPremium(`Aura cambiada al tema [ ${nombreTema.toUpperCase()} ] 🔮`, "🌌", "#00f2fe");
-  }
-};
-
 // 🔄 Restaurar Aura al cargar la aplicación
 document.addEventListener("DOMContentLoaded", () => {
   const auraGuardada = localStorage.getItem("movachat-aura");
@@ -2415,6 +2386,122 @@ function mostrarAvisoPremium(mensaje, icono = "🔔", colorNeon = "#00f2fe") {
     }, 3500);
   }
 }
+
+// ========================================================
+// 🔮 SISTEMA DE AURAS MOVACHAT (CONECTADO A TU CSS)
+// ========================================================
+
+window.cambiarAura = function (nombreTema) {
+  if (!nombreTema) return;
+
+  // Normalizar nombre de tema
+  const temaFinal = (nombreTema === "cyber") ? "cyan-morado" : nombreTema;
+
+  // 1. Asignar atributo global para que cambie el color de la cápsula
+  document.documentElement.setAttribute("data-aura", temaFinal);
+  document.body.setAttribute("data-aura", temaFinal);
+
+  // 2. Cambiar clases de las esferas decorativas (CODIGO 1)
+  const esfera1 = document.querySelector(".esfera-cyan");
+  const esfera2 = document.querySelector(".esfera-morada");
+
+  if (esfera1 && esfera2) {
+    esfera1.classList.remove("aura-cyan-morado", "aura-fuego", "aura-oceano", "aura-matrix");
+    esfera2.classList.remove("aura-cyan-morado", "aura-fuego", "aura-oceano", "aura-matrix");
+
+    esfera1.classList.add(`aura-${temaFinal}`);
+    esfera2.classList.add(`aura-${temaFinal}`);
+  }
+
+  // 3. Guardar preferencia local
+  localStorage.setItem("movachat-aura-tema", temaFinal);
+
+  // 4. Mover la cápsula deslizante (glizzy-deslizante)
+  const botones = Array.from(document.querySelectorAll(".opcion-aura"));
+  const indicador = document.getElementById("indicador-aura") || document.querySelector(".glizzy-deslizante");
+
+  let botonActivo = null;
+
+  botones.forEach((btn) => {
+    const attrAura = btn.getAttribute("data-aura") || "";
+    const esSeleccionado = (attrAura === nombreTema) || 
+                           (attrAura === temaFinal) || 
+                           (temaFinal === "cyan-morado" && (attrAura === "cyber" || attrAura === "cyan-morado"));
+
+    if (esSeleccionado) {
+      btn.classList.add("activa");
+      botonActivo = btn;
+    } else {
+      btn.classList.remove("activa");
+    }
+  });
+
+  if (indicador && botonActivo && botonActivo.offsetWidth > 0) {
+    indicador.style.width = `${botonActivo.offsetWidth}px`;
+    indicador.style.transform = `translateX(${botonActivo.offsetLeft}px)`;
+  }
+
+  // 5. Sincronizar en Firebase si existe usuario activo
+  if (typeof auth !== "undefined" && auth.currentUser) {
+    update(ref(db, `usuarios/${auth.currentUser.uid}`), { aura: temaFinal }).catch(() => {});
+  }
+};
+
+// Autocargar al abrir la aplicación
+document.addEventListener("DOMContentLoaded", () => {
+  const auraGuardada = localStorage.getItem("movachat-aura-tema") || "cyan-morado";
+  window.cambiarAura(auraGuardada);
+});
+
+// Carga automática del tema al iniciar la app
+document.addEventListener("DOMContentLoaded", () => {
+  const auraGuardada = localStorage.getItem("movachat-aura-tema") || "cyber";
+  window.cambiarAura(auraGuardada);
+});
+
+// Escuchador global de clics para detectar cualquier pulsación en el selector de Aura
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".opcion-aura");
+  if (!btn) return;
+
+  const auraAttr = btn.getAttribute("data-aura");
+  if (auraAttr) {
+    window.cambiarAura(auraAttr);
+  } else {
+    // Si no tiene atributo data-aura, leer por texto del botón
+    const texto = btn.innerText.toLowerCase();
+    if (texto.includes("fuego")) window.cambiarAura("fuego");
+    else if (texto.includes("océano") || texto.includes("oceano")) window.cambiarAura("oceano");
+    else if (texto.includes("matrix")) window.cambiarAura("matrix");
+    else window.cambiarAura("cyber");
+  }
+});
+
+// Auto-activar al cargar la página
+document.addEventListener("DOMContentLoaded", () => {
+  const auraGuardada = localStorage.getItem("movachat-aura-tema") || "cyber";
+  window.cambiarAura(auraGuardada);
+});
+
+// 2. Escuchador de clics delegado para tus botones HTML
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".opcion-aura");
+  if (!btn) return;
+
+  const auraAttr = btn.getAttribute("data-aura");
+  if (auraAttr) {
+    window.cambiarAura(auraAttr);
+  }
+});
+
+// 3. Auto-cargar el aura al refrescar la página
+(function inicializarAuraAuto() {
+  window.addEventListener("DOMContentLoaded", () => {
+    const auraGuardada = localStorage.getItem("movachat-aura-tema") || "cyber";
+    const valorAttrHTML = (auraGuardada === "cyber") ? "cyan-morado" : auraGuardada;
+    window.cambiarAura(valorAttrHTML);
+  });
+})();
 
 // ========================================================
 // 9. QR, COMPARTIR Y MODALES DE CONFIGURACIÓN
@@ -3136,58 +3223,6 @@ if (inputSubirEstadoReal) {
         if (btnGuardarEstado) btnGuardarEstado.addEventListener("click", interceptarGuardado);
       };
       lector.readAsDataURL(e.target.files[0]);
-    }
-  });
-}
-
-const imagenPerfilElena = document.querySelector(".avatar-perfil-img");
-const iconoCamaraElena = document.querySelector(".overlay-camara");
-const inputCambiarFotoPerfil = document.getElementById("input-foto-perfil");
-
-if (imagenPerfilElena) {
-  imagenPerfilElena.style.cursor = "pointer";
-  imagenPerfilElena.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const urlFotoPropia = imagenPerfilElena.src;
-
-    if (visorEstados && imgEstadoRender && textoEstadoRender) {
-      imgEstadoRender.src = urlFotoPropia;
-      textoEstadoRender.textContent = "Tu foto de perfil (Elena Rostova)";
-
-      likesSimulados = 0;
-      if (contadorLikesEstado) contadorLikesEstado.textContent = likesSimulados;
-      if (btnCorazonEstado) btnCorazonEstado.classList.remove("activo");
-
-      if (lineaProgreso && lineaProgreso.parentNode) {
-        lineaProgreso.parentNode.style.visibility = "hidden";
-      }
-
-      visorEstados.classList.remove("oculto");
-      mostrarAvisoPremium("Visualizando tu foto de perfil en pantalla completa 🌌", "📸", "#00f2fe");
-    }
-  });
-}
-
-if (iconoCamaraElena && inputCambiarFotoPerfil) {
-  iconoCamaraElena.style.cursor = "pointer";
-  iconoCamaraElena.addEventListener("click", (e) => {
-    e.stopPropagation();
-    inputCambiarFotoPerfil.click();
-  });
-
-  inputCambiarFotoPerfil.addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const lectorPerfil = new FileReader();
-
-      lectorPerfil.onload = function (eventoCarga) {
-        const nuevaImagenUrl = eventoCarga.target.result;
-        if (imagenPerfilElena) imagenPerfilElena.src = nuevaImagenUrl;
-        mostrarAvisoPremium("Identidad de perfil actualizada y vinculada. 🛡️", "📸", "#00f2fe");
-      };
-
-      lectorPerfil.readAsDataURL(e.target.files[0]);
     }
   });
 }
@@ -4977,25 +5012,6 @@ if (modalNombre) {
     if (e.target === modalNombre) modalNombre.classList.add("oculto");
   };
 }
-
-// ==========================================================
-// 🎨 ANIMAR EL DESLIZADOR DE AURA AL CLIC
-// ==========================================================
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".opcion-aura");
-  if (!btn) return;
-
-  const botones = Array.from(document.querySelectorAll(".opcion-aura"));
-  const indicador = document.getElementById("indicador-aura");
-  const index = botones.indexOf(btn);
-
-  if (indicador && index !== -1) {
-    indicador.style.transform = `translateX(${index * 100}%)`;
-  }
-
-  botones.forEach(b => b.classList.remove("activa"));
-  btn.classList.add("activa");
-});
 
 // ==========================================================
 // 🗑️ BOTÓN LIMPIAR: BORRAR CHATS CON ALERTA VISUAL (TOAST)
