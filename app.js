@@ -224,22 +224,42 @@ onAuthStateChanged(auth, async (user) => {
             cargarContactosAprobados(user.uid);
           }
 
-          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP (CON ICONO VISUAL)
+          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP (CON EXPIRACIÓN Y ÍCONO VISUAL)
           const refSilenciados = ref(db, `silenciados/${user.uid}`);
           onValue(refSilenciados, (snapshot) => {
             if (snapshot.exists()) {
               const silenciadosBD = snapshot.val();
               const objetivosIconos = [];
+              const ahora = Date.now();
 
               Object.keys(silenciadosBD).forEach((contactoUid) => {
-                if (silenciadosBD[contactoUid]) {
-                  localStorage.setItem(`silenciado_${contactoUid}`, "true");
+                const valorHasta = silenciadosBD[contactoUid];
+                let estaVigente = false;
 
-                  const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
+                if (valorHasta === "indefinido") {
+                  estaVigente = true;
+                } else {
+                  const hastaMs = parseInt(valorHasta, 10);
+                  if (!isNaN(hastaMs) && ahora < hastaMs) {
+                    estaVigente = true;
+                  } else {
+                    // ⌛ Expiró el tiempo: Limpiamos Firebase asignando null
+                    set(ref(db, `silenciados/${user.uid}/${contactoUid}`), null);
+                    localStorage.removeItem(`silenciado_${contactoUid}`);
+                    localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
+                  }
+                }
+
+                const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
+
+                if (estaVigente) {
+                  localStorage.setItem(`silenciado_${contactoUid}`, "true");
+                  localStorage.setItem(`silenciado_hasta_${contactoUid}`, valorHasta);
+
                   if (tarjeta) {
                     tarjeta.classList.add("chat-silenciado-zona");
 
-                    // Inyectar el icono visual si no está presente en la tarjeta
+                    // Inyectar el ícono visual si no está presente en la tarjeta
                     const contenedorHora = tarjeta.querySelector(".chat-cabecera");
                     if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
                       contenedorHora.insertAdjacentHTML("beforeend", `
@@ -249,6 +269,13 @@ onAuthStateChanged(auth, async (user) => {
             `);
                       objetivosIconos.push(tarjeta);
                     }
+                  }
+                } else {
+                  // Si ya expiró, quitamos el estilo e ícono de la tarjeta
+                  if (tarjeta) {
+                    tarjeta.classList.remove("chat-silenciado-zona");
+                    const iconoNeon = tarjeta.querySelector(".indicador-silencio-neon");
+                    if (iconoNeon) iconoNeon.remove();
                   }
                 }
               });
@@ -2565,8 +2592,8 @@ if (typeof mostrarAvisoPremium === "undefined") {
 
 async function ejecutarCompartirMova() {
   // Enlace oficial o la URL actual de la PWA
-  const urlCompartir = window.location.origin && window.location.origin !== "null" 
-    ? window.location.origin 
+  const urlCompartir = window.location.origin && window.location.origin !== "null"
+    ? window.location.origin
     : window.location.href;
 
   const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
@@ -2590,7 +2617,7 @@ async function ejecutarCompartirMova() {
         console.log("Error al compartir nativo:", err);
       }
     }
-  } 
+  }
   // 2. En PC copia directamente el enlace
   else {
     try {
@@ -2618,9 +2645,9 @@ async function ejecutarCompartirMova() {
 
 // Escuchador delegado global (captura cualquier botón con clase .btn-compartir o texto 'Compartir MovaChat')
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".btn-compartir") || 
-              e.target.closest("#btn-compartir-mova") || 
-              (e.target.textContent && e.target.textContent.includes("Compartir MovaChat") ? e.target.closest("button, div") : null);
+  const btn = e.target.closest(".btn-compartir") ||
+    e.target.closest("#btn-compartir-mova") ||
+    (e.target.textContent && e.target.textContent.includes("Compartir MovaChat") ? e.target.closest("button, div") : null);
 
   if (btn) {
     e.preventDefault();
@@ -2638,13 +2665,13 @@ function abrirModalQRPro() {
   const imgQrDinamico = document.getElementById("img-qr-dinamico");
 
   const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
-  const urlBase = window.location.origin && window.location.origin !== "null" 
-    ? window.location.origin 
+  const urlBase = window.location.origin && window.location.origin !== "null"
+    ? window.location.origin
     : window.location.href;
 
   // Enlace dinámico con el UID del usuario activo para invitar directo a su perfil
-  const urlACompartir = usuarioActual 
-    ? `${urlBase}?user=${usuarioActual.uid}` 
+  const urlACompartir = usuarioActual
+    ? `${urlBase}?user=${usuarioActual.uid}`
     : urlBase;
 
   if (imgQrDinamico) {
@@ -2664,9 +2691,9 @@ function abrirModalQRPro() {
 
 // Escuchador delegado global (detecta si presionan por clase, por ID o por texto 'QR Pro')
 document.addEventListener("click", (e) => {
-  const btnQr = e.target.closest(".btn-qr") || 
-                e.target.closest("#btn-qr-mova") || 
-                (e.target.textContent && e.target.textContent.includes("QR Pro") ? e.target.closest("button, div") : null);
+  const btnQr = e.target.closest(".btn-qr") ||
+    e.target.closest("#btn-qr-mova") ||
+    (e.target.textContent && e.target.textContent.includes("QR Pro") ? e.target.closest("button, div") : null);
 
   if (btnQr) {
     e.preventDefault();
@@ -3277,7 +3304,7 @@ if (typeof solicitarPermisoNotificaciones === "function") {
 // ========================================================
 const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
 const avatarMiEstadoClick = document.getElementById("avatar-mi-estado-click");
-const textoSubtituloMiEstado = document.getElementById("texto-subtulo-mi-estado");
+const textoSubtituloMiEstado = document.getElementById("texto-subtitulo-mi-estado");
 const tiempoMiEstado = document.getElementById("tiempo-mi-estado");
 const inputSubirEstadoReal = document.getElementById("input-subir-estado");
 
@@ -3499,8 +3526,62 @@ if (btnCancelarBusquedaInterna) {
 }
 
 // ========================================================
-// 🔕 GESTOR DE SILENCIADO CON TIEMPOS (MODAL CUMPLIDO)
+// 🔕 GESTOR DE SILENCIADO CON AUTO-EXPIRACIÓN EN TIEMPO REAL
 // ========================================================
+
+// Almacén global para los temporizadores de auto-desactivación
+window.temporizadoresSilencio = window.temporizadoresSilencio || {};
+
+// Función auxiliar para programar la eliminación del silencio exactamente cuando venza
+function programarAutoDesactivacionSilencio(contactoUid, hastaMs) {
+  // Cancelar temporizador previo si existía para este contacto
+  if (window.temporizadoresSilencio[contactoUid]) {
+    clearTimeout(window.temporizadoresSilencio[contactoUid]);
+  }
+
+  const tiempoRestante = hastaMs - Date.now();
+
+  if (tiempoRestante <= 0) {
+    // Si ya pasó el tiempo, limpiar de inmediato
+    limpiarSilencioExpirado(contactoUid);
+    return;
+  }
+
+  // Programar la limpieza visual y en BD al cumplirse exactamente el tiempo
+  window.temporizadoresSilencio[contactoUid] = setTimeout(() => {
+    limpiarSilencioExpirado(contactoUid);
+  }, tiempoRestante);
+}
+
+// Función encargada de quitar el ícono, limpiar LocalStorage y Firebase
+async function limpiarSilencioExpirado(contactoUid) {
+  const miUid = auth && auth.currentUser ? auth.currentUser.uid : null;
+
+  // 1. Limpiar memoria local
+  localStorage.removeItem(`silenciado_${contactoUid}`);
+  localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
+
+  // 2. Limpiar nodo en Firebase Realtime Database
+  if (miUid) {
+    try {
+      await set(ref(db, `silenciados/${miUid}/${contactoUid}`), null);
+    } catch (err) {
+      console.error("Error al limpiar silencio en Firebase:", err);
+    }
+  }
+
+  // 3. Quitar el ícono neón y la clase visual de la lista de chats
+  const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
+  if (tarjeta) {
+    tarjeta.classList.remove("chat-silenciado-zona");
+    const iconoNeon = tarjeta.querySelector(".indicador-silencio-neon");
+    if (iconoNeon) iconoNeon.remove();
+  }
+
+  delete window.temporizadoresSilencio[contactoUid];
+}
+
+// --- REFERENCIAS DE ELEMENTOS Y EVENTOS DEL MODAL ---
 const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
 const modalSilenciarTiempo = document.getElementById("modal-silenciar-tiempo");
 const btnCerrarModalSilenciar = document.getElementById("btn-cerrar-modal-silenciar");
@@ -3514,12 +3595,12 @@ if (btnCtxSilenciar) {
     const contactoUid = window.contactoActivoUid;
     if (!contactoUid) return;
 
-    if (menuCabecera) menuCabecera.classList.add("oculto");
+    if (typeof menuCabecera !== "undefined" && menuCabecera) menuCabecera.classList.add("oculto");
 
     const elemNombre = document.querySelector(".amigo-nombre-chat");
     const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
 
-    // Verificar si está silenciado actualmente
+    // Verificar si está silenciado
     const tiempoGuardado = localStorage.getItem(`silenciado_hasta_${contactoUid}`);
     let estaSilenciado = false;
 
@@ -3527,11 +3608,15 @@ if (btnCtxSilenciar) {
       if (tiempoGuardado === "indefinido") {
         estaSilenciado = true;
       } else {
-        estaSilenciado = Date.now() < parseInt(tiempoGuardado, 10);
+        const hastaMs = parseInt(tiempoGuardado, 10);
+        if (Date.now() < hastaMs) {
+          estaSilenciado = true;
+        } else {
+          limpiarSilencioExpirado(contactoUid);
+        }
       }
     }
 
-    // Actualizar elementos dentro del modal
     if (txtEstadoSilencioActual) {
       txtEstadoSilencioActual.innerHTML = estaSilenciado
         ? `Notificaciones actualmente <b>silenciadas</b> para ${nombreAmigo}.`
@@ -3558,7 +3643,30 @@ if (btnCerrarModalSilenciar && modalSilenciarTiempo) {
   btnCerrarModalSilenciar.onclick = () => modalSilenciarTiempo.classList.add("oculto");
 }
 
-// Evento al elegir una opción de tiempo (1m, 1h, 8h, 1d, indefinido)
+// EVENTO PARA EL BOTÓN "ACTIVAR NOTIFICACIONES" (ANULAR MANUALMENTE)
+if (btnActivarNotifModal) {
+  btnActivarNotifModal.addEventListener("click", async () => {
+    const contactoUid = window.contactoActivoUid;
+    const elemNombre = document.querySelector(".amigo-nombre-chat");
+    const nombreAmigo = elemNombre ? elemNombre.textContent.trim() : "este usuario";
+
+    if (!contactoUid) return;
+
+    if (window.temporizadoresSilencio[contactoUid]) {
+      clearTimeout(window.temporizadoresSilencio[contactoUid]);
+      delete window.temporizadoresSilencio[contactoUid];
+    }
+
+    await limpiarSilencioExpirado(contactoUid);
+
+    if (modalSilenciarTiempo) modalSilenciarTiempo.classList.add("oculto");
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(`Notificaciones activadas para <b>${nombreAmigo}</b>.`, "🔔", "#00f2fe");
+    }
+  });
+}
+
+// EVENTO AL SELECCIONAR UNA OPCIÓN DE TIEMPO
 document.querySelectorAll(".btn-opcion-tiempo").forEach((btnTiempo) => {
   btnTiempo.addEventListener("click", async () => {
     const claveTiempo = btnTiempo.getAttribute("data-tiempo");
@@ -3596,10 +3704,15 @@ document.querySelectorAll(".btn-opcion-tiempo").forEach((btnTiempo) => {
     localStorage.setItem(`silenciado_hasta_${contactoUid}`, valorGuardar);
 
     if (miUid) {
-      set(ref(db, `silenciados/${miUid}/${contactoUid}`), valorGuardar);
+      await set(ref(db, `silenciados/${miUid}/${contactoUid}`), valorGuardar);
     }
 
-    // Actualizar tarjeta visualmente en la lista de chats
+    // Programar la desactivación automática si no es indefinido
+    if (duracionMs !== "indefinido") {
+      programarAutoDesactivacionSilencio(contactoUid, Date.now() + duracionMs);
+    }
+
+    // Actualizar interfaz visual
     const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
     if (tarjeta) {
       tarjeta.classList.add("chat-silenciado-zona");
@@ -3616,9 +3729,71 @@ document.querySelectorAll(".btn-opcion-tiempo").forEach((btnTiempo) => {
 
     if (modalSilenciarTiempo) modalSilenciarTiempo.classList.add("oculto");
 
-    mostrarAvisoPremium(`Has silenciado a <b>${nombreAmigo}</b> por ${textoTiempoNotif}.`, "🔕", "#ff4b2b");
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(`Has silenciado a <b>${nombreAmigo}</b> por ${textoTiempoNotif}.`, "🔕", "#ff4b2b");
+    }
   });
 });
+
+// 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP
+if (typeof auth !== "undefined" && auth) {
+  onAuthStateChanged(auth, (user) => {
+    if (!user) return;
+
+    const refSilenciados = ref(db, `silenciados/${user.uid}`);
+    onValue(refSilenciados, (snapshot) => {
+      if (snapshot.exists()) {
+        const silenciadosBD = snapshot.val();
+        const objetivosIconos = [];
+        const ahora = Date.now();
+
+        Object.keys(silenciadosBD).forEach((contactoUid) => {
+          const valorHasta = silenciadosBD[contactoUid];
+          let estaVigente = false;
+
+          if (valorHasta === "indefinido") {
+            estaVigente = true;
+          } else {
+            const hastaMs = parseInt(valorHasta, 10);
+            if (!isNaN(hastaMs) && ahora < hastaMs) {
+              estaVigente = true;
+              // Programar el temporizador para los minutos restantes
+              programarAutoDesactivacionSilencio(contactoUid, hastaMs);
+            } else {
+              // Expiró mientras la app estaba cerrada
+              limpiarSilencioExpirado(contactoUid);
+            }
+          }
+
+          const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
+
+          if (estaVigente) {
+            localStorage.setItem(`silenciado_${contactoUid}`, "true");
+            localStorage.setItem(`silenciado_hasta_${contactoUid}`, valorHasta);
+
+            if (tarjeta) {
+              tarjeta.classList.add("chat-silenciado-zona");
+
+              const contenedorHora = tarjeta.querySelector(".chat-cabecera");
+              if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
+                contenedorHora.insertAdjacentHTML("beforeend", `
+                  <span class="indicador-silencio-neon" title="Chat silenciado">
+                    <i data-lucide="bell-off"></i>
+                  </span>
+                `);
+                objetivosIconos.push(tarjeta);
+              }
+            }
+          }
+        });
+
+        if (window.lucide && objetivosIconos.length > 0) {
+          window.lucide.createIcons({ targets: objetivosIconos });
+        }
+      }
+    });
+  });
+}
 
 // Evento del botón "Activar notificaciones" dentro del Modal
 if (btnActivarNotifModal) {
@@ -6086,7 +6261,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada y corregida)
+// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada)
 window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
@@ -6116,35 +6291,6 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
     }
   }
 };
-
-// 🔔 Función global para lanzar notificación de nuevo mensaje
-function notificarNuevoMensaje(nombreRemitente, textoMensaje, avatarUrl) {
-  const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
-  if (estaSilenciado) return;
-
-  // Si la app está en segundo plano o minimizada
-  if (document.hidden && Notification.permission === "granted") {
-    const opciones = {
-      body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo.png",
-      badge: "assets/logo.png",
-      vibrate: [100, 50, 100],
-      tag: "movachat-mensaje",
-      renotify: true
-    };
-
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.showNotification(`Mensaje de ${nombreRemitente}`, opciones);
-      });
-    } else {
-      new Notification(`Mensaje de ${nombreRemitente}`, opciones);
-    }
-  } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
-    actualizarBadgesNotificaciones();
-  }
-}
 
 // --- REGISTRO OFICIAL DEL SERVICE WORKER (Permite instalar la PWA) ---
 if ('serviceWorker' in navigator) {
