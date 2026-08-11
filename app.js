@@ -2240,12 +2240,22 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
-// 💡 FUNCIÓN ORIGINAL LIMPIA: Actualiza solo los leds de la cabecera
+// 💡 3. CONTROLADOR DE LEDS DE CABECERA (RESPETA MODO SIGILO)
 function actualizarDobleLedCabecera(pantallaActual) {
   const ledSuperior = document.getElementById("led-enfoque-app");
   const ledInferior = document.getElementById("led-presencia-base");
 
   if (!ledSuperior || !ledInferior) return;
+
+  // 🛡️ REGLA MASTER: Si el Modo Sigilo está activo en memoria, forzar gris de inmediato
+  if (localStorage.getItem("movachat-sigilo") === "activo") {
+    ledInferior.style.setProperty("background-color", "#888888", "important");
+    ledInferior.style.boxShadow = "none";
+
+    ledSuperior.style.setProperty("background-color", "#888888", "important");
+    ledSuperior.style.boxShadow = "none";
+    return;
+  }
 
   const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
   let colorEstadoActual = "#00f2fe";
@@ -2294,32 +2304,38 @@ function actualizarDobleLedCabecera(pantallaActual) {
   }
 }
 
-// 📡 1. GESTIÓN AUTOMÁTICA DEL LED SUPERIOR (PRESENCIA REAL / SISTEMA)
+// 📡 1. GESTIÓN AUTOMÁTICA DEL LED SUPERIOR (BLINDADA CON MODO SIGILO)
 function iniciarControlPresenciaReal() {
-  const usuarioActual = auth.currentUser;
+  const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
   if (!usuarioActual) return;
 
   const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
   const connectedRef = ref(db, ".info/connected");
 
-  // Al desconectarse de Firebase, apagar el LED superior automáticamente
-  onDisconnect(userRef).update({ presenciaReal: false });
+  // Al desconectarse de Firebase, apagar el LED automáticamente
+  if (typeof onDisconnect === "function") {
+    onDisconnect(userRef).update({ presenciaReal: false, estadoConexion: "offline" });
+  }
 
   // Escuchar si hay conexión activa a Internet
-  onValue(connectedRef, (snap) => {
-    if (snap.val() === true && !document.hidden) {
-      update(userRef, { presenciaReal: true });
-    } else {
-      update(userRef, { presenciaReal: false });
-    }
-  });
+  if (typeof onValue === "function") {
+    onValue(connectedRef, (snap) => {
+      const esSigilo = localStorage.getItem("movachat-sigilo") === "activo";
+      if (snap.val() === true && !document.hidden && !esSigilo) {
+        update(userRef, { presenciaReal: true, estadoConexion: "online" });
+      } else {
+        update(userRef, { presenciaReal: false, estadoConexion: "offline" });
+      }
+    });
+  }
 
   // Escuchar cuando el usuario minimiza o vuelve a abrir la app
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      update(userRef, { presenciaReal: false });
+    const esSigilo = localStorage.getItem("movachat-sigilo") === "activo";
+    if (document.hidden || esSigilo) {
+      update(userRef, { presenciaReal: false, estadoConexion: "offline" });
     } else if (auth.currentUser) {
-      update(userRef, { presenciaReal: true });
+      update(userRef, { presenciaReal: true, estadoConexion: "online" });
     }
   });
 }
@@ -3244,6 +3260,57 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     }
   });
 }
+
+// 🥷 4. CONTROLADOR CENTRALIZADO DEL SWITCH MODO SIGILO
+(function inicializarModoSigilo() {
+  const switchSigilo = document.getElementById("check-sigilo");
+  const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
+  const textoEstado = document.querySelector(".texto-estado");
+
+  if (!switchSigilo) return;
+
+  // Cargar estado inicial
+  const esActivo = localStorage.getItem("movachat-sigilo") === "activo";
+  switchSigilo.checked = esActivo;
+
+  if (esActivo) {
+    if (ledPerfil) {
+      ledPerfil.style.backgroundColor = "#888888";
+      ledPerfil.style.boxShadow = "0 0 10px #888888";
+    }
+    if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
+  }
+
+  // Escuchar cambios
+  switchSigilo.addEventListener("change", () => {
+    const estaEnSigilo = switchSigilo.checked;
+    localStorage.setItem("movachat-sigilo", estaEnSigilo ? "activo" : "inactivo");
+
+    if (ledPerfil) {
+      ledPerfil.style.backgroundColor = estaEnSigilo ? "#888888" : "#00f2fe";
+      ledPerfil.style.boxShadow = estaEnSigilo ? "0 0 10px #888888" : "0 0 10px #00f2fe";
+    }
+    if (textoEstado) {
+      textoEstado.textContent = estaEnSigilo ? "Invisible (Modo Sigilo)" : "Disponible";
+    }
+
+    if (typeof actualizarEstadoEnFirebase === "function") {
+      actualizarEstadoEnFirebase(estaEnSigilo ? "offline" : "online");
+    }
+
+    if (typeof actualizarDobleLedCabecera === "function") {
+      actualizarDobleLedCabecera("perfil");
+    }
+
+    if (typeof mostrarAvisoPremium === "function") {
+      if (estaEnSigilo) {
+        mostrarAvisoPremium("Modo Sigilo activado: Tu estado ahora es invisible 👤", "🥷", "#888888");
+      } else {
+        mostrarAvisoPremium("Modo Sigilo desactivado: Estás visible en línea 🟢", "✨", "#00f2fe");
+      }
+    }
+  });
+})();
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
 
@@ -6362,28 +6429,23 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// ========================================================
-// 🥷 CONEXIÓN DIRECTA Y UNIFICADA DEL MODO SIGILO A FIREBASE
-// ========================================================
+// 🥷 2. ACTUALIZACIÓN UNIFICADA DE ESTADO EN FIREBASE
 function actualizarEstadoEnFirebase(nuevoEstado) {
   const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
   if (!usuarioActual) return;
 
-  // 1. Verificar si el usuario tiene activado el Modo Sigilo
   const esSigiloActivo = localStorage.getItem("movachat-sigilo") === "activo";
-  const estadoFinal = esSigiloActivo ? "offline" : ((nuevoEstado === "offline") ? "offline" : "online");
+  const estaOffline = esSigiloActivo || nuevoEstado === "offline";
+  const estadoFinal = estaOffline ? "offline" : "online";
 
-  // 2. Actualizar TODOS los campos de presencia en un solo disparo en Firebase
   if (typeof db !== "undefined" && typeof ref !== "undefined" && typeof update !== "undefined") {
-    const usuarioRef = ref(db, `usuarios/${usuarioActual.uid}`);
-    
-    update(usuarioRef, {
+    const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
+    update(userRef, {
       estado: estadoFinal,
       estadoConexion: estadoFinal,
-      estadoPresencia: estadoFinal
-    })
-    .then(() => console.log("🥷 Presencia unificada en Firebase:", estadoFinal))
-    .catch((err) => console.log("⚠️ Error actualizando presencia:", err));
+      estadoPresencia: estadoFinal,
+      presenciaReal: !estaOffline
+    }).catch((err) => console.log("⚠️ Error en estado:", err));
   }
 }
 
