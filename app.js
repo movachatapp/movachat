@@ -3181,18 +3181,25 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           if (elemTexto) elemTexto.classList.add("texto-resaltado");
 
           // 🔊 REPRODUCIR SONIDO Y VIBRACIÓN EN PANTALLA PRINCIPAL O PERFIL
-          if (ultimoMsg) {
-            const emisorReal = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente;
-            const haceCuanto = Date.now() - (ultimoMsg.timestamp || Date.now());
+            if (ultimoMsg) {
+              const emisorReal = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente;
+              const haceCuanto = Date.now() - (ultimoMsg.timestamp || Date.now());
 
-            // Dispara si el mensaje viene de otra persona y llegó hace menos de 5 segundos
-            if (emisorReal !== miUid && haceCuanto < 5000) {
-              if (typeof window.reproducirSonidoRecibido === "function") {
-                window.reproducirSonidoRecibido(contactoUid);
+              // 🛡️ ESCUDO ANTI-DUPLICADOS PARA SEGUNDO PLANO
+              window.mensajesNotificados = window.mensajesNotificados || new Set();
+              const yaSono = window.mensajesNotificados.has(ultimoMsgKey);
+
+              // Dispara si el mensaje viene de otra persona, es reciente y NO ha sonado antes
+              if (emisorReal !== miUid && haceCuanto < 5000 && !yaSono) {
+                
+                window.mensajesNotificados.add(ultimoMsgKey); // 👈 Marcar como reproducido
+
+                if (typeof window.reproducirSonidoRecibido === "function") {
+                  window.reproducirSonidoRecibido(contactoUid);
+                }
               }
             }
-          }
-        } else {
+          } else {
           if (elemBadge) {
             elemBadge.textContent = "0";
             elemBadge.classList.add("oculto");
@@ -3766,35 +3773,6 @@ document.querySelectorAll(".btn-opcion-tiempo").forEach((btnTiempo) => {
     }
   });
 });
-
-// 📡 ESCUCHA GLOBAL DE MENSAJES PARA PANTALLA PRINCIPAL Y PERFIL
-function activarOyenteGlobalMensajes(miUid) {
-  if (!miUid) return;
-  const refMisChats = ref(db, 'chats');
-
-  onChildChanged(refMisChats, (snapshot) => {
-    const chatId = snapshot.key;
-    if (!chatId || !chatId.includes(miUid)) return;
-
-    const datosChat = snapshot.val();
-    if (!datosChat || !datosChat.mensajes) return;
-
-    const keys = Object.keys(datosChat.mensajes);
-    const ultimoMsg = datosChat.mensajes[keys[keys.length - 1]];
-
-    if (ultimoMsg) {
-      const emisorReal = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente;
-      const haceCuanto = Date.now() - (ultimoMsg.timestamp || 0);
-
-      // Si el mensaje es entrante y llegó hace menos de 5 segundos
-      if (emisorReal !== miUid && haceCuanto < 5000) {
-        if (typeof window.reproducirSonidoRecibido === "function") {
-          window.reproducirSonidoRecibido(emisorReal);
-        }
-      }
-    }
-  });
-}
 
 // Evento del botón "Activar notificaciones" dentro del Modal
 if (btnActivarNotifModal) {
@@ -6072,8 +6050,16 @@ function escucharMensajesChat(chatId) {
           // 🟢 CORRECCIÓN: DEFINICIÓN DE TIEMPO PARA MENSAJES EN VIVO
           const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
           const esMensajeNuevoEnVivo = haceCuantoEnviado < 5000;
+          const esElUltimoMensaje = (msgId === keysMensajes[keysMensajes.length - 1]); 
 
-          if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto) {
+          // 🛡️ ESCUDO ANTI-DUPLICADOS: Evita que un mensaje suene varias veces si editan o recargan
+          window.mensajesNotificados = window.mensajesNotificados || new Set();
+          const yaSono = window.mensajesNotificados.has(msgId);
+
+          if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto && esElUltimoMensaje && !yaSono) {
+            
+            window.mensajesNotificados.add(msgId); // 👈 Marcar como reproducido
+
             const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
             const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
             const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
