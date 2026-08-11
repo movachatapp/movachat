@@ -13,7 +13,8 @@
   <link rel="dns-prefetch" href="https://unpkg.com">
 
   <!-- Ícono Principal (Favicon para PC y Navegadores) -->
-  <link rel="icon" type="image/png" href="assets/logo/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/logo/icon-192.png">
+  <link rel="shortcut icon" href="assets/logo/icon-192.png">
 
   <!-- Configuración General y PWA -->
   <link rel="manifest" href="manifest.json">
@@ -258,6 +259,7 @@
             <button type="button" id="btn-limpiar-historial-global" style="flex: 1; background: rgba(255, 75, 43, 0.05); border: 1px solid rgba(255, 75, 43, 0.15); border-radius: 20px; color: rgba(255, 75, 43, 0.9); padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">
               <i data-lucide="trash-2" style="color: #ff4b2b; width: 18px; height: 18px;"></i> Limpiar
             </button>
+
           </div>
         </div>
 
@@ -802,6 +804,23 @@
       });
     }
   </script>
+
+  <!-- 🗑️ MODAL GLASSMORPHISM: CONFIRMAR LIMPIAR HISTORIAL GLOBAL -->
+<div id="modal-confirmar-limpiar-global" class="modal-overlay oculto">
+  <div class="modal-caja-alerta">
+    <div class="modal-alerta-icono red-neon">
+      <i data-lucide="trash-2"></i>
+    </div>
+    <h3 class="modal-alerta-titulo">¿Limpiar historial de chats?</h3>
+    <p class="modal-alerta-texto">
+      ¿Estás seguro de que deseas limpiar todas las conversaciones de tu bandeja? Tu estado propio no se borrará.
+    </p>
+    <div class="modal-alerta-acciones">
+      <button type="button" id="btn-cancelar-limpiar-global" class="btn-modal-cancelar">Cancelar</button>
+      <button type="button" id="btn-aceptar-limpiar-global" class="btn-modal-confirmar-rojo">Limpiar Chats</button>
+    </div>
+  </div>
+</div>
 
 </body>
 

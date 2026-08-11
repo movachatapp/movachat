@@ -5281,32 +5281,113 @@ if (modalNombre) {
 }
 
 // ==========================================================
-// 🗑️ BOTÓN LIMPIAR: BORRAR CHATS CON ALERTA VISUAL (TOAST)
+// 🗑️ BOTÓN LIMPIAR HISTORIAL GLOBAL (CON MODAL GLASSMORPHISM)
 // ==========================================================
 document.addEventListener("click", (e) => {
-  // Atrapamos el botón exacto mediante su ID
   const btnLimpiar = e.target.closest("#btn-limpiar-historial-global");
   if (!btnLimpiar) return;
 
-  const tarjetasChat = document.querySelectorAll(".lista-chats .tarjeta-chat");
+  const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+  const miUid = usuarioActual ? usuarioActual.uid : null;
 
-  if (tarjetasChat.length === 0) {
-    mostrarToast("La lista ya está vacía");
+  if (!miUid) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Debes iniciar sesión para realizar esta acción.", "⚠️", "#ff4b2b");
+    }
     return;
   }
 
-  // Animación de salida fluida
-  tarjetasChat.forEach((tarjeta) => {
-    tarjeta.style.transition = "all 0.3s ease";
-    tarjeta.style.opacity = "0";
-    tarjeta.style.transform = "scale(0.95)";
-  });
+  // 1. Filtrar los chats activos (Excluyendo "Mi Estado")
+  const tarjetasChat = Array.from(document.querySelectorAll("#lista-chats-principal .tarjeta-chat")).filter(
+    (tarjeta) => tarjeta.id !== "tarjeta-mi-estado-propio" && !tarjeta.classList.contains("tarjeta-estado-propio")
+  );
 
-  // Limpiar el DOM y mostrar la notificación
-  setTimeout(() => {
-    tarjetasChat.forEach(t => t.remove());
-    mostrarToast("¡Lista de chats limpiada!");
-  }, 300);
+  if (tarjetasChat.length === 0) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("No hay conversaciones activas para limpiar.", "ℹ️", "#00f2fe");
+    }
+    return;
+  }
+
+  // 2. Abrir el modal personalizado
+  const modalConfirmar = document.getElementById("modal-confirmar-limpiar-global");
+  if (modalConfirmar) {
+    modalConfirmar.classList.remove("oculto");
+    if (window.lucide) window.lucide.createIcons({ targets: [modalConfirmar] });
+  }
+});
+
+// 🔴 EVENTOS PARA BOTONES DEL MODAL CONFIRMAR LIMPIEZA GLOBAL
+document.addEventListener("DOMContentLoaded", () => {
+  const modalConfirmar = document.getElementById("modal-confirmar-limpiar-global");
+  const btnCancelar = document.getElementById("btn-cancelar-limpiar-global");
+  const btnAceptar = document.getElementById("btn-aceptar-limpiar-global");
+
+  // A) Cancelar modal
+  if (btnCancelar && modalConfirmar) {
+    btnCancelar.onclick = () => modalConfirmar.classList.add("oculto");
+  }
+
+  // Cerrar al tocar el fondo oscuro
+  if (modalConfirmar) {
+    modalConfirmar.onclick = (e) => {
+      if (e.target === modalConfirmar) modalConfirmar.classList.add("oculto");
+    };
+  }
+
+  // B) Aceptar eliminación global
+  if (btnAceptar && modalConfirmar) {
+    btnAceptar.onclick = async () => {
+      modalConfirmar.classList.add("oculto");
+
+      const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
+      if (!miUid) return;
+
+      const tarjetasChat = Array.from(document.querySelectorAll("#lista-chats-principal .tarjeta-chat")).filter(
+        (tarjeta) => tarjeta.id !== "tarjeta-mi-estado-propio" && !tarjeta.classList.contains("tarjeta-estado-propio")
+      );
+
+      try {
+        const ahora = Date.now();
+
+        // Guardar marcas de vaciado y ocultamiento en Firebase para cada chat
+        const promesasGuardado = tarjetasChat.map(async (tarjeta) => {
+          const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
+          if (contactoUid) {
+            await set(ref(db, `vaciados/${miUid}/${contactoUid}`), ahora);
+            await set(ref(db, `chats_ocultos/${miUid}/${contactoUid}`), ahora);
+          }
+        });
+
+        await Promise.all(promesasGuardado);
+
+        // Animación fluida de salida
+        tarjetasChat.forEach((tarjeta) => {
+          tarjeta.style.transition = "all 0.3s ease";
+          tarjeta.style.opacity = "0";
+          tarjeta.style.transform = "scale(0.95)";
+        });
+
+        setTimeout(() => {
+          tarjetasChat.forEach((t) => t.remove());
+
+          if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
+          if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
+
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Bandeja de chats limpiada correctamente 🧹", "✨", "#00f2fe");
+          }
+        }, 300);
+
+      } catch (err) {
+        console.error("Error al limpiar lista global de chats:", err);
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se pudo completar la limpieza.", "❌", "#ff4b2b");
+        }
+      }
+    };
+  }
 });
 
 // Variable para controlar el temporizador activo del toast

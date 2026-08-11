@@ -3703,3 +3703,123 @@ body.tema-claro .nombre-sugerencia-txt {
 .orbe-aura.oceano      { background: #0072ff; box-shadow: 0 0 8px #0072ff; }
 .orbe-aura.matrix      { background: #38ef7d; box-shadow: 0 0 8px #38ef7d; }
 
+
+/* 🔮 MODAL DE ALERTA FUTURISTA Y CENTRADO */
+#modal-confirmar-limpiar-global {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 20px;
+}
+
+#modal-confirmar-limpiar-global.oculto {
+  display: none !important;
+}
+
+.modal-caja-alerta {
+  text-align: center;
+  max-width: 330px;
+  width: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  border-radius: 24px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 75, 43, 0.3);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 25px rgba(255, 75, 43, 0.2);
+  animation: modalEntradaSmooth 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalEntradaSmooth {
+  from {
+    opacity: 0;
+    transform: scale(0.88) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-alerta-icono.red-neon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255, 75, 43, 0.15);
+  color: #ff4b2b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 75, 43, 0.4);
+  box-shadow: 0 0 15px rgba(255, 75, 43, 0.3);
+}
+
+.modal-alerta-icono.red-neon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.modal-alerta-titulo {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+}
+
+.modal-alerta-texto {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.modal-alerta-acciones {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.btn-modal-cancelar {
+  flex: 1;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-modal-cancelar:active {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-modal-confirmar-rojo {
+  flex: 1;
+  padding: 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ff4b2b, #ff416c);
+  border: none;
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+.btn-modal-confirmar-rojo:active {
+  transform: scale(0.96);
+  opacity: 0.9;
+}
