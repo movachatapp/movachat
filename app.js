@@ -2955,8 +2955,8 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         get(ocultoRef)
       ]);
 
-      if (snapVaciado.exists()) timestampUltimoVaciado = snapVaciado.val();
-      if (snapOculto.exists()) timestampOculto = snapOculto.val();
+      if (snapVaciado.exists()) timestampUltimoVaciado = Number(snapVaciado.val()) || 0;
+      if (snapOculto.exists()) timestampOculto = Number(snapOculto.val()) || 0;
     } catch (err) {
       console.error("Error al consultar estados de vaciado/eliminación:", err);
     }
@@ -2982,7 +2982,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           const transcurrido = ahora - (m.timestamp || ahora);
 
           if (transcurrido >= limiteMs) {
-            // Borrar de Firebase si ya expiró
             set(ref(db, `chats/${chatId}/mensajes/${k}`), null);
             return false;
           }
@@ -2995,7 +2994,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
         ultimoMsg = mensajes[ultimoMsgKey];
 
-        // ⏱️ Si el último mensaje es efímero y aún no expira, programar su borrado exacto
         if (ultimoMsg && ultimoMsg.esEfimero) {
           const limiteMs = ultimoMsg.duracionEfimeraMs || 10000;
           const transcurrido = ahora - (ultimoMsg.timestamp || ahora);
@@ -3010,7 +3008,8 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    // 🛑 1. CASO ELIMINADO: Si fue eliminado y no han llegado mensajes nuevos posteriores
+    // 🛑 1. CASO ELIMINADO EXPLICITO: Solo oculta la tarjeta si existe una marca en chats_ocultos
+    // Y NO existe ningún mensaje nuevo con fecha posterior a esa eliminación
     const ultimoMsgTime = ultimoMsg ? (ultimoMsg.timestamp || 0) : 0;
     if (timestampOculto > 0 && ultimoMsgTime <= timestampOculto) {
       if (tarjetaContacto) tarjetaContacto.remove();
@@ -3019,15 +3018,15 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       return;
     }
 
-    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS O MENSAJES TEMPORALES EXPIRADOS
-    if ((!hayMensajesHistoricos || mensajesValidosKeys.length === 0) && timestampUltimoVaciado === 0) {
+    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS: Si jamás ha tenido mensajes y jamás se ha vaciado ni ocultado
+    if (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0) {
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
       if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
       return;
     }
 
-    // 🟢 3. CREAR TARJETA SI AÚN NO EXISTE EN LA LISTA
+    // 🟢 3. CREAR O MANTENER TARJETA SI FUE VACIANO O TIENE MENSAJES
     if (!tarjetaContacto) {
       tarjetaContacto = document.createElement("div");
       tarjetaContacto.className = "tarjeta-chat contacto-item";
@@ -3083,7 +3082,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         </div>
       `;
 
-      // 🔴 ESCUCHADOR EN TIEMPO REAL PARA EL INDICADOR LED DEL CONTACTO
       onValue(ref(db, `usuarios/${contactoUid}`), (uSnap) => {
         if (!uSnap.exists()) return;
         const uFresh = uSnap.val();
@@ -3152,7 +3150,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
     } else {
-      // Si la conversación fue vaciada o todos los mensajes temporales se borraron
+      // Mantiene la tarjeta visible marcando el estado de vaciado
       if (elemTexto) elemTexto.textContent = "Conversación vaciada";
       if (elemHora) elemHora.textContent = "--:--";
     }
@@ -3196,26 +3194,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
             elemBadge.classList.remove("oculto");
           }
           if (elemTexto) elemTexto.classList.add("texto-resaltado");
-
-          // 🔊 REPRODUCIR SONIDO Y VIBRACIÓN EN PANTALLA PRINCIPAL O PERFIL
-          if (ultimoMsg) {
-            const emisorReal = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente;
-            const haceCuanto = Date.now() - (ultimoMsg.timestamp || Date.now());
-
-            // 🛡️ ESCUDO ANTI-DUPLICADOS PARA SEGUNDO PLANO
-            window.mensajesNotificados = window.mensajesNotificados || new Set();
-            const yaSono = window.mensajesNotificados.has(ultimoMsgKey);
-
-            // Dispara si el mensaje viene de otra persona, es reciente y NO ha sonado antes
-            if (emisorReal !== miUid && haceCuanto < 5000 && !yaSono) {
-
-              window.mensajesNotificados.add(ultimoMsgKey); // 👈 Marcar como reproducido
-
-              if (typeof window.reproducirSonidoRecibido === "function") {
-                window.reproducirSonidoRecibido(contactoUid);
-              }
-            }
-          }
         } else {
           if (elemBadge) {
             elemBadge.textContent = "0";
@@ -3234,7 +3212,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       actualizarEstadoPantallaInicio();
     }
 
-    // 🔴 Sincronizar estado visual de bloqueo al cargar/actualizar la tarjeta
     if (typeof window.verificarEstadoBloqueo === "function") {
       window.verificarEstadoBloqueo(contactoUid);
     }
@@ -5045,15 +5022,18 @@ document.addEventListener("click", (e) => {
 // ==========================================================
 document.addEventListener("click", (e) => {
   // Si presiona el botón de flecha atrás en el chat privado
-  if (e.target.closest("#pantalla-chat-privado .btn-volver")) {
+  if (e.target.closest("#pantalla-chat-privado .btn-volver") || e.target.closest("#btn-volver-chats")) {
     const encabezadoInicio = document.querySelector(".encabezado-inicio");
     const menuFlotante = document.querySelector(".menu-flotante");
-    const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
+    const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto") || document.getElementById("btn-abrir-contactos");
 
-    // Restaurar encabezado y menús flotantes
+    // Restaurar encabezado, menú inferior y remover la clase que oculta el botón (+)
     if (encabezadoInicio) encabezadoInicio.style.display = "flex";
     if (menuFlotante) menuFlotante.style.display = "flex";
-    if (btnFlotanteContacto) btnFlotanteContacto.style.display = "flex";
+    if (btnFlotanteContacto) {
+      btnFlotanteContacto.style.display = "flex";
+      btnFlotanteContacto.classList.remove("oculto");
+    }
   }
 });
 
