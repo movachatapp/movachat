@@ -3008,17 +3008,17 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    // 🛑 1. CASO ELIMINADO EXPLICITO: Solo oculta la tarjeta si existe una marca en chats_ocultos
-    // Y NO existe ningún mensaje nuevo con fecha posterior a esa eliminación
+    // 🛑 1. CASO ELIMINADO EXPLÍCITO: Solo borra la tarjeta si la orden 'chats_ocultos' 
+    // es MÁS RECIENTE que el último vaciado Y no hay mensajes nuevos posteriores.
     const ultimoMsgTime = ultimoMsg ? (ultimoMsg.timestamp || 0) : 0;
-    if (timestampOculto > 0 && ultimoMsgTime <= timestampOculto) {
+    if (timestampOculto > 0 && timestampOculto >= timestampUltimoVaciado && ultimoMsgTime <= timestampOculto) {
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
       if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
       return;
     }
 
-    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS: Si jamás ha tenido mensajes y jamás se ha vaciado ni ocultado
+    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS: Si jamás ha tenido mensajes y no se ha vaciado ni ocultado
     if (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0) {
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
