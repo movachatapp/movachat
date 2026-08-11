@@ -8,17 +8,18 @@ import {
   updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { 
-  getDatabase, 
-  ref, 
-  set, 
-  get, 
-  child, 
-  onValue, 
-  onChildChanged, 
-  update, 
-  push, 
-  onDisconnect 
+import {
+  getDatabase,
+  ref,
+  set,
+  get,
+  child,
+  onValue,
+  onChildChanged,
+  update,
+  push,
+  onDisconnect,
+  remove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -192,6 +193,11 @@ onAuthStateChanged(auth, async (user) => {
 
           if (typeof iniciarControlPresenciaReal === "function") {
             iniciarControlPresenciaReal();
+          }
+
+          // 🌐 Cargar redes sociales del perfil
+          if (typeof cargarEstadoRedesPropias === "function") {
+            cargarEstadoRedesPropias();
           }
 
           // 🚀 2. INYECCIÓN DIRECTA DE DATOS REALES EN EL PERFIL
@@ -2159,7 +2165,7 @@ if (btnVolver) {
     } else if (encabezadoGlobal) {
       encabezadoGlobal.style.display = "flex";
     }
-    
+
     if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "flex";
     if (btnFlotanteContacto) btnFlotanteContacto.style.display = "flex";
 
@@ -2168,7 +2174,7 @@ if (btnVolver) {
       pantallaChatPrivado.classList.remove("pantalla-completa");
       pantallaChatPrivado.style.display = "none";
     }
-    
+
     const pantallaChats = document.getElementById("pantalla-chats");
     if (pantallaChats) pantallaChats.style.display = "flex";
   });
@@ -3192,25 +3198,25 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           if (elemTexto) elemTexto.classList.add("texto-resaltado");
 
           // 🔊 REPRODUCIR SONIDO Y VIBRACIÓN EN PANTALLA PRINCIPAL O PERFIL
-            if (ultimoMsg) {
-              const emisorReal = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente;
-              const haceCuanto = Date.now() - (ultimoMsg.timestamp || Date.now());
+          if (ultimoMsg) {
+            const emisorReal = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente;
+            const haceCuanto = Date.now() - (ultimoMsg.timestamp || Date.now());
 
-              // 🛡️ ESCUDO ANTI-DUPLICADOS PARA SEGUNDO PLANO
-              window.mensajesNotificados = window.mensajesNotificados || new Set();
-              const yaSono = window.mensajesNotificados.has(ultimoMsgKey);
+            // 🛡️ ESCUDO ANTI-DUPLICADOS PARA SEGUNDO PLANO
+            window.mensajesNotificados = window.mensajesNotificados || new Set();
+            const yaSono = window.mensajesNotificados.has(ultimoMsgKey);
 
-              // Dispara si el mensaje viene de otra persona, es reciente y NO ha sonado antes
-              if (emisorReal !== miUid && haceCuanto < 5000 && !yaSono) {
-                
-                window.mensajesNotificados.add(ultimoMsgKey); // 👈 Marcar como reproducido
+            // Dispara si el mensaje viene de otra persona, es reciente y NO ha sonado antes
+            if (emisorReal !== miUid && haceCuanto < 5000 && !yaSono) {
 
-                if (typeof window.reproducirSonidoRecibido === "function") {
-                  window.reproducirSonidoRecibido(contactoUid);
-                }
+              window.mensajesNotificados.add(ultimoMsgKey); // 👈 Marcar como reproducido
+
+              if (typeof window.reproducirSonidoRecibido === "function") {
+                window.reproducirSonidoRecibido(contactoUid);
               }
             }
-          } else {
+          }
+        } else {
           if (elemBadge) {
             elemBadge.textContent = "0";
             elemBadge.classList.add("oculto");
@@ -3321,109 +3327,6 @@ if (inputSubirEstadoReal) {
       };
       lector.readAsDataURL(e.target.files[0]);
     }
-  });
-}
-
-const modalRedes = document.getElementById("modal-redes-bento");
-const btnCerrarRedes = document.getElementById("btn-cerrar-redes");
-const btnGuardarRed = document.getElementById("btn-guardar-red-bento");
-const inputUsuarioRed = document.getElementById("input-usuario-red");
-const tituloModalRed = document.getElementById("titulo-modal-red");
-const prefijoRed = document.getElementById("prefijo-red-social");
-
-const enlacesRedesBento = document.querySelectorAll(".iconos-redes .red-enlace");
-let redActivaSeleccionada = null;
-let temporizadorRedLongPress = null;
-let fuePresionLargaRed = false;
-
-const configuracionRedes = {
-  instagram: { titulo: "Instagram Pro", prefijo: "@", base: "https://instagram.com/" },
-  tiktok: { titulo: "TikTok Core", prefijo: "@", base: "https://tiktok.com/@" },
-  facebook: { titulo: "Facebook Network", prefijo: "fb/", base: "https://facebook.com/" }
-};
-
-function abrirEditorRedSocial(redKey) {
-  if (!modalRedes) return;
-  tituloModalRed.innerHTML = `Editar ${configuracionRedes[redKey].titulo}`;
-  prefijoRed.textContent = configuracionRedes[redKey].prefijo;
-
-  const actual = localStorage.getItem(`movachat-red-${redKey}`) || "";
-  inputUsuarioRed.value = actual;
-  inputUsuarioRed.placeholder = "ej: elena_rostova";
-
-  modalRedes.classList.remove("oculto");
-  setTimeout(() => inputUsuarioRed.focus(), 50);
-}
-
-enlacesRedesBento.forEach(enlace => {
-  let miRedKey = "";
-  if (enlace.classList.contains("red-instagram")) miRedKey = "instagram";
-  if (enlace.classList.contains("red-tiktok")) miRedKey = "tiktok";
-  if (enlace.classList.contains("red-facebook")) miRedKey = "facebook";
-
-  const iniciarPresionLargaRed = () => {
-    redActivaSeleccionada = miRedKey;
-    fuePresionLargaRed = false;
-
-    temporizadorRedLongPress = setTimeout(() => {
-      fuePresionLargaRed = true;
-      enlace.style.transform = "scale(0.85)";
-      setTimeout(() => { enlace.style.transform = ""; }, 150);
-
-      mostrarAvisoPremium(`Modificando enlace de ${miRedKey.toUpperCase()}... ⚙️`, "✏️", "#00f2fe");
-      abrirEditorRedSocial(miRedKey);
-    }, 800);
-  };
-
-  const finalizarPresionLargaRed = (e) => {
-    if (temporizadorRedLongPress) clearTimeout(temporizadorRedLongPress);
-
-    if (fuePresionLargaRed) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-
-    redActivaSeleccionada = miRedKey;
-    const usuarioGuardado = localStorage.getItem(`movachat-red-${miRedKey}`);
-
-    if (!usuarioGuardado) {
-      e.preventDefault();
-      e.stopPropagation();
-      abrirEditorRedSocial(miRedKey);
-    } else {
-      enlace.href = configuracionRedes[miRedKey].base + usuarioGuardado;
-      mostrarAvisoPremium(`Viajando al portal de ${miRedKey}... 🛸`, "🌐", "#00f2fe");
-    }
-  };
-
-  enlace.addEventListener("mousedown", iniciarPresionLargaRed);
-  enlace.addEventListener("touchstart", iniciarPresionLargaRed, { passive: true });
-  enlace.addEventListener("click", finalizarPresionLargaRed);
-  enlace.addEventListener("mouseleave", () => { if (temporizadorRedLongPress) clearTimeout(temporizadorRedLongPress); });
-  enlace.addEventListener("touchmove", () => { if (temporizadorRedLongPress) clearTimeout(temporizadorRedLongPress); });
-});
-
-if (btnGuardarRed) {
-  btnGuardarRed.addEventListener("click", () => {
-    const nombreUsuario = inputUsuarioRed.value.trim().replace(/[@/]/g, "");
-
-    if (nombreUsuario === "") {
-      localStorage.removeItem(`movachat-red-${redActivaSeleccionada}`);
-      modalRedes.classList.add("oculto");
-      mostrarAvisoPremium("Enlace removido. El botón volverá a pedir configuración.", "🗑️", "#ff4b2b");
-      return;
-    }
-
-    localStorage.setItem(`movachat-red-${redActivaSeleccionada}`, nombreUsuario);
-    modalRedes.classList.add("oculto");
-    mostrarAvisoPremium(`Portal de ${redActivaSeleccionada.toUpperCase()} guardado correctamente. 🛡️`, "💎", "#00f2fe");
-  });
-}
-
-if (btnCerrarRedes) {
-  btnCerrarRedes.addEventListener("click", () => {
-    modalRedes.classList.add("oculto");
   });
 }
 
@@ -5308,58 +5211,82 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// 🌐 SISTEMA DE REDES SOCIALES PERSONALES EN PERFIL
+// 🌐 SISTEMA ÚNICO DE REDES SOCIALES PERSONALES (Firebase v10 Modular)
 function conectarRedesSociales() {
   const botonesRedes = document.querySelectorAll(".red-enlace");
 
   botonesRedes.forEach(btn => {
-    btn.addEventListener("click", () => {
-      const tipoRed = btn.dataset.red; // 'instagram', 'tiktok', 'facebook'
-      const user = firebase.auth().currentUser;
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const user = auth ? auth.currentUser : null;
       if (!user) return;
 
-      // Consultar si ya tiene un enlace guardado
-      firebase.database().ref(`usuarios/${user.uid}/redes/${tipoRed}`).once("value", (snap) => {
-        const urlExistente = snap.val();
+      const tipoRed = btn.dataset.red; // 'instagram', 'tiktok', 'facebook'
+      if (!tipoRed) return;
 
-        // Pedir nuevo enlace/usuario al tocar
-        const nuevaUrl = prompt(`Ingresa tu enlace o usuario de ${tipoRed.toUpperCase()}:`, urlExistente || "");
+      const redRef = ref(db, `usuarios/${user.uid}/redes/${tipoRed}`);
+
+      try {
+        const snap = await get(redRef);
+        const urlExistente = snap.exists() ? snap.val() : "";
+
+        // Si ya tiene una red guardada, le consulta si desea abrirla o modificarla
+        if (urlExistente !== "") {
+          const opcion = confirm(`Tu ${tipoRed.toUpperCase()} actual es: ${urlExistente}\n\n¿Deseas EDITAR este enlace?\n(Presiona 'Cancelar' para abrir tu perfil en una pestaña nueva)`);
+          
+          if (!opcion) {
+            const urlFinal = urlExistente.startsWith("http") ? urlExistente : `https://${tipoRed}.com/${urlExistente.replace('@', '')}`;
+            window.open(urlFinal, "_blank");
+            return;
+          }
+        }
+
+        // Solicitar usuario o enlace
+        const nuevaUrl = prompt(`Ingresa tu enlace o usuario de ${tipoRed.toUpperCase()}:`, urlExistente);
 
         if (nuevaUrl !== null) {
           const valorLimpio = nuevaUrl.trim();
-          
+
           if (valorLimpio === "") {
-            // Si lo deja vacío, borra la red social de Firebase
-            firebase.database().ref(`usuarios/${user.uid}/redes/${tipoRed}`).remove();
+            await remove(redRef);
             btn.classList.remove("conectada");
+            btn.style.borderColor = "rgba(255, 255, 255, 0.08)";
+            btn.style.boxShadow = "none";
             if (typeof mostrarAvisoPremium === "function") {
               mostrarAvisoPremium(`Red ${tipoRed} eliminada`, "🗑️", "#ff4b2b");
             }
           } else {
-            // Guardar en Firebase
-            firebase.database().ref(`usuarios/${user.uid}/redes/${tipoRed}`).set(valorLimpio);
+            await set(redRef, valorLimpio);
             btn.classList.add("conectada");
+            btn.style.borderColor = "#00f2fe";
+            btn.style.boxShadow = "0 0 10px rgba(0, 242, 254, 0.3)";
             if (typeof mostrarAvisoPremium === "function") {
               mostrarAvisoPremium(`¡Red ${tipoRed} vinculada con éxito! 🚀`, "✅", "#00f2fe");
             }
           }
         }
-      });
+      } catch (error) {
+        console.error("Error al actualizar red social:", error);
+      }
     });
   });
 }
 
-// Cargar estado de las redes al abrir el perfil
+// 🌐 Cargar estado neón de las redes guardadas en Firebase
 function cargarEstadoRedesPropias() {
-  const user = firebase.auth().currentUser;
+  const user = auth ? auth.currentUser : null;
   if (!user) return;
 
-  firebase.database().ref(`usuarios/${user.uid}/redes`).on("value", (snap) => {
+  const redesRef = ref(db, `usuarios/${user.uid}/redes`);
+
+  onValue(redesRef, (snap) => {
     const redes = snap.val() || {};
-    
+
     document.querySelectorAll(".red-enlace").forEach(btn => {
       const tipoRed = btn.dataset.red;
-      if (redes[tipoRed]) {
+      if (tipoRed && redes[tipoRed]) {
         btn.classList.add("conectada");
         btn.style.borderColor = "#00f2fe";
         btn.style.boxShadow = "0 0 10px rgba(0, 242, 254, 0.3)";
@@ -6124,14 +6051,14 @@ function escucharMensajesChat(chatId) {
           // 🟢 CORRECCIÓN: DEFINICIÓN DE TIEMPO PARA MENSAJES EN VIVO
           const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
           const esMensajeNuevoEnVivo = haceCuantoEnviado < 5000;
-          const esElUltimoMensaje = (msgId === keysMensajes[keysMensajes.length - 1]); 
+          const esElUltimoMensaje = (msgId === keysMensajes[keysMensajes.length - 1]);
 
           // 🛡️ ESCUDO ANTI-DUPLICADOS: Evita que un mensaje suene varias veces si editan o recargan
           window.mensajesNotificados = window.mensajesNotificados || new Set();
           const yaSono = window.mensajesNotificados.has(msgId);
 
           if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto && esElUltimoMensaje && !yaSono) {
-            
+
             window.mensajesNotificados.add(msgId); // 👈 Marcar como reproducido
 
             const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
@@ -6384,13 +6311,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-// 🔑 Cargar el estado neón de las redes cuando Firebase confirme la sesión
-firebase.auth().onAuthStateChanged((user) => {
-  if (user) {
-    cargarEstadoRedesPropias();
-  }
-});
-
 // 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada)
 window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
@@ -6501,7 +6421,7 @@ const contenedorMensajes = document.querySelector(".historial-mensajes");
 
 function forzarScrollAlUltimoMensaje() {
   if (!contenedorMensajes) return;
-  
+
   // Buscar la última burbuja visible
   const ultimoMensaje = contenedorMensajes.lastElementChild;
   if (ultimoMensaje) {
