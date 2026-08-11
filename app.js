@@ -2846,34 +2846,45 @@ const btnCampanita = document.getElementById("btn-campanita-alertas");
 const badgeCampanita = document.getElementById("badge-campanita");
 const toggleNotificaciones = document.getElementById("check-notificaciones");
 
-// Cargar estado inicial guardado de Notificaciones
-const notifGuardada = localStorage.getItem("movachat-notificaciones");
+// ========================================================
+// 🔔 CONTROLADOR CENTRALIZADO DE NOTIFICACIONES
+// ========================================================
+const toggleNotificaciones = document.getElementById("check-notificaciones");
+
+// 1. Cargar estado inicial al abrir la app
+(function inicializarEstadoNotificaciones() {
+  const notifGuardada = localStorage.getItem("movachat-notificaciones");
+  
+  if (toggleNotificaciones) {
+    // Si nunca se ha configurado, por defecto viene activado
+    const estaActivado = notifGuardada !== null ? notifGuardada === "activado" : true;
+    toggleNotificaciones.checked = estaActivado;
+    localStorage.setItem("movachat-notificaciones", estaActivado ? "activado" : "desactivado");
+  }
+})();
+
+// 2. Escuchar cambios de encendido / apagado
 if (toggleNotificaciones) {
-  toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
-}
+  toggleNotificaciones.addEventListener("change", async () => {
+    const estaEncendido = toggleNotificaciones.checked;
 
-// 🔔 EVENTO AL TOCAR LA CAMPANITA: Activa el filtro "No leídos" en la interfaz
-if (btnCampanita) {
-  btnCampanita.onclick = () => {
-    const botonesFiltro = document.querySelectorAll(".caja-filtros .filtro-btn");
-    const btnTodos = botonesFiltro[0];
-    const btnNoLeidos = botonesFiltro[1];
+    if (estaEncendido) {
+      // Intentar solicitar permiso nativo al SO/Navegador
+      const concedido = await solicitarPermisoNotificaciones();
+      
+      localStorage.setItem("movachat-notificaciones", "activado");
 
-    if (btnNoLeidos) {
-      if (btnTodos) btnTodos.classList.remove("activo");
-      btnNoLeidos.classList.add("activo");
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Notificaciones y sonidos activados 🔔", "✨", "#00f2fe");
+      }
+    } else {
+      localStorage.setItem("movachat-notificaciones", "desactivado");
 
-      // Simular la filtración de la lista
-      document.querySelectorAll("#lista-chats-principal .tarjeta-chat").forEach((tarjeta) => {
-        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
-
-        const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
-        const tieneNoLeidos = badge && !badge.classList.contains("oculto") && parseInt(badge.textContent.trim(), 10) > 0;
-
-        tarjeta.style.display = tieneNoLeidos ? "flex" : "none";
-      });
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Notificaciones silenciadas por completo 🔕", "🔕", "#ff4b2b");
+      }
     }
-  };
+  });
 }
 
 // ========================================================
