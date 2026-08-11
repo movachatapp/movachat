@@ -786,11 +786,11 @@ body {
 /* FASE 3: ÁREA DE CHATS (INICIO)             */
 /* ========================================== */
 #pantalla-chats {
-  display: none;
+  display: none; /* Mantén tu display: none para alternar pantallas con JS */
   flex-direction: column;
   align-items: stretch !important;
-  height: 100%;
-  max-height: calc(100dvh - 70px);
+  height: 100dvh; /* Ocupa exactamente el 100% de la pantalla visible */
+  max-height: 100dvh; /* Evita que se encoja de más o se desplace al subir el teclado */
   overflow: hidden;
   position: relative;
 }
@@ -1122,6 +1122,12 @@ body {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+
+  /* 🟢 FIJAR ENCABEZADO Y EVITAR QUE EL TECLADO LO APLASTE */
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .btn-volver {
@@ -1225,6 +1231,7 @@ body {
 .historial-mensajes {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* 🟢 Scroll ultrasuave en móviles */
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -1353,6 +1360,12 @@ body {
 .caja-input-chat:focus-within {
   border-color: rgba(0, 242, 254, 0.4);
   background: rgba(255, 255, 255, 0.07);
+}
+
+/* 🟢 EVITAR QUE LA BARRA INFERIOR SE APLASTE AL SUBIR EL TECLADO */
+.footer-chat,
+.caja-input-privado {
+  flex-shrink: 0;
 }
 
 .input-mensaje-real {
@@ -2067,6 +2080,9 @@ body {
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   animation: deslizarBuscadorInterno 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  /* 🟢 EVITA QUE SE APLASTE CUANDO SUBE EL TECLADO */
+  flex-shrink: 0;
 }
 
 @keyframes deslizarBuscadorInterno {
@@ -3686,3 +3702,4 @@ body.tema-claro .nombre-sugerencia-txt {
 .orbe-aura.fuego       { background: #ff4b2b; box-shadow: 0 0 8px #ff4b2b; }
 .orbe-aura.oceano      { background: #0072ff; box-shadow: 0 0 8px #0072ff; }
 .orbe-aura.matrix      { background: #38ef7d; box-shadow: 0 0 8px #38ef7d; }
+

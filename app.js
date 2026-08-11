@@ -8,7 +8,18 @@ import {
   updateProfile,
   signOut
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, get, child, onValue, onChildChanged, update, push, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { 
+  getDatabase, 
+  ref, 
+  set, 
+  get, 
+  child, 
+  onValue, 
+  onChildChanged, 
+  update, 
+  push, 
+  onDisconnect 
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
@@ -6421,3 +6432,15 @@ window.addEventListener("offline", () => {
     mostrarAvisoPremium("Sin conexión a Internet. Modo Offline 🔴", "⚠️", "#ff4b2b");
   }
 });
+
+// Auto-scroll al enfocar el campo de texto (Corregido para MovaChat)
+const inputMensaje = document.getElementById("input-chat-privado");
+const contenedorMensajes = document.querySelector(".historial-mensajes");
+
+if (inputMensaje && contenedorMensajes) {
+  inputMensaje.addEventListener("focus", () => {
+    setTimeout(() => {
+      contenedorMensajes.scrollTop = contenedorMensajes.scrollHeight;
+    }, 300);
+  });
+}
