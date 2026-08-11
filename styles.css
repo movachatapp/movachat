@@ -3823,3 +3823,11 @@ body.tema-claro .nombre-sugerencia-txt {
   transform: scale(0.96);
   opacity: 0.9;
 }
+
+/* 🥷 REGLA MAESTRA MODO SIGILO: ANULA CUALQUIER INTENTO DE JS DE ENCENDER LOS LEDS */
+body.modo-sigilo-activo #led-enfoque-app,
+body.modo-sigilo-activo #led-presencia-base,
+body.modo-sigilo-activo .punto-online {
+  background-color: #888888 !important;
+  box-shadow: none !important;
+}
