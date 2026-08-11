@@ -2240,7 +2240,7 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
-// 💡 FUNCIÓN CORREGIDA: Actualiza solo los leds de la cabecera del usuario (sin afectar a otros contactos)
+// 💡 FUNCIÓN CORREGIDA Y BLINDADA: Actualiza solo los leds de la cabecera
 function actualizarDobleLedCabecera(pantallaActual) {
   const ledSuperior = document.getElementById("led-enfoque-app");
   const ledInferior = document.getElementById("led-presencia-base");
@@ -2254,9 +2254,12 @@ function actualizarDobleLedCabecera(pantallaActual) {
     colorEstadoActual = window.getComputedStyle(ledPerfil).backgroundColor;
   }
 
+  // 🛡️ CANDADO DIRECTO DE SIGILO: Si está activo en localStorage, es invisible de inmediato
+  const esSigiloDirecto = localStorage.getItem("movachat-sigilo") === "activo";
+
   // Detectar el color propio de tu perfil
   let esOcupado = colorEstadoActual.includes("255, 75, 43") || colorEstadoActual === "rgb(255, 75, 43)" || colorEstadoActual === "#ff4b2b" || colorEstadoActual.includes("239, 68, 68");
-  let esInvisible = colorEstadoActual.includes("136, 136, 136") || colorEstadoActual === "rgb(136, 136, 136)" || colorEstadoActual === "#888888";
+  let esInvisible = esSigiloDirecto || colorEstadoActual.includes("136, 136, 136") || colorEstadoActual === "rgb(136, 136, 136)" || colorEstadoActual === "#888888";
 
   // 1. Si tu estado es INVISIBLE
   if (esInvisible) {
@@ -3245,51 +3248,45 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   });
 }
 
-// --- 5. MODO SIGILO (INVISIBLE) - CONECTADO REALMENTE A FIREBASE ---
-const toggleSigilo = document.getElementById("check-sigilo");
-const ledPerfilIdentidad = document.querySelector(".btn-estado-sutil .punto-online");
-const textoEstadoIdentidad = document.querySelector(".texto-estado");
+// ========================================================
+// 🥷 CONTROLADOR CENTRALIZADO MODO SIGILO (INVISIBLE)
+// ========================================================
+(function inicializarModoSigilo() {
+  const switchSigilo = document.getElementById("check-sigilo");
+  const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
+  const textoEstado = document.querySelector(".texto-estado");
 
-// A. Cargar estado inicial del Modo Sigilo al abrir la app
-const estadoSigiloGuardado = localStorage.getItem("movachat-sigilo");
-if (estadoSigiloGuardado === "activo" && toggleSigilo) {
-  toggleSigilo.checked = true;
-  if (ledPerfilIdentidad) {
-    ledPerfilIdentidad.style.backgroundColor = "#888888";
-    ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
+  if (!switchSigilo) return;
+
+  // 1. Cargar preferencia guardada al abrir la app
+  const estadoGuardado = localStorage.getItem("movachat-sigilo");
+  const estaActivo = estadoGuardado === "activo";
+  switchSigilo.checked = estaActivo;
+
+  if (estaActivo) {
+    if (ledPerfil) {
+      ledPerfil.style.backgroundColor = "#888888";
+      ledPerfil.style.boxShadow = "0 0 10px #888888";
+    }
+    if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
   }
-  if (textoEstadoIdentidad) {
-    textoEstadoIdentidad.textContent = "Invisible (Modo Sigilo)";
-  }
-}
 
-// B. Escuchar cuando el usuario enciende o apaga el interruptor
-if (toggleSigilo) {
-  toggleSigilo.addEventListener("change", () => {
-    const estaActivo = toggleSigilo.checked;
-    const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+  // 2. Escuchar cuando el usuario enciende o apaga el interruptor
+  switchSigilo.addEventListener("change", () => {
+    const estaEnSigilo = switchSigilo.checked;
 
-    if (estaActivo) {
-      // 1. Guardar preferencia local
+    if (estaEnSigilo) {
       localStorage.setItem("movachat-sigilo", "activo");
 
-      // 2. Cambiar aspecto visual local (Gris)
-      if (ledPerfilIdentidad) {
-        ledPerfilIdentidad.style.backgroundColor = "#888888";
-        ledPerfilIdentidad.style.boxShadow = "0 0 10px #888888";
+      if (ledPerfil) {
+        ledPerfil.style.backgroundColor = "#888888";
+        ledPerfil.style.boxShadow = "0 0 10px #888888";
       }
-      if (textoEstadoIdentidad) {
-        textoEstadoIdentidad.textContent = "Invisible (Modo Sigilo)";
-      }
+      if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
 
-      // 3. ENVIAR A FIREBASE: Marcar como offline en tu base de datos
-      if (usuarioActual && typeof db !== "undefined" && typeof ref !== "undefined") {
-        if (typeof update !== "undefined") {
-          update(ref(db, `usuarios/${usuarioActual.uid}`), {
-            estadoConexion: "offline",
-            estadoPresencia: "offline"
-          });
-        }
+      // Usar tu función existente para ponerte offline
+      if (typeof actualizarEstadoEnFirebase === "function") {
+        actualizarEstadoEnFirebase("offline");
       }
 
       if (typeof mostrarAvisoPremium === "function") {
@@ -3298,34 +3295,29 @@ if (toggleSigilo) {
 
     } else {
 
-      // 1. Guardar preferencia local
       localStorage.setItem("movachat-sigilo", "inactivo");
 
-      // 2. Cambiar aspecto visual local (Cyan / En línea)
-      if (ledPerfilIdentidad) {
-        ledPerfilIdentidad.style.backgroundColor = "#00f2fe";
-        ledPerfilIdentidad.style.boxShadow = "0 0 10px #00f2fe";
+      if (ledPerfil) {
+        ledPerfil.style.backgroundColor = "#00f2fe";
+        ledPerfil.style.boxShadow = "0 0 10px #00f2fe";
       }
-      if (textoEstadoIdentidad) {
-        textoEstadoIdentidad.textContent = "Disponible";
-      }
+      if (textoEstado) textoEstado.textContent = "Disponible";
 
-      // 3. ENVIAR A FIREBASE: Marcar como online en tu base de datos
-      if (usuarioActual && typeof db !== "undefined" && typeof ref !== "undefined") {
-        if (typeof update !== "undefined") {
-          update(ref(db, `usuarios/${usuarioActual.uid}`), {
-            estadoConexion: "online",
-            estadoPresencia: "online"
-          });
-        }
+      // Usar tu función existente para volver a estar online
+      if (typeof actualizarEstadoEnFirebase === "function") {
+        actualizarEstadoEnFirebase("online");
       }
 
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Modo Sigilo desactivado: Estás Visible 🟢", "✨", "#00f2fe");
+        mostrarAvisoPremium("Modo Sigilo desactivado: Estás visible en línea 🟢", "✨", "#00f2fe");
       }
     }
+
+    if (typeof actualizarDobleLedCabecera === "function") {
+      actualizarDobleLedCabecera("perfil");
+    }
   });
-}
+})();
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
 
@@ -6445,15 +6437,16 @@ if ('serviceWorker' in navigator) {
 }
 
 // ========================================================
-// 🥷 CONEXIÓN DIRECTA DEL MODO SIGILO A FIREBASE
+// 🥷 CONEXIÓN DIRECTA DEL MODO SIGILO A FIREBASE (BLINDADA)
 // ========================================================
 function actualizarEstadoEnFirebase(nuevoEstado) {
   // 1. Verificamos que el usuario tenga la sesión iniciada
   const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
   if (!usuarioActual) return;
 
-  // 2. Si el usuario activó Modo Sigilo, enviamos "offline", si no "online"
-  const estadoFinal = (nuevoEstado === "offline") ? "offline" : "online";
+  // 🛡️ CANDADO MASTER: Si el usuario activó Modo Sigilo, FORZAR 'offline' siempre
+  const esSigiloActivo = localStorage.getItem("movachat-sigilo") === "activo";
+  const estadoFinal = esSigiloActivo ? "offline" : ((nuevoEstado === "offline") ? "offline" : "online");
 
   // 3. Guardar directamente en la base de datos de Firebase
   if (typeof db !== "undefined" && typeof ref !== "undefined" && typeof set !== "undefined") {
