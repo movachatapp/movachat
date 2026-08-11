@@ -3249,7 +3249,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 }
 
 // ========================================================
-// 🥷 CONTROLADOR CENTRALIZADO MODO SIGILO (INVISIBLE)
+// 🥷 CONTROLADOR CENTRALIZADO MODO SIGILO + ESCUDO DE LEDS
 // ========================================================
 (function inicializarModoSigilo() {
   const switchSigilo = document.getElementById("check-sigilo");
@@ -3257,6 +3257,29 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   const textoEstado = document.querySelector(".texto-estado");
 
   if (!switchSigilo) return;
+
+  // 🛡️ GUARDIÁN DE LEDS DE CABECERA (#led-enfoque-app Y #led-presencia-base)
+  const ledSuperior = document.getElementById("led-enfoque-app");
+  const ledInferior = document.getElementById("led-presencia-base");
+
+  function forzarGrisSiSigilo() {
+    const esSigiloActivo = localStorage.getItem("movachat-sigilo") === "activo";
+    if (esSigiloActivo) {
+      if (ledSuperior) {
+        ledSuperior.style.setProperty("background-color", "#888888", "important");
+        ledSuperior.style.setProperty("box-shadow", "none", "important");
+      }
+      if (ledInferior) {
+        ledInferior.style.setProperty("background-color", "#888888", "important");
+        ledInferior.style.setProperty("box-shadow", "none", "important");
+      }
+    }
+  }
+
+  // Interceptar si otra función intenta pintar los leds de azul/cian al navegar
+  const configObs = { attributes: true, attributeFilter: ["style", "class"] };
+  if (ledSuperior) new MutationObserver(forzarGrisSiSigilo).observe(ledSuperior, configObs);
+  if (ledInferior) new MutationObserver(forzarGrisSiSigilo).observe(ledInferior, configObs);
 
   // 1. Cargar preferencia guardada al abrir la app
   const estadoGuardado = localStorage.getItem("movachat-sigilo");
@@ -3269,6 +3292,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       ledPerfil.style.boxShadow = "0 0 10px #888888";
     }
     if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
+    forzarGrisSiSigilo();
   }
 
   // 2. Escuchar cuando el usuario enciende o apaga el interruptor
@@ -3284,7 +3308,8 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
       if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
 
-      // Usar tu función existente para ponerte offline
+      forzarGrisSiSigilo();
+
       if (typeof actualizarEstadoEnFirebase === "function") {
         actualizarEstadoEnFirebase("offline");
       }
@@ -3294,7 +3319,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
 
     } else {
-
       localStorage.setItem("movachat-sigilo", "inactivo");
 
       if (ledPerfil) {
@@ -3303,7 +3327,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
       if (textoEstado) textoEstado.textContent = "Disponible";
 
-      // Usar tu función existente para volver a estar online
       if (typeof actualizarEstadoEnFirebase === "function") {
         actualizarEstadoEnFirebase("online");
       }
