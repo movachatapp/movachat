@@ -2847,31 +2847,26 @@ const badgeCampanita = document.getElementById("badge-campanita");
 const toggleNotificaciones = document.getElementById("check-notificaciones");
 
 // ========================================================
-// 🔔 CONTROLADOR CENTRALIZADO DE NOTIFICACIONES
+// 🔔 CONTROLADOR CENTRALIZADO DE NOTIFICACIONES (CORREGIDO)
 // ========================================================
-const toggleNotificaciones = document.getElementById("check-notificaciones");
+(function inicializarControladorNotificaciones() {
+  const switchNotif = document.getElementById("check-notificaciones");
+  if (!switchNotif) return;
 
-// 1. Cargar estado inicial al abrir la app
-(function inicializarEstadoNotificaciones() {
+  // 1. Cargar estado inicial
   const notifGuardada = localStorage.getItem("movachat-notificaciones");
-  
-  if (toggleNotificaciones) {
-    // Si nunca se ha configurado, por defecto viene activado
-    const estaActivado = notifGuardada !== null ? notifGuardada === "activado" : true;
-    toggleNotificaciones.checked = estaActivado;
-    localStorage.setItem("movachat-notificaciones", estaActivado ? "activado" : "desactivado");
-  }
-})();
+  const estaActivado = notifGuardada !== null ? notifGuardada === "activado" : true;
+  switchNotif.checked = estaActivado;
+  localStorage.setItem("movachat-notificaciones", estaActivado ? "activado" : "desactivado");
 
-// 2. Escuchar cambios de encendido / apagado
-if (toggleNotificaciones) {
-  toggleNotificaciones.addEventListener("change", async () => {
-    const estaEncendido = toggleNotificaciones.checked;
+  // 2. Escuchar cambios de encendido / apagado
+  switchNotif.addEventListener("change", async () => {
+    const estaEncendido = switchNotif.checked;
 
     if (estaEncendido) {
-      // Intentar solicitar permiso nativo al SO/Navegador
-      const concedido = await solicitarPermisoNotificaciones();
-      
+      if (typeof solicitarPermisoNotificaciones === "function") {
+        await solicitarPermisoNotificaciones();
+      }
       localStorage.setItem("movachat-notificaciones", "activado");
 
       if (typeof mostrarAvisoPremium === "function") {
@@ -2885,7 +2880,7 @@ if (toggleNotificaciones) {
       }
     }
   });
-}
+})();
 
 // ========================================================
 // 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
