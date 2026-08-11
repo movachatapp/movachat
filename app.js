@@ -2451,10 +2451,6 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function mostrarAvisoPremium(mensaje, icono = "🔔", colorNeon = "#00f2fe") {
-  // 🛡️ CANDADO MASTER: Si las notificaciones están desactivadas, no muestra ningún aviso
-  const notifEstado = localStorage.getItem("movachat-notificaciones");
-  if (notifEstado === "desactivado") return;
-
   const toast = document.getElementById("toast-premium");
   const toastMensaje = document.getElementById("toast-mensaje");
   const toastIcono = document.getElementById("toast-icono-caja");
@@ -2850,41 +2846,35 @@ const btnCampanita = document.getElementById("btn-campanita-alertas");
 const badgeCampanita = document.getElementById("badge-campanita");
 const toggleNotificaciones = document.getElementById("check-notificaciones");
 
-// ========================================================
-// 🔔 CONTROLADOR CENTRALIZADO DE NOTIFICACIONES (CORREGIDO)
-// ========================================================
-(function inicializarControladorNotificaciones() {
-  const switchNotif = document.getElementById("check-notificaciones");
-  if (!switchNotif) return;
+// Cargar estado inicial guardado de Notificaciones
+const notifGuardada = localStorage.getItem("movachat-notificaciones");
+if (toggleNotificaciones) {
+  toggleNotificaciones.checked = notifGuardada !== null ? notifGuardada === "activado" : true;
+}
 
-  // 1. Cargar estado inicial
-  const notifGuardada = localStorage.getItem("movachat-notificaciones");
-  const estaActivado = notifGuardada !== null ? notifGuardada === "activado" : true;
-  switchNotif.checked = estaActivado;
-  localStorage.setItem("movachat-notificaciones", estaActivado ? "activado" : "desactivado");
+// 🔔 EVENTO AL TOCAR LA CAMPANITA: Activa el filtro "No leídos" en la interfaz
+if (btnCampanita) {
+  btnCampanita.onclick = () => {
+    const botonesFiltro = document.querySelectorAll(".caja-filtros .filtro-btn");
+    const btnTodos = botonesFiltro[0];
+    const btnNoLeidos = botonesFiltro[1];
 
-  // 2. Escuchar cambios de encendido / apagado
-  switchNotif.addEventListener("change", async () => {
-    const estaEncendido = switchNotif.checked;
+    if (btnNoLeidos) {
+      if (btnTodos) btnTodos.classList.remove("activo");
+      btnNoLeidos.classList.add("activo");
 
-    if (estaEncendido) {
-      if (typeof solicitarPermisoNotificaciones === "function") {
-        await solicitarPermisoNotificaciones();
-      }
-      localStorage.setItem("movachat-notificaciones", "activado");
+      // Simular la filtración de la lista
+      document.querySelectorAll("#lista-chats-principal .tarjeta-chat").forEach((tarjeta) => {
+        if (tarjeta.id === "tarjeta-mi-estado-propio") return;
 
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Notificaciones y sonidos activados 🔔", "✨", "#00f2fe");
-      }
-    } else {
-      localStorage.setItem("movachat-notificaciones", "desactivado");
+        const badge = tarjeta.querySelector(".badge-chat-no-leido") || tarjeta.querySelector(".badge-mensaje");
+        const tieneNoLeidos = badge && !badge.classList.contains("oculto") && parseInt(badge.textContent.trim(), 10) > 0;
 
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Notificaciones silenciadas por completo 🔕", "🔕", "#ff4b2b");
-      }
+        tarjeta.style.display = tieneNoLeidos ? "flex" : "none";
+      });
     }
-  });
-})();
+  };
+}
 
 // ========================================================
 // 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
@@ -3244,57 +3234,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     }
   });
 }
-
-// 🥷 4. CONTROLADOR CENTRALIZADO DEL SWITCH MODO SIGILO
-(function inicializarModoSigilo() {
-  const switchSigilo = document.getElementById("check-sigilo");
-  const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
-  const textoEstado = document.querySelector(".texto-estado");
-
-  if (!switchSigilo) return;
-
-  // Cargar estado inicial
-  const esActivo = localStorage.getItem("movachat-sigilo") === "activo";
-  switchSigilo.checked = esActivo;
-
-  if (esActivo) {
-    if (ledPerfil) {
-      ledPerfil.style.backgroundColor = "#888888";
-      ledPerfil.style.boxShadow = "0 0 10px #888888";
-    }
-    if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
-  }
-
-  // Escuchar cambios
-  switchSigilo.addEventListener("change", () => {
-    const estaEnSigilo = switchSigilo.checked;
-    localStorage.setItem("movachat-sigilo", estaEnSigilo ? "activo" : "inactivo");
-
-    if (ledPerfil) {
-      ledPerfil.style.backgroundColor = estaEnSigilo ? "#888888" : "#00f2fe";
-      ledPerfil.style.boxShadow = estaEnSigilo ? "0 0 10px #888888" : "0 0 10px #00f2fe";
-    }
-    if (textoEstado) {
-      textoEstado.textContent = estaEnSigilo ? "Invisible (Modo Sigilo)" : "Disponible";
-    }
-
-    if (typeof actualizarEstadoEnFirebase === "function") {
-      actualizarEstadoEnFirebase(estaEnSigilo ? "offline" : "online");
-    }
-
-    if (typeof actualizarDobleLedCabecera === "function") {
-      actualizarDobleLedCabecera("perfil");
-    }
-
-    if (typeof mostrarAvisoPremium === "function") {
-      if (estaEnSigilo) {
-        mostrarAvisoPremium("Modo Sigilo activado: Tu estado ahora es invisible 👤", "🥷", "#888888");
-      } else {
-        mostrarAvisoPremium("Modo Sigilo desactivado: Estás visible en línea 🟢", "✨", "#00f2fe");
-      }
-    }
-  });
-})();
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
 
@@ -6348,20 +6287,29 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 5️⃣ Conectar el interruptor de notificaciones con el permiso del navegador
+  // 5️⃣ Conectar el interruptor de notificaciones con el permiso del navegador (CORREGIDO)
   const toggleNotificaciones = document.getElementById("check-notificaciones");
   if (toggleNotificaciones) {
     toggleNotificaciones.addEventListener("change", async () => {
       if (toggleNotificaciones.checked) {
         const concedido = await solicitarPermisoNotificaciones();
         if (concedido) {
+          localStorage.setItem("movachat-notificaciones", "activado");
           if (typeof mostrarAvisoPremium === "function") {
             mostrarAvisoPremium("¡Notificaciones activadas con éxito! 🚀", "🔔", "#00f2fe");
           }
         } else {
+          toggleNotificaciones.checked = false;
+          localStorage.setItem("movachat-notificaciones", "desactivado");
           if (typeof mostrarAvisoPremium === "function") {
             mostrarAvisoPremium("Por favor permite las notificaciones en tu navegador ⚙️", "⚠️", "#ff4b2b");
           }
+        }
+      } else {
+        // 🔕 Guardar en memoria cuando el usuario apaga manualmente el interruptor
+        localStorage.setItem("movachat-notificaciones", "desactivado");
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Notificaciones de la app desactivadas 🔕", "🔕", "#ff4b2b");
         }
       }
     });
@@ -6411,26 +6359,6 @@ if ('serviceWorker' in navigator) {
         console.error('🔴 Error al activar el Service Worker:', error);
       });
   });
-}
-
-// 🥷 2. ACTUALIZACIÓN UNIFICADA DE ESTADO EN FIREBASE
-function actualizarEstadoEnFirebase(nuevoEstado) {
-  const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
-  if (!usuarioActual) return;
-
-  const esSigiloActivo = localStorage.getItem("movachat-sigilo") === "activo";
-  const estaOffline = esSigiloActivo || nuevoEstado === "offline";
-  const estadoFinal = estaOffline ? "offline" : "online";
-
-  if (typeof db !== "undefined" && typeof ref !== "undefined" && typeof update !== "undefined") {
-    const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
-    update(userRef, {
-      estado: estadoFinal,
-      estadoConexion: estadoFinal,
-      estadoPresencia: estadoFinal,
-      presenciaReal: !estaOffline
-    }).catch((err) => console.log("⚠️ Error en estado:", err));
-  }
 }
 
 // --- MANEJO DEL PROMPT DE INSTALACIÓN PWA ---
