@@ -3161,6 +3161,19 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
             elemBadge.classList.remove("oculto");
           }
           if (elemTexto) elemTexto.classList.add("texto-resaltado");
+
+          // 🔊 REPRODUCIR SONIDO Y VIBRACIÓN EN PANTALLA PRINCIPAL O PERFIL
+          if (ultimoMsg) {
+            const emisorReal = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente;
+            const haceCuanto = Date.now() - (ultimoMsg.timestamp || Date.now());
+
+            // Dispara si el mensaje viene de otra persona y llegó hace menos de 5 segundos
+            if (emisorReal !== miUid && haceCuanto < 5000) {
+              if (typeof window.reproducirSonidoRecibido === "function") {
+                window.reproducirSonidoRecibido(contactoUid);
+              }
+            }
+          }
         } else {
           if (elemBadge) {
             elemBadge.textContent = "0";
