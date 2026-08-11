@@ -2240,13 +2240,26 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
-// 💡 FUNCIÓN CORREGIDA: Actualiza solo los leds de la cabecera del usuario (sin afectar a otros contactos)
+// 💡 FUNCIÓN ACTUALIZADA: Con override exclusivo para Modo Sigilo
 function actualizarDobleLedCabecera(pantallaActual) {
   const ledSuperior = document.getElementById("led-enfoque-app");
   const ledInferior = document.getElementById("led-presencia-base");
 
   if (!ledSuperior || !ledInferior) return;
 
+  // 🥷 1. REGLA PRIORITARIA: Si Sigilo está activo, apaga a gris y sale de inmediato
+  if (localStorage.getItem("movachat-sigilo") === "activo") {
+    ledInferior.style.setProperty("background-color", "#888888", "important");
+    ledInferior.style.boxShadow = "none";
+
+    ledSuperior.style.setProperty("background-color", "#888888", "important");
+    ledSuperior.style.boxShadow = "none";
+    return;
+  }
+
+  // ========================================================
+  // 👇 TODO TU CÓDIGO ORIGINAL CONTINÚA INTACTO DESDE AQUÍ
+  // ========================================================
   const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
   let colorEstadoActual = "#00f2fe";
 
@@ -6453,3 +6466,49 @@ if (inputMensaje) {
     });
   }
 }
+
+// 🥷 CONTROLADOR VISUAL AISLADO MODO SIGILO
+(function controlarSigiloVisual() {
+  const switchSigilo = document.getElementById("check-sigilo");
+  const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
+  const textoEstado = document.querySelector(".texto-estado");
+
+  if (!switchSigilo) return;
+
+  // Cargar estado al abrir la app
+  const esActivo = localStorage.getItem("movachat-sigilo") === "activo";
+  switchSigilo.checked = esActivo;
+
+  if (esActivo) {
+    if (ledPerfil) {
+      ledPerfil.style.backgroundColor = "#888888";
+      ledPerfil.style.boxShadow = "none";
+    }
+    if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
+  }
+
+  // Escuchar el click en el interruptor
+  switchSigilo.addEventListener("change", () => {
+    const activo = switchSigilo.checked;
+
+    if (activo) {
+      localStorage.setItem("movachat-sigilo", "activo");
+      if (ledPerfil) {
+        ledPerfil.style.backgroundColor = "#888888";
+        ledPerfil.style.boxShadow = "none";
+      }
+      if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
+    } else {
+      localStorage.setItem("movachat-sigilo", "inactivo");
+      if (ledPerfil) {
+        ledPerfil.style.backgroundColor = "#00f2fe";
+        ledPerfil.style.boxShadow = "0 0 10px #00f2fe";
+      }
+      if (textoEstado) textoEstado.textContent = "Disponible";
+    }
+
+    if (typeof actualizarDobleLedCabecera === "function") {
+      actualizarDobleLedCabecera("perfil");
+    }
+  });
+})();
