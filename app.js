@@ -184,7 +184,6 @@ onAuthStateChanged(auth, async (user) => {
           }
 
           // 🚀 2. INYECCIÓN DIRECTA DE DATOS REALES EN EL PERFIL
-          // Apuntamos al selector exacto del HTML: <h2 id="texto-perfil-nombre"><span>Tu Nombre</span></h2>
           const elemNombreSpan = document.querySelector("#texto-perfil-nombre span");
           const elemFotoPerfil = document.querySelector(".avatar-perfil-img");
           const elemTextoEstado = document.querySelector(".texto-estado");
@@ -224,7 +223,7 @@ onAuthStateChanged(auth, async (user) => {
             cargarContactosAprobados(user.uid);
           }
 
-          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE AL ABRIR LA APP (CON EXPIRACIÓN Y ÍCONO VISUAL)
+          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE (CON PROGRAMADOR Y LIMPIEZA AUTOMÁTICA)
           const refSilenciados = ref(db, `silenciados/${user.uid}`);
           onValue(refSilenciados, (snapshot) => {
             if (snapshot.exists()) {
@@ -242,11 +241,19 @@ onAuthStateChanged(auth, async (user) => {
                   const hastaMs = parseInt(valorHasta, 10);
                   if (!isNaN(hastaMs) && ahora < hastaMs) {
                     estaVigente = true;
+                    // Programar temporizador de desactivación automática en tiempo real
+                    if (typeof programarAutoDesactivacionSilencio === "function") {
+                      programarAutoDesactivacionSilencio(contactoUid, hastaMs);
+                    }
                   } else {
-                    // ⌛ Expiró el tiempo: Limpiamos Firebase asignando null
-                    set(ref(db, `silenciados/${user.uid}/${contactoUid}`), null);
-                    localStorage.removeItem(`silenciado_${contactoUid}`);
-                    localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
+                    // Expiró el tiempo mientras la app estaba cerrada
+                    if (typeof limpiarSilencioExpirado === "function") {
+                      limpiarSilencioExpirado(contactoUid);
+                    } else {
+                      set(ref(db, `silenciados/${user.uid}/${contactoUid}`), null);
+                      localStorage.removeItem(`silenciado_${contactoUid}`);
+                      localStorage.removeItem(`silenciado_hasta_${contactoUid}`);
+                    }
                   }
                 }
 
@@ -259,19 +266,17 @@ onAuthStateChanged(auth, async (user) => {
                   if (tarjeta) {
                     tarjeta.classList.add("chat-silenciado-zona");
 
-                    // Inyectar el ícono visual si no está presente en la tarjeta
                     const contenedorHora = tarjeta.querySelector(".chat-cabecera");
                     if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
                       contenedorHora.insertAdjacentHTML("beforeend", `
-              <span class="indicador-silencio-neon" title="Chat silenciado">
-                <i data-lucide="bell-off"></i>
-              </span>
-            `);
+                        <span class="indicador-silencio-neon" title="Chat silenciado">
+                          <i data-lucide="bell-off"></i>
+                        </span>
+                      `);
                       objetivosIconos.push(tarjeta);
                     }
                   }
                 } else {
-                  // Si ya expiró, quitamos el estilo e ícono de la tarjeta
                   if (tarjeta) {
                     tarjeta.classList.remove("chat-silenciado-zona");
                     const iconoNeon = tarjeta.querySelector(".indicador-silencio-neon");
@@ -280,7 +285,6 @@ onAuthStateChanged(auth, async (user) => {
                 }
               });
 
-              // Renderizar los iconos de Lucide cargados
               if (window.lucide && objetivosIconos.length > 0) {
                 window.lucide.createIcons({ targets: objetivosIconos });
               }
@@ -2123,25 +2127,39 @@ document.addEventListener("click", () => {
 
 if (btnVolver) {
   btnVolver.addEventListener("click", () => {
-    // ⚠️ Limpiar contacto activo y apagar escuchador de mensajes al salir del chat
+    // ⚠️ Limpiar contacto activo
     window.contactoActivoUid = null;
-    contactoActivoUid = null;
-    if (typeof listenerChatActivo === "function") {
-      listenerChatActivo();
-      listenerChatActivo = null;
-    }
+    if (typeof contactoActivoUid !== "undefined") contactoActivoUid = null;
+
+    // 🧹 APAGADO TOTAL DE ESCUCHADORES EN SEGUNDO PLANO
+    if (typeof listenerChatActivo === "function") { listenerChatActivo(); listenerChatActivo = null; }
+    if (typeof listenerConfigActivo === "function") { listenerConfigActivo(); listenerConfigActivo = null; }
+    if (typeof listenerEscribiendoActivo === "function") { listenerEscribiendoActivo(); listenerEscribiendoActivo = null; }
+    if (typeof listenerLecturaActivo === "function") { listenerLecturaActivo(); listenerLecturaActivo = null; }
+    if (typeof listenerPresenciaContactoActivo === "function") { listenerPresenciaContactoActivo(); listenerPresenciaContactoActivo = null; }
 
     const menuTarjetas = document.getElementById("menu-tarjetas-chat");
     if (menuTarjetas) menuTarjetas.classList.add("oculto");
 
     const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
 
-    if (encabezadoGlobal) encabezadoGlobal.style.display = "flex";
+    if (typeof mostrarEncabezadoPrincipal === "function") {
+      mostrarEncabezadoPrincipal();
+    } else if (encabezadoGlobal) {
+      encabezadoGlobal.style.display = "flex";
+    }
+    
     if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "flex";
     if (btnFlotanteContacto) btnFlotanteContacto.style.display = "flex";
 
-    pantallaChatPrivado.classList.remove("pantalla-completa");
-    switchPantalla(pantallaChats, pantallaBienvenida, pantallaPerfil, pantallaChatPrivado);
+    const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
+    if (pantallaChatPrivado) {
+      pantallaChatPrivado.classList.remove("pantalla-completa");
+      pantallaChatPrivado.style.display = "none";
+    }
+    
+    const pantallaChats = document.getElementById("pantalla-chats");
+    if (pantallaChats) pantallaChats.style.display = "flex";
   });
 }
 
@@ -3775,76 +3793,6 @@ function activarOyenteGlobalMensajes(miUid) {
         }
       }
     }
-  });
-}
-
-// 🔕 SINCRONIZAR SILENCIADOS Y OYENTE GLOBAL AL ABRIR LA APP
-if (typeof auth !== "undefined" && auth) {
-  onAuthStateChanged(auth, (user) => {
-    if (!user) return;
-
-    // 🔊 1. ACTIVAR OYENTE GLOBAL DE SONIDOS/VIBRACIÓN PARA PRINCIPAL Y PERFIL
-    if (typeof activarOyenteGlobalMensajes === "function") {
-      activarOyenteGlobalMensajes(user.uid);
-    }
-
-    // 🔕 2. SINCRONIZAR ESTADOS DE SILENCIO DESDE FIREBASE
-    const refSilenciados = ref(db, `silenciados/${user.uid}`);
-    onValue(refSilenciados, (snapshot) => {
-      if (snapshot.exists()) {
-        const silenciadosBD = snapshot.val();
-        const objetivosIconos = [];
-        const ahora = Date.now();
-
-        Object.keys(silenciadosBD).forEach((contactoUid) => {
-          const valorHasta = silenciadosBD[contactoUid];
-          let estaVigente = false;
-
-          if (valorHasta === "indefinido") {
-            estaVigente = true;
-          } else {
-            const hastaMs = parseInt(valorHasta, 10);
-            if (!isNaN(hastaMs) && ahora < hastaMs) {
-              estaVigente = true;
-              // Programar el temporizador para los minutos restantes
-              if (typeof programarAutoDesactivacionSilencio === "function") {
-                programarAutoDesactivacionSilencio(contactoUid, hastaMs);
-              }
-            } else {
-              // Expiró mientras la app estaba cerrada
-              if (typeof limpiarSilencioExpirado === "function") {
-                limpiarSilencioExpirado(contactoUid);
-              }
-            }
-          }
-
-          const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
-
-          if (estaVigente) {
-            localStorage.setItem(`silenciado_${contactoUid}`, "true");
-            localStorage.setItem(`silenciado_hasta_${contactoUid}`, valorHasta);
-
-            if (tarjeta) {
-              tarjeta.classList.add("chat-silenciado-zona");
-
-              const contenedorHora = tarjeta.querySelector(".chat-cabecera");
-              if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
-                contenedorHora.insertAdjacentHTML("beforeend", `
-                  <span class="indicador-silencio-neon" title="Chat silenciado">
-                    <i data-lucide="bell-off"></i>
-                  </span>
-                `);
-                objetivosIconos.push(tarjeta);
-              }
-            }
-          }
-        });
-
-        if (window.lucide && objetivosIconos.length > 0) {
-          window.lucide.createIcons({ targets: objetivosIconos });
-        }
-      }
-    });
   });
 }
 
@@ -6140,21 +6088,6 @@ function escucharMensajesChat(chatId) {
             }
           }
 
-          if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto) {
-            const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
-            const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
-            const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
-
-            if (typeof notificarNuevoMensaje === "function") {
-              notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
-            }
-
-            // 🔊 EJECUCIÓN CON VERIFICACIÓN DE SILENCIO Y VIBRACIÓN (USANDO idEmisorReal)
-            if (typeof window.reproducirSonidoRecibido === "function") {
-              window.reproducirSonidoRecibido(idEmisorReal);
-            }
-          }
-
           let horaFormateada = "00:00";
           if (msg.hora) {
             horaFormateada = msg.hora;
@@ -6489,29 +6422,6 @@ document.querySelectorAll(".menu-flotante .menu-btn, .barra-navegacion .nav-item
     mostrarEncabezadoPrincipal();
   });
 });
-
-// 2. Corregir el botón "Volver" del Chat Privado
-const btnVolverChat = document.querySelector(".chat-privado-header .btn-volver") || document.getElementById("btn-volver-chat");
-
-if (btnVolverChat) {
-  btnVolverChat.addEventListener("click", () => {
-    // ⚠️ Limpiar contacto activo al regresar a la lista de chats
-    window.contactoActivoUid = null;
-    contactoActivoUid = null;
-    if (typeof listenerChatActivo === "function") {
-      listenerChatActivo();
-      listenerChatActivo = null;
-    }
-
-    const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
-    const pantallaChats = document.getElementById("pantalla-chats");
-
-    if (pantallaChatPrivado) pantallaChatPrivado.style.display = "none";
-    if (pantallaChats) pantallaChats.style.display = "flex";
-
-    mostrarEncabezadoPrincipal();
-  });
-}
 
 // 🌐 DETECTOR DE ESTADO DE RED EN TIEMPO REAL
 window.addEventListener("online", () => {
