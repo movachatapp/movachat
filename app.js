@@ -6437,23 +6437,27 @@ if ('serviceWorker' in navigator) {
 }
 
 // ========================================================
-// 🥷 CONEXIÓN DIRECTA DEL MODO SIGILO A FIREBASE (BLINDADA)
+// 🥷 CONEXIÓN DIRECTA Y UNIFICADA DEL MODO SIGILO A FIREBASE
 // ========================================================
 function actualizarEstadoEnFirebase(nuevoEstado) {
-  // 1. Verificamos que el usuario tenga la sesión iniciada
   const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
   if (!usuarioActual) return;
 
-  // 🛡️ CANDADO MASTER: Si el usuario activó Modo Sigilo, FORZAR 'offline' siempre
+  // 1. Verificar si el usuario tiene activado el Modo Sigilo
   const esSigiloActivo = localStorage.getItem("movachat-sigilo") === "activo";
   const estadoFinal = esSigiloActivo ? "offline" : ((nuevoEstado === "offline") ? "offline" : "online");
 
-  // 3. Guardar directamente en la base de datos de Firebase
-  if (typeof db !== "undefined" && typeof ref !== "undefined" && typeof set !== "undefined") {
-    const estadoRef = ref(db, `usuarios/${usuarioActual.uid}/estado`);
-    set(estadoRef, estadoFinal)
-      .then(() => console.log("🟢 Estado de presencia actualizado en Firebase:", estadoFinal))
-      .catch((err) => console.log("⚠️ Error guardando estado:", err));
+  // 2. Actualizar TODOS los campos de presencia en un solo disparo en Firebase
+  if (typeof db !== "undefined" && typeof ref !== "undefined" && typeof update !== "undefined") {
+    const usuarioRef = ref(db, `usuarios/${usuarioActual.uid}`);
+    
+    update(usuarioRef, {
+      estado: estadoFinal,
+      estadoConexion: estadoFinal,
+      estadoPresencia: estadoFinal
+    })
+    .then(() => console.log("🥷 Presencia unificada en Firebase:", estadoFinal))
+    .catch((err) => console.log("⚠️ Error actualizando presencia:", err));
   }
 }
 
