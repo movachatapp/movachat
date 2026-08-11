@@ -186,23 +186,24 @@ body {
   transition: transform 0.3s ease;
 }
 
-/* --- FASE 2.1: MENÚ FLOTANTE INFERIOR --- */
+/* --- FASE 2.1: MENÚ FLOTANTE INFERIOR (CÁPSULA PERFILADA VERTICALMENTE) --- */
 .menu-flotante {
   position: absolute;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  justify-content: space-around;
-  width: 90%;
-  max-width: 400px;
-  background: rgba(11, 12, 16, 0.75);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  padding: 12px 20px;
-  border-radius: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  justify-content: center;
+  align-items: center;
+  gap: 55px;
+  width: auto;
+  background: rgba(11, 12, 16, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 10px 38px; /* ✂️ 10px arriba/abajo (2px menos) y 38px a los lados */
+  border-radius: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.1);
   z-index: 100;
 }
 
@@ -3822,4 +3823,45 @@ body.tema-claro .nombre-sugerencia-txt {
 .btn-modal-confirmar-rojo:active {
   transform: scale(0.96);
   opacity: 0.9;
+}
+
+/* ========================================================
+   ⚡ MODO AHORRO DE BATERÍA / MÁXIMO RENDIMIENTO
+   ======================================================== */
+
+/* 1. Desactivar desenfoques Glassmorphism y acelerar renderizado */
+body.modo-ahorro *,
+body.modo-ahorro *::before,
+body.modo-ahorro *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* 2. Ocultar orbes de fondo neón con animaciones continuas */
+body.modo-ahorro .luces-fondo,
+body.modo-ahorro .esfera {
+  display: none !important;
+}
+
+/* 3. Fondos sólidos de alto rendimiento para contenedores principales */
+body.modo-ahorro .contenedor-chat,
+body.modo-ahorro .menu-flotante,
+body.modo-ahorro .modal-cristal,
+body.modo-ahorro .modal-overlay,
+body.modo-ahorro .chat-privado-header,
+body.modo-ahorro .barra-escribir-chat,
+body.modo-ahorro .tarjeta-chat,
+body.modo-ahorro .caja-aura,
+body.modo-ahorro .caja-ajustes {
+  background: #0f1423 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* 4. Detener animaciones infinitas para liberar CPU/GPU */
+body.modo-ahorro .punto-online,
+body.modo-ahorro #badge-campanita,
+body.modo-ahorro .puntos-escribiendo span {
+  animation: none !important;
 }

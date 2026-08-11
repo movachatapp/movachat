@@ -2240,26 +2240,13 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
-// 💡 FUNCIÓN ACTUALIZADA: Con override exclusivo para Modo Sigilo
+// 💡 FUNCIÓN CORREGIDA: Actualiza solo los leds de la cabecera del usuario (sin afectar a otros contactos)
 function actualizarDobleLedCabecera(pantallaActual) {
   const ledSuperior = document.getElementById("led-enfoque-app");
   const ledInferior = document.getElementById("led-presencia-base");
 
   if (!ledSuperior || !ledInferior) return;
 
-  // 🥷 1. REGLA PRIORITARIA: Si Sigilo está activo, apaga a gris y sale de inmediato
-  if (localStorage.getItem("movachat-sigilo") === "activo") {
-    ledInferior.style.setProperty("background-color", "#888888", "important");
-    ledInferior.style.boxShadow = "none";
-
-    ledSuperior.style.setProperty("background-color", "#888888", "important");
-    ledSuperior.style.boxShadow = "none";
-    return;
-  }
-
-  // ========================================================
-  // 👇 TODO TU CÓDIGO ORIGINAL CONTINÚA INTACTO DESDE AQUÍ
-  // ========================================================
   const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
   let colorEstadoActual = "#00f2fe";
 
@@ -5321,6 +5308,70 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
+// 🌐 SISTEMA DE REDES SOCIALES PERSONALES EN PERFIL
+function conectarRedesSociales() {
+  const botonesRedes = document.querySelectorAll(".red-enlace");
+
+  botonesRedes.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tipoRed = btn.dataset.red; // 'instagram', 'tiktok', 'facebook'
+      const user = firebase.auth().currentUser;
+      if (!user) return;
+
+      // Consultar si ya tiene un enlace guardado
+      firebase.database().ref(`usuarios/${user.uid}/redes/${tipoRed}`).once("value", (snap) => {
+        const urlExistente = snap.val();
+
+        // Pedir nuevo enlace/usuario al tocar
+        const nuevaUrl = prompt(`Ingresa tu enlace o usuario de ${tipoRed.toUpperCase()}:`, urlExistente || "");
+
+        if (nuevaUrl !== null) {
+          const valorLimpio = nuevaUrl.trim();
+          
+          if (valorLimpio === "") {
+            // Si lo deja vacío, borra la red social de Firebase
+            firebase.database().ref(`usuarios/${user.uid}/redes/${tipoRed}`).remove();
+            btn.classList.remove("conectada");
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium(`Red ${tipoRed} eliminada`, "🗑️", "#ff4b2b");
+            }
+          } else {
+            // Guardar en Firebase
+            firebase.database().ref(`usuarios/${user.uid}/redes/${tipoRed}`).set(valorLimpio);
+            btn.classList.add("conectada");
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium(`¡Red ${tipoRed} vinculada con éxito! 🚀`, "✅", "#00f2fe");
+            }
+          }
+        }
+      });
+    });
+  });
+}
+
+// Cargar estado de las redes al abrir el perfil
+function cargarEstadoRedesPropias() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+
+  firebase.database().ref(`usuarios/${user.uid}/redes`).on("value", (snap) => {
+    const redes = snap.val() || {};
+    
+    document.querySelectorAll(".red-enlace").forEach(btn => {
+      const tipoRed = btn.dataset.red;
+      if (redes[tipoRed]) {
+        btn.classList.add("conectada");
+        btn.style.borderColor = "#00f2fe";
+        btn.style.boxShadow = "0 0 10px rgba(0, 242, 254, 0.3)";
+      } else {
+        btn.classList.remove("conectada");
+        btn.style.borderColor = "rgba(255, 255, 255, 0.08)";
+        btn.style.boxShadow = "none";
+      }
+    });
+  });
+}
+
 // Variable para controlar el temporizador activo del toast
 let toastTimeoutId = null;
 
@@ -6288,6 +6339,9 @@ document.addEventListener("DOMContentLoaded", () => {
     window.lucide.createIcons();
   }
 
+  // 🌐 Enlazar los botones de redes sociales del perfil
+  conectarRedesSociales();
+
   // 2️⃣ Botón 'Buscar amigo' de la pantalla de bienvenida vacía
   const btnBuscarVacio = document.getElementById("btn-vacio-buscar-amigo");
   if (btnBuscarVacio) {
@@ -6328,6 +6382,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+});
+
+// 🔑 Cargar el estado neón de las redes cuando Firebase confirme la sesión
+firebase.auth().onAuthStateChanged((user) => {
+  if (user) {
+    cargarEstadoRedesPropias();
+  }
 });
 
 // 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada)
@@ -6467,48 +6528,35 @@ if (inputMensaje) {
   }
 }
 
-// 🥷 CONTROLADOR VISUAL AISLADO MODO SIGILO
-(function controlarSigiloVisual() {
-  const switchSigilo = document.getElementById("check-sigilo");
-  const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
-  const textoEstado = document.querySelector(".texto-estado");
+// ⚡ CONTROLADOR MODO AHORRO DE BATERÍA / RENDIMIENTO
+(function inicializarModoAhorro() {
+  const toggleAhorro = document.getElementById("check-ahorro");
+  const ahorroGuardado = localStorage.getItem("movachat-ahorro-bateria") === "activo";
 
-  if (!switchSigilo) return;
-
-  // Cargar estado al abrir la app
-  const esActivo = localStorage.getItem("movachat-sigilo") === "activo";
-  switchSigilo.checked = esActivo;
-
-  if (esActivo) {
-    if (ledPerfil) {
-      ledPerfil.style.backgroundColor = "#888888";
-      ledPerfil.style.boxShadow = "none";
-    }
-    if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
+  // Cargar preferencia al iniciar
+  if (ahorroGuardado) {
+    document.body.classList.add("modo-ahorro");
+    if (toggleAhorro) toggleAhorro.checked = true;
   }
 
-  // Escuchar el click en el interruptor
-  switchSigilo.addEventListener("change", () => {
-    const activo = switchSigilo.checked;
+  // Escuchar el interruptor
+  document.addEventListener("change", (e) => {
+    if (!e.target || e.target.id !== "check-ahorro") return;
 
-    if (activo) {
-      localStorage.setItem("movachat-sigilo", "activo");
-      if (ledPerfil) {
-        ledPerfil.style.backgroundColor = "#888888";
-        ledPerfil.style.boxShadow = "none";
+    const estaActivo = e.target.checked;
+
+    if (estaActivo) {
+      document.body.classList.add("modo-ahorro");
+      localStorage.setItem("movachat-ahorro-bateria", "activo");
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Modo Ahorro activado: Máxima fluidez ⚡", "🔋", "#00f2fe");
       }
-      if (textoEstado) textoEstado.textContent = "Invisible (Modo Sigilo)";
     } else {
-      localStorage.setItem("movachat-sigilo", "inactivo");
-      if (ledPerfil) {
-        ledPerfil.style.backgroundColor = "#00f2fe";
-        ledPerfil.style.boxShadow = "0 0 10px #00f2fe";
+      document.body.classList.remove("modo-ahorro");
+      localStorage.setItem("movachat-ahorro-bateria", "inactivo");
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Modo Neón reactivado: Efectos completos 🌌", "✨", "#00f2fe");
       }
-      if (textoEstado) textoEstado.textContent = "Disponible";
-    }
-
-    if (typeof actualizarDobleLedCabecera === "function") {
-      actualizarDobleLedCabecera("perfil");
     }
   });
 })();

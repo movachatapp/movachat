@@ -3,7 +3,8 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
   <title>MovaChat</title>
   <meta name="description"
     content="MovaChat - Tu espacio de conexión premium con chat en tiempo real, historias y privacidad.">
@@ -256,7 +257,8 @@
               <i data-lucide="qr-code"></i> QR Pro
             </button>
 
-            <button type="button" id="btn-limpiar-historial-global" style="flex: 1; background: rgba(255, 75, 43, 0.05); border: 1px solid rgba(255, 75, 43, 0.15); border-radius: 20px; color: rgba(255, 75, 43, 0.9); padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">
+            <button type="button" id="btn-limpiar-historial-global"
+              style="flex: 1; background: rgba(255, 75, 43, 0.05); border: 1px solid rgba(255, 75, 43, 0.15); border-radius: 20px; color: rgba(255, 75, 43, 0.9); padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">
               <i data-lucide="trash-2" style="color: #ff4b2b; width: 18px; height: 18px;"></i> Limpiar
             </button>
 
@@ -277,47 +279,46 @@
           </div>
           <div class="ajuste-item">
             <div class="ajuste-info">
-              <i data-lucide="eye-off"></i>
-              <span>Modo Sigilo (Invisible)</span>
+              <i data-lucide="zap"></i>
+              <span>Ahorro de Batería / Rendimiento</span>
             </div>
             <label class="switch-neon">
-              <input type="checkbox" id="check-sigilo">
+              <input type="checkbox" id="check-ahorro">
               <span class="slider"></span>
             </label>
           </div>
         </div>
 
         <div class="tarjeta-bento comunidad">
-          <h3>Únete a la Comunidad</h3>
+          <h3>Mis Redes Sociales 🌐</h3>
           <div class="iconos-redes" style="display: flex; justify-content: center; gap: 20px; margin-top: 15px;">
-            <a href="https://instagram.com/tu_usuario" target="_blank" rel="noopener noreferrer"
-              class="red-enlace red-instagram"
-              style="display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.6); text-decoration: none;">
+
+            <button type="button" class="red-enlace red-instagram" data-red="instagram"
+              style="display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.6); cursor: pointer; outline: none;">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
                 <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
                 <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
               </svg>
-            </a>
+            </button>
 
-            <a href="https://tiktok.com/@tu_usuario" target="_blank" rel="noopener noreferrer"
-              class="red-enlace red-tiktok"
-              style="display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.6); text-decoration: none;">
+            <button type="button" class="red-enlace red-tiktok" data-red="tiktok"
+              style="display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.6); cursor: pointer; outline: none;">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
               </svg>
-            </a>
+            </button>
 
-            <a href="https://facebook.com/tu_pagina" target="_blank" rel="noopener noreferrer"
-              class="red-enlace red-facebook"
-              style="display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.6); text-decoration: none;">
+            <button type="button" class="red-enlace red-facebook" data-red="facebook"
+              style="display: flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.6); cursor: pointer; outline: none;">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
               </svg>
-            </a>
+            </button>
+
           </div>
         </div>
       </section>
@@ -535,7 +536,8 @@
     <div class="menu-contextual" id="menu-tarjetas-chat" style="width: 210px; display: none;">
       <button class="opcion-menu-ctx" id="btn-ctx-fijar"><i data-lucide="pin"></i> Fijar chat arriba</button>
       <hr class="divisor-menu-ctx">
-      <button class="opcion-menu-ctx texto-rojo" id="btn-ctx-eliminar-chat"><i data-lucide="trash-2"></i> Eliminar chat</button>
+      <button class="opcion-menu-ctx texto-rojo" id="btn-ctx-eliminar-chat"><i data-lucide="trash-2"></i> Eliminar
+        chat</button>
       <hr class="divisor-menu-ctx">
       <button class="opcion-menu-ctx" id="btn-ctx-cerrar"><i data-lucide="x"></i> Cancelar</button>
     </div>
@@ -556,7 +558,8 @@
           style="display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 4px 8px; margin-bottom: 12px; position: relative;">
           <input type="text" id="input-nuevo-contacto" placeholder="Nombre de nuevo contacto..." autocomplete="off"
             style="width: 100%; background: transparent; border: none; padding: 10px; color: white; font-size: 13.5px; outline: none;">
-          <button type="button" id="btn-guardar-contacto" class="btn-primario" style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
+          <button type="button" id="btn-guardar-contacto" class="btn-primario"
+            style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
 
           <!-- Lista flotante de autocompletado de usuarios Firebase -->
           <div id="sugerencias-busqueda-contactos" class="sugerencias-contactos-caja oculto"></div>
@@ -806,21 +809,21 @@
   </script>
 
   <!-- 🗑️ MODAL GLASSMORPHISM: CONFIRMAR LIMPIAR HISTORIAL GLOBAL -->
-<div id="modal-confirmar-limpiar-global" class="modal-overlay oculto">
-  <div class="modal-caja-alerta">
-    <div class="modal-alerta-icono red-neon">
-      <i data-lucide="trash-2"></i>
-    </div>
-    <h3 class="modal-alerta-titulo">¿Limpiar historial de chats?</h3>
-    <p class="modal-alerta-texto">
-      ¿Estás seguro de que deseas limpiar todas las conversaciones de tu bandeja? Tu estado propio no se borrará.
-    </p>
-    <div class="modal-alerta-acciones">
-      <button type="button" id="btn-cancelar-limpiar-global" class="btn-modal-cancelar">Cancelar</button>
-      <button type="button" id="btn-aceptar-limpiar-global" class="btn-modal-confirmar-rojo">Limpiar Chats</button>
+  <div id="modal-confirmar-limpiar-global" class="modal-overlay oculto">
+    <div class="modal-caja-alerta">
+      <div class="modal-alerta-icono red-neon">
+        <i data-lucide="trash-2"></i>
+      </div>
+      <h3 class="modal-alerta-titulo">¿Limpiar historial de chats?</h3>
+      <p class="modal-alerta-texto">
+        ¿Estás seguro de que deseas limpiar todas las conversaciones de tu bandeja? Tu estado propio no se borrará.
+      </p>
+      <div class="modal-alerta-acciones">
+        <button type="button" id="btn-cancelar-limpiar-global" class="btn-modal-cancelar">Cancelar</button>
+        <button type="button" id="btn-aceptar-limpiar-global" class="btn-modal-confirmar-rojo">Limpiar Chats</button>
+      </div>
     </div>
   </div>
-</div>
 
 </body>
 
