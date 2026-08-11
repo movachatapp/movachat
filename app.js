@@ -2451,6 +2451,10 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function mostrarAvisoPremium(mensaje, icono = "🔔", colorNeon = "#00f2fe") {
+  // 🛡️ CANDADO MASTER: Si las notificaciones están desactivadas, no muestra ningún aviso
+  const notifEstado = localStorage.getItem("movachat-notificaciones");
+  if (notifEstado === "desactivado") return;
+
   const toast = document.getElementById("toast-premium");
   const toastMensaje = document.getElementById("toast-mensaje");
   const toastIcono = document.getElementById("toast-icono-caja");
