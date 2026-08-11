@@ -6433,14 +6433,35 @@ window.addEventListener("offline", () => {
   }
 });
 
-// Auto-scroll al enfocar el campo de texto (Corregido para MovaChat)
+// 🟢 AUTO-SCROLL UNIVERSAL PARA TECLADOS LENTOS Y SUPERPUESTOS
 const inputMensaje = document.getElementById("input-chat-privado");
 const contenedorMensajes = document.querySelector(".historial-mensajes");
 
-if (inputMensaje && contenedorMensajes) {
+function forzarScrollAlUltimoMensaje() {
+  if (!contenedorMensajes) return;
+  
+  // Buscar la última burbuja visible
+  const ultimoMensaje = contenedorMensajes.lastElementChild;
+  if (ultimoMensaje) {
+    ultimoMensaje.scrollIntoView({ behavior: "smooth", block: "end" });
+  } else {
+    contenedorMensajes.scrollTop = contenedorMensajes.scrollHeight;
+  }
+}
+
+if (inputMensaje) {
+  // 1. Disparo inmediato al tocar la caja
   inputMensaje.addEventListener("focus", () => {
-    setTimeout(() => {
-      contenedorMensajes.scrollTop = contenedorMensajes.scrollHeight;
-    }, 300);
+    setTimeout(forzarScrollAlUltimoMensaje, 100);
+    setTimeout(forzarScrollAlUltimoMensaje, 350); // Para teléfonos con teclados lentos
   });
+
+  // 2. Detección exacta en el instante en que el teclado termina de desplegarse
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      if (document.activeElement === inputMensaje) {
+        forzarScrollAlUltimoMensaje();
+      }
+    });
+  }
 }
