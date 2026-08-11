@@ -2240,27 +2240,13 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
-// 💡 FUNCIÓN CORREGIDA Y BLINDADA: Actualiza solo los leds de la cabecera
+// 💡 FUNCIÓN ORIGINAL LIMPIA: Actualiza solo los leds de la cabecera
 function actualizarDobleLedCabecera(pantallaActual) {
   const ledSuperior = document.getElementById("led-enfoque-app");
   const ledInferior = document.getElementById("led-presencia-base");
 
   if (!ledSuperior || !ledInferior) return;
 
-  // 🛡️ REGLA DE ORO: Si el Modo Sigilo está activado en memoria,
-  // apaga los leds a gris de inmediato antes de hacer cualquier cálculo.
-  if (localStorage.getItem("movachat-sigilo") === "activo") {
-    ledInferior.style.setProperty("background-color", "#888888", "important");
-    ledInferior.style.boxShadow = "none";
-
-    ledSuperior.style.setProperty("background-color", "#888888", "important");
-    ledSuperior.style.boxShadow = "none";
-    return;
-  }
-
-  // ========================================================
-  // 👇 TODO TU CÓDIGO ORIGINAL CONTINÚA INTACTO DESDE AQUÍ
-  // ========================================================
   const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
   let colorEstadoActual = "#00f2fe";
 
@@ -3258,51 +3244,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     }
   });
 }
-
-// ========================================================
-// 🥷 CONTROLADOR DEFINITIVO MODO SIGILO (VÍA BODY CSS)
-// ========================================================
-(function inicializarModoSigilo() {
-  const switchSigilo = document.getElementById("check-sigilo");
-  const textoEstado = document.querySelector(".texto-estado");
-
-  if (!switchSigilo) return;
-
-  function aplicarEstadoSigilo(activo) {
-    // 🛡️ Malla de seguridad CSS: Aplica la clase master al body
-    document.body.classList.toggle("modo-sigilo-activo", activo);
-
-    if (textoEstado) {
-      textoEstado.textContent = activo ? "Invisible (Modo Sigilo)" : "Disponible";
-    }
-  }
-
-  // 1. Cargar estado guardado al iniciar la app
-  const esActivo = localStorage.getItem("movachat-sigilo") === "activo";
-  switchSigilo.checked = esActivo;
-  aplicarEstadoSigilo(esActivo);
-
-  // 2. Escuchar cambios en el interruptor
-  switchSigilo.addEventListener("change", () => {
-    const estaEnSigilo = switchSigilo.checked;
-    localStorage.setItem("movachat-sigilo", estaEnSigilo ? "activo" : "inactivo");
-
-    aplicarEstadoSigilo(estaEnSigilo);
-
-    // Sincronizar estado en Firebase
-    if (typeof actualizarEstadoEnFirebase === "function") {
-      actualizarEstadoEnFirebase(estaEnSigilo ? "offline" : "online");
-    }
-
-    if (typeof mostrarAvisoPremium === "function") {
-      if (estaEnSigilo) {
-        mostrarAvisoPremium("Modo Sigilo activado: Tu estado ahora es invisible 👤", "🥷", "#888888");
-      } else {
-        mostrarAvisoPremium("Modo Sigilo desactivado: Estás visible en línea 🟢", "✨", "#00f2fe");
-      }
-    }
-  });
-})();
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
 
