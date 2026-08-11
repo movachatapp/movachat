@@ -2247,6 +2247,20 @@ function actualizarDobleLedCabecera(pantallaActual) {
 
   if (!ledSuperior || !ledInferior) return;
 
+  // 🛡️ REGLA DE ORO: Si el Modo Sigilo está activado en memoria,
+  // apaga los leds a gris de inmediato antes de hacer cualquier cálculo.
+  if (localStorage.getItem("movachat-sigilo") === "activo") {
+    ledInferior.style.setProperty("background-color", "#888888", "important");
+    ledInferior.style.boxShadow = "none";
+
+    ledSuperior.style.setProperty("background-color", "#888888", "important");
+    ledSuperior.style.boxShadow = "none";
+    return;
+  }
+
+  // ========================================================
+  // 👇 TODO TU CÓDIGO ORIGINAL CONTINÚA INTACTO DESDE AQUÍ
+  // ========================================================
   const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
   let colorEstadoActual = "#00f2fe";
 
@@ -2254,12 +2268,9 @@ function actualizarDobleLedCabecera(pantallaActual) {
     colorEstadoActual = window.getComputedStyle(ledPerfil).backgroundColor;
   }
 
-  // 🛡️ CANDADO DIRECTO DE SIGILO: Si está activo en localStorage, es invisible de inmediato
-  const esSigiloDirecto = localStorage.getItem("movachat-sigilo") === "activo";
-
   // Detectar el color propio de tu perfil
   let esOcupado = colorEstadoActual.includes("255, 75, 43") || colorEstadoActual === "rgb(255, 75, 43)" || colorEstadoActual === "#ff4b2b" || colorEstadoActual.includes("239, 68, 68");
-  let esInvisible = esSigiloDirecto || colorEstadoActual.includes("136, 136, 136") || colorEstadoActual === "rgb(136, 136, 136)" || colorEstadoActual === "#888888";
+  let esInvisible = colorEstadoActual.includes("136, 136, 136") || colorEstadoActual === "rgb(136, 136, 136)" || colorEstadoActual === "#888888";
 
   // 1. Si tu estado es INVISIBLE
   if (esInvisible) {
