@@ -2240,22 +2240,12 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
-// 💡 3. CONTROLADOR DE LEDS DE CABECERA (RESPETA MODO SIGILO)
+// 💡 FUNCIÓN CORREGIDA: Actualiza solo los leds de la cabecera del usuario (sin afectar a otros contactos)
 function actualizarDobleLedCabecera(pantallaActual) {
   const ledSuperior = document.getElementById("led-enfoque-app");
   const ledInferior = document.getElementById("led-presencia-base");
 
   if (!ledSuperior || !ledInferior) return;
-
-  // 🛡️ REGLA MASTER: Si el Modo Sigilo está activo en memoria, forzar gris de inmediato
-  if (localStorage.getItem("movachat-sigilo") === "activo") {
-    ledInferior.style.setProperty("background-color", "#888888", "important");
-    ledInferior.style.boxShadow = "none";
-
-    ledSuperior.style.setProperty("background-color", "#888888", "important");
-    ledSuperior.style.boxShadow = "none";
-    return;
-  }
 
   const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
   let colorEstadoActual = "#00f2fe";
@@ -2304,38 +2294,32 @@ function actualizarDobleLedCabecera(pantallaActual) {
   }
 }
 
-// 📡 1. GESTIÓN AUTOMÁTICA DEL LED SUPERIOR (BLINDADA CON MODO SIGILO)
+// 📡 1. GESTIÓN AUTOMÁTICA DEL LED SUPERIOR (PRESENCIA REAL / SISTEMA)
 function iniciarControlPresenciaReal() {
-  const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+  const usuarioActual = auth.currentUser;
   if (!usuarioActual) return;
 
   const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
   const connectedRef = ref(db, ".info/connected");
 
-  // Al desconectarse de Firebase, apagar el LED automáticamente
-  if (typeof onDisconnect === "function") {
-    onDisconnect(userRef).update({ presenciaReal: false, estadoConexion: "offline" });
-  }
+  // Al desconectarse de Firebase, apagar el LED superior automáticamente
+  onDisconnect(userRef).update({ presenciaReal: false });
 
   // Escuchar si hay conexión activa a Internet
-  if (typeof onValue === "function") {
-    onValue(connectedRef, (snap) => {
-      const esSigilo = localStorage.getItem("movachat-sigilo") === "activo";
-      if (snap.val() === true && !document.hidden && !esSigilo) {
-        update(userRef, { presenciaReal: true, estadoConexion: "online" });
-      } else {
-        update(userRef, { presenciaReal: false, estadoConexion: "offline" });
-      }
-    });
-  }
+  onValue(connectedRef, (snap) => {
+    if (snap.val() === true && !document.hidden) {
+      update(userRef, { presenciaReal: true });
+    } else {
+      update(userRef, { presenciaReal: false });
+    }
+  });
 
   // Escuchar cuando el usuario minimiza o vuelve a abrir la app
   document.addEventListener("visibilitychange", () => {
-    const esSigilo = localStorage.getItem("movachat-sigilo") === "activo";
-    if (document.hidden || esSigilo) {
-      update(userRef, { presenciaReal: false, estadoConexion: "offline" });
+    if (document.hidden) {
+      update(userRef, { presenciaReal: false });
     } else if (auth.currentUser) {
-      update(userRef, { presenciaReal: true, estadoConexion: "online" });
+      update(userRef, { presenciaReal: true });
     }
   });
 }
