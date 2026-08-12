@@ -6525,25 +6525,27 @@ function obtenerYouTubeId(url) {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// 2. Lógica del Admin para guardar canciones en Firebase
+// 2. Lógica del Admin para guardar canciones en Firebase (SIN PROMPT NATIVO)
 const btnAdminGuardarYt = document.getElementById("btn-admin-guardar-yt");
 const inputAdminUrlYt = document.getElementById("input-admin-url-yt");
+const inputAdminTituloYt = document.getElementById("input-admin-titulo-yt");
 
 if (btnAdminGuardarYt && inputAdminUrlYt) {
   btnAdminGuardarYt.addEventListener("click", async () => {
     const urlIngresada = inputAdminUrlYt.value.trim();
+    // Lee directamente el valor introducido en el input de arriba
+    const tituloIngresado = inputAdminTituloYt ? inputAdminTituloYt.value.trim() : "";
     const ytId = obtenerYouTubeId(urlIngresada);
 
     if (!ytId) {
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Enlace de YouTube no válido ⚠️", "⚠️", "#ff4b2b");
-      } else {
-        alert("Enlace de YouTube no válido.");
       }
       return;
     }
 
-    const tituloCancion = prompt("Ingresa el título de la canción:", "Tema MovaChill") || "Tema MovaChill";
+    // Si el usuario dejó la casilla de título vacía, asigna un nombre por defecto
+    const tituloCancion = tituloIngresado || "Tema MovaChill";
 
     try {
       const playlistRef = ref(db, "playlist_global");
@@ -6555,9 +6557,12 @@ if (btnAdminGuardarYt && inputAdminUrlYt) {
         timestamp: Date.now()
       });
 
+      // Limpia ambos campos tras guardar exitosamente
       inputAdminUrlYt.value = "";
+      if (inputAdminTituloYt) inputAdminTituloYt.value = "";
+
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("¡Canción añadida a la Playlist Global! 🎧", "🚀", "#00f2fe");
+        mostrarAvisoPremium("¡Canción añadida a la Playlist! 🎧", "🚀", "#00f2fe");
       }
     } catch (err) {
       console.error("Error al guardar canción en Firebase:", err);
@@ -6642,7 +6647,7 @@ let playlistGlobalData = [];
 let indiceCancionActual = 0;
 let estaReproduciendoMusica = false;
 
-// 1. Inicialización de la API de YouTube de forma nativa
+// Busca esta parte en tu app.js y agrega la línea 'origin'
 window.onYouTubeIframeAPIReady = function() {
   playerYouTube = new YT.Player('youtube-player-oculto', {
     height: '0',
@@ -6650,7 +6655,8 @@ window.onYouTubeIframeAPIReady = function() {
     playerVars: {
       'autoplay': 0,
       'controls': 0,
-      'enablejsapi': 1
+      'enablejsapi': 1,
+      'origin': window.location.origin // 👈 AGREGA ESTA LÍNEA
     },
     events: {
       'onReady': onPlayerReady,
