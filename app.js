@@ -6593,3 +6593,299 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 });
+
+// ========================================================
+// 🎵 MÓDULO AISLADO MOVARADIO (YouTube API + Firebase)
+// ========================================================
+(function inicializarMovaRadioEncapsulado() {
+  let ytPlayer = null;
+  let playlistRadio = [];
+  let indiceActualIndex = 0;
+  let cancionBorrarPendienteId = null;
+
+  // 1. Cargar YouTube Iframe API dinámicamente sin bloquear
+  if (!window.YT) {
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    if (firstScriptTag && firstScriptTag.parentNode) {
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
+  }
+
+  // YouTube API Ready Callback
+  window.onYouTubeIframeAPIReady = function () {
+    ytPlayer = new YT.Player('contenedor-youtube-hidden', {
+      height: '1',
+      width: '1',
+      playerVars: {
+        'playsinline': 1,
+        'controls': 0,
+        'disablekb': 1
+      },
+      events: {
+        'onReady': onPlayerReady,
+        'onStateChange': onPlayerStateChange
+      }
+    });
+  };
+
+  function onPlayerReady(event) {
+    // 🔊 Forzar volumen al 30% por defecto
+    const sliderVol = document.getElementById("movaradio-slider-volumen");
+    const volDefecto = sliderVol ? parseInt(sliderVol.value, 10) : 30;
+    event.target.setVolume(volDefecto);
+  }
+
+  function onPlayerStateChange(event) {
+    if (event.data === 1) {
+      activarEstadoReproduciendoUI(true);
+    } else if (event.data === 2) {
+      activarEstadoReproduciendoUI(false);
+    } else if (event.data === 0) {
+      if (indiceActualIndex + 1 < playlistRadio.length) {
+        indiceActualIndex++;
+        reproducirCancionIndex(indiceActualIndex);
+      } else {
+        activarEstadoReproduciendoUI(false);
+        indiceActualIndex = 0;
+      }
+    }
+  }
+
+  // 2. Control del Ecualizador y Alerta en Firebase
+  function activarEstadoReproduciendoUI(estaSonando) {
+    const btnPlay = document.getElementById("btn-movaradio-play");
+    const iconoAudifono = document.getElementById("movaradio-icono-audifono");
+    const ecualizador = document.getElementById("movaradio-ecualizador");
+    const tituloTxt = document.getElementById("movaradio-titulo-txt");
+    const subtituloTxt = document.getElementById("movaradio-subtitulo-txt");
+
+    const miUid = auth && auth.currentUser ? auth.currentUser.uid : null;
+
+    if (estaSonando) {
+      if (btnPlay) {
+        btnPlay.innerHTML = `<i data-lucide="pause"></i>`;
+        if (window.lucide) window.lucide.createIcons({ targets: [btnPlay] });
+      }
+      if (iconoAudifono) iconoAudifono.classList.add("oculto");
+      if (ecualizador) ecualizador.classList.remove("oculto");
+
+      const cancionActual = playlistRadio[indiceActualIndex];
+      if (cancionActual) {
+        if (tituloTxt) tituloTxt.textContent = cancionActual.titulo || "MovaRadio";
+        if (subtituloTxt) subtituloTxt.textContent = "Reproduciendo en vivo 🎵";
+      }
+
+      if (miUid) {
+        update(ref(db, `usuarios/${miUid}`), {
+          reproduciendoRadio: true,
+          cancionRadio: cancionActual ? cancionActual.titulo : "MovaRadio"
+        }).catch(() => {});
+      }
+    } else {
+      if (btnPlay) {
+        btnPlay.innerHTML = `<i data-lucide="play"></i>`;
+        if (window.lucide) window.lucide.createIcons({ targets: [btnPlay] });
+      }
+      if (iconoAudifono) iconoAudifono.classList.remove("oculto");
+      if (ecualizador) ecualizador.classList.add("oculto");
+      if (subtituloTxt) subtituloTxt.textContent = "Toca Play para escuchar...";
+
+      if (miUid) {
+        update(ref(db, `usuarios/${miUid}`), {
+          reproduciendoRadio: false,
+          cancionRadio: null
+        }).catch(() => {});
+      }
+    }
+  }
+
+  function reproducirCancionIndex(index) {
+    if (!playlistRadio[index] || !ytPlayer) return;
+    const item = playlistRadio[index];
+    
+    let videoId = item.url;
+    if (videoId.includes("v=")) {
+      videoId = videoId.split("v=")[1].split("&")[0];
+    } else if (videoId.includes("youtu.be/")) {
+      videoId = videoId.split("youtu.be/")[1].split("?")[0];
+    }
+
+    ytPlayer.loadVideoById(videoId);
+    
+    const sliderVol = document.getElementById("movaradio-slider-volumen");
+    const volDefecto = sliderVol ? parseInt(sliderVol.value, 10) : 30;
+    ytPlayer.setVolume(volDefecto);
+    
+    ytPlayer.playVideo();
+  }
+
+  // 3. Escuchar cambios en la Playlist de Firebase
+  document.addEventListener("DOMContentLoaded", () => {
+    const playlistRef = ref(db, "radio_playlist");
+
+    onValue(playlistRef, (snapshot) => {
+      playlistRadio = [];
+      const listaAdminHTML = document.getElementById("lista-playlist-admin");
+      if (listaAdminHTML) listaAdminHTML.innerHTML = "";
+
+      if (snapshot.exists()) {
+        const datos = snapshot.val();
+        Object.keys(datos).forEach((key) => {
+          const item = datos[key];
+          item.id = key;
+          playlistRadio.push(item);
+
+          if (listaAdminHTML) {
+            const fila = document.createElement("div");
+            fila.className = "item-playlist-admin";
+            fila.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:8px 12px; margin-top:6px; border-radius:8px;";
+            fila.innerHTML = `
+              <span style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px;">🎵 ${item.titulo}</span>
+              <button type="button" class="btn-borrar-track-admin" data-id="${key}" style="background:rgba(255,75,43,0.15); border:none; color:#ff4b2b; padding:6px; border-radius:6px; cursor:pointer;">
+                <i data-lucide="trash-2" style="width:14px; height:14px; pointer-events:none;"></i>
+              </button>
+            `;
+
+            fila.querySelector(".btn-borrar-track-admin").onclick = () => {
+              cancionBorrarPendienteId = key;
+              const modalBorrar = document.getElementById("modal-confirmar-borrar-cancion");
+              if (modalBorrar) modalBorrar.classList.remove("oculto");
+            };
+
+            listaAdminHTML.appendChild(fila);
+          }
+        });
+
+        if (window.lucide && listaAdminHTML) {
+          window.lucide.createIcons({ targets: [listaAdminHTML] });
+        }
+      }
+    });
+
+    // 4. Eventos de los Botones del Reproductor
+    const btnPlay = document.getElementById("btn-movaradio-play");
+    const btnPrev = document.getElementById("btn-movaradio-prev");
+    const btnNext = document.getElementById("btn-movaradio-next");
+    const sliderVol = document.getElementById("movaradio-slider-volumen");
+
+    if (btnPlay) {
+      btnPlay.onclick = () => {
+        if (!ytPlayer || playlistRadio.length === 0) {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("No hay canciones disponibles en MovaRadio 🎵", "⚠️", "#ff4b2b");
+          }
+          return;
+        }
+
+        const estado = ytPlayer.getPlayerState();
+        if (estado === 1) {
+          ytPlayer.pauseVideo();
+        } else {
+          if (estado === -1 || estado === 2 || estado === 5) {
+            reproducirCancionIndex(indiceActualIndex);
+          } else {
+            ytPlayer.playVideo();
+          }
+        }
+      };
+    }
+
+    // Eventos de los Botones del Reproductor con Navegación Circular
+    if (btnNext) {
+      btnNext.onclick = (e) => {
+        e.stopPropagation();
+        if (playlistRadio.length === 0) return;
+        // Avanza a la siguiente pista o vuelve al inicio si llega al final
+        indiceActualIndex = (indiceActualIndex + 1) % playlistRadio.length;
+        reproducirCancionIndex(indiceActualIndex);
+      };
+    }
+
+    if (btnPrev) {
+      btnPrev.onclick = (e) => {
+        e.stopPropagation();
+        if (playlistRadio.length === 0) return;
+        // Retrocede a la pista anterior o va al final si está en la primera
+        indiceActualIndex = (indiceActualIndex - 1 + playlistRadio.length) % playlistRadio.length;
+        reproducirCancionIndex(indiceActualIndex);
+      };
+    }
+
+    if (sliderVol) {
+      sliderVol.oninput = (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (ytPlayer && typeof ytPlayer.setVolume === "function") {
+          ytPlayer.setVolume(val);
+        }
+      };
+    }
+
+    // 5. Botón Añadir Canción desde Panel Admin
+    const btnAddTrack = document.getElementById("btn-add-playlist-admin");
+    const inputTitulo = document.getElementById("input-titulo-track-admin");
+    const inputUrl = document.getElementById("input-url-track-admin");
+
+    if (btnAddTrack && inputTitulo && inputUrl) {
+      btnAddTrack.onclick = async () => {
+        const titulo = inputTitulo.value.trim();
+        const url = inputUrl.value.trim();
+
+        if (!titulo || !url) {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Completa el título y enlace de YouTube.", "⚠️", "#ff4b2b");
+          }
+          return;
+        }
+
+        try {
+          await push(ref(db, "radio_playlist"), { titulo, url, fecha: Date.now() });
+          inputTitulo.value = "";
+          inputUrl.value = "";
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Canción añadida a MovaRadio ✨", "🎵", "#00f2fe");
+          }
+        } catch (err) {
+          console.error("Error al añadir canción:", err);
+        }
+      };
+    }
+
+    // 6. Modal Confirmar Borrado
+    const btnCancelBorrar = document.getElementById("btn-cancelar-borrar-cancion");
+    const btnAceptarBorrar = document.getElementById("btn-aceptar-borrar-cancion");
+    const modalBorrar = document.getElementById("modal-confirmar-borrar-cancion");
+
+    if (btnCancelBorrar && modalBorrar) {
+      btnCancelBorrar.onclick = () => modalBorrar.classList.add("oculto");
+    }
+
+    if (btnAceptarBorrar && modalBorrar) {
+      btnAceptarBorrar.onclick = async () => {
+        if (cancionBorrarPendienteId) {
+          try {
+            await remove(ref(db, `radio_playlist/${cancionBorrarPendienteId}`));
+            cancionBorrarPendienteId = null;
+            if (modalBorrar) modalBorrar.classList.add("oculto");
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("Canción eliminada correctamente.", "🗑️", "#ff4b2b");
+            }
+          } catch (err) {
+            console.error("Error al borrar canción:", err);
+          }
+        }
+      };
+    }
+  });
+
+  // 7. 🛡️ APAGADO AUTOMÁTICO E INSTANTÁNEO AL MINIMIZAR LA APP
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (ytPlayer && typeof ytPlayer.pauseVideo === "function") {
+        ytPlayer.pauseVideo();
+      }
+      activarEstadoReproduciendoUI(false);
+    }
+  });
+})();
