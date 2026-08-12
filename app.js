@@ -2883,7 +2883,7 @@ if (btnCampanita) {
 }
 
 // ========================================================
-// 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
+// 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA, FILTROS Y GLOBO DEL ICONO PWA
 // ========================================================
 window.actualizarBadgesNotificaciones = function () {
   const elemBadgeCampanita = document.getElementById("badge-campanita");
@@ -2921,6 +2921,17 @@ window.actualizarBadgesNotificaciones = function () {
 
   if (elemBadgeFiltroNoLeidos) {
     elemBadgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
+  }
+
+  // 🔴 ACTUALIZAR EL GLOBO NUMÉRICO SOBRE EL ICONO DE LA APP EN EL TELÉFONO (PWA BADGE API)
+  if ('setAppBadge' in navigator) {
+    if (totalNoLeidos > 0) {
+      navigator.setAppBadge(totalNoLeidos).catch((err) => console.log("Error setAppBadge:", err));
+    } else {
+      if ('clearAppBadge' in navigator) {
+        navigator.clearAppBadge().catch((err) => console.log("Error clearAppBadge:", err));
+      }
+    }
   }
 };
 
@@ -3195,18 +3206,28 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           }
           if (elemTexto) elemTexto.classList.add("texto-resaltado");
 
-          // 🔊 DISPARAR SONIDO Y VIBRACIÓN EN LA LISTA GENERAL DE CHATS
+          // 🔊 DISPARAR NOTIFICACIÓN, SONIDO Y VIBRACIÓN EN LA LISTA GENERAL / SEGUNDO PLANO
           if (ultimoMsg) {
             const idEmisor = ultimoMsg.emisor || ultimoMsg.emisorUid;
             const haceCuanto = Date.now() - (ultimoMsg.timestamp || 0);
 
-            // Solo suena si el mensaje es del contacto y llegó en los últimos 5 segundos (evita sonar al cargar la app)
+            // Solo se ejecuta si el mensaje es del contacto y llegó en los últimos 5 segundos
             if (idEmisor === contactoUid && haceCuanto < 5000) {
               window.mensajesNotificados = window.mensajesNotificados || new Set();
 
               if (!window.mensajesNotificados.has(ultimoMsgKey)) {
                 window.mensajesNotificados.add(ultimoMsgKey); // Evita duplicados
 
+                const nombreContacto = datosUsuario ? (datosUsuario.nombre || "Usuario") : "Usuario";
+                const textoNotif = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "Nuevo mensaje");
+                const fotoContacto = datosUsuario ? datosUsuario.fotoUrl : "";
+
+                // 1. Lanza la notificación flotante del sistema / segundo plano
+                if (typeof window.notificarNuevoMensaje === "function") {
+                  window.notificarNuevoMensaje(nombreContacto, textoNotif, fotoContacto);
+                }
+
+                // 2. Ejecuta el sonido de recibido y la vibración
                 if (typeof window.reproducirSonidoRecibido === "function") {
                   window.reproducirSonidoRecibido(contactoUid);
                 }
