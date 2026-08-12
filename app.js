@@ -58,7 +58,7 @@ function registrarSuscripcion(unsubFn) {
 
 function desuscribirTodoFirebase() {
   window.movaSubscriptions.forEach((unsub) => {
-    try { unsub(); } catch (e) {}
+    try { unsub(); } catch (e) { }
   });
   window.movaSubscriptions = [];
 }
@@ -218,7 +218,7 @@ function limpiarEstadoSesionCompleto() {
 
   // 3. Detener reproductor de música si está sonando
   if (typeof playerYouTube !== "undefined" && playerYouTube && typeof playerYouTube.pauseVideo === "function") {
-    try { playerYouTube.pauseVideo(); } catch (e) {}
+    try { playerYouTube.pauseVideo(); } catch (e) { }
   }
   if (typeof estaReproduciendoMusica !== "undefined") estaReproduciendoMusica = false;
 
@@ -373,7 +373,7 @@ onAuthStateChanged(auth, async (user) => {
 
           // 🔕 SINCRONIZAR SILENCIADOS (Y REGISTRAR SU ESCUCHADOR)
           // ... (mantén tu código de silenciados intacto hasta aquí) ...
-          
+
           // 🎵 ENCENDIDO SEGURO DE MÚSICA AL INICIAR SESIÓN
           sincronizarPlaylistFirebase();
           escucharRadioGlobal();
@@ -385,20 +385,20 @@ onAuthStateChanged(auth, async (user) => {
 
           if (datosUsuario.rol === "admin") {
             if (btnAdmin) btnAdmin.style.display = "inline-block";
-            
+
             // 🚀 Clave: Renderizar la lista del admin inmediatamente al iniciar sesión
-            cargarPlaylistAdmin(); 
+            cargarPlaylistAdmin();
 
             if (btnAdmin && modalAdmin) {
               btnAdmin.onclick = () => {
-                modalAdmin.classList.remove("oculto"); 
+                modalAdmin.classList.remove("oculto");
                 modalAdmin.style.display = "flex";
                 if (typeof cargarUsuariosPendientes === "function") cargarUsuariosPendientes();
               };
             }
             if (btnCerrarAdmin && modalAdmin) {
               btnCerrarAdmin.onclick = () => {
-                modalAdmin.classList.add("oculto"); 
+                modalAdmin.classList.add("oculto");
                 modalAdmin.style.display = "none";
               };
             }
@@ -2411,8 +2411,25 @@ function iniciarControlPresenciaReal() {
   // Escuchar cuando el usuario minimiza o vuelve a abrir la app
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
+      // 1. Desactivar presencia en línea
       update(userRef, { presenciaReal: false });
+
+      // 2. Limpiar estado de música en Firebase
+      if (auth.currentUser) {
+        set(ref(db, `usuarios/${auth.currentUser.uid}/escuchandoMusica`), null);
+      }
+
+      // 3. Pausar reproductor local si está sonando
+      if (typeof player !== "undefined" && typeof player.pauseVideo === "function") {
+        player.pauseVideo();
+      }
+      const audioPlayer = document.getElementById("reproductor-audio");
+      if (audioPlayer && !audioPlayer.paused) {
+        audioPlayer.pause();
+      }
+
     } else if (auth.currentUser) {
+      // Al volver a la app, activa la presencia en línea de nuevo
       update(userRef, { presenciaReal: true });
     }
   });
@@ -3235,11 +3252,24 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
 
     if (ultimoMsg) {
-      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
+      const textoFinal = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
+      if (elemTexto) {
+        // 🚀 Guardamos el texto real en la memoria de la tarjeta
+        elemTexto.dataset.textoOriginal = textoFinal;
+
+        // Solo lo dibujamos si NO está sonando música en este momento
+        if (!tarjetaContacto.dataset.musicaSonando) {
+          elemTexto.textContent = textoFinal;
+        }
+      }
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
     } else {
-      // Mantiene la tarjeta visible marcando el estado de vaciado
-      if (elemTexto) elemTexto.textContent = "Conversación vaciada";
+      if (elemTexto) {
+        elemTexto.dataset.textoOriginal = "Conversación vaciada";
+        if (!tarjetaContacto.dataset.musicaSonando) {
+          elemTexto.textContent = "Conversación vaciada";
+        }
+      }
       if (elemHora) elemHora.textContent = "--:--";
     }
 
@@ -3306,19 +3336,41 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   });
 
   // 🎵 Escuchar en tiempo real si este contacto está escuchando música
-      onValue(ref(db, `usuarios/${contactoUid}/escuchandoMusica`), (musicaSnap) => {
-        const temaSonando = musicaSnap.exists() ? musicaSnap.val() : null;
-        const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
-        if (!tarjeta) return;
+  onValue(ref(db, `usuarios/${contactoUid}/escuchandoMusica`), (musicaSnap) => {
+    const temaSonando = musicaSnap.exists() ? musicaSnap.val() : null;
+    const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
+    if (!tarjeta) return;
 
-        const elemTexto = tarjeta.querySelector(".chat-texto");
-        const badgeNoLeido = tarjeta.querySelector(".badge-chat-no-leido:not(.oculto)");
+    const elemTexto = tarjeta.querySelector(".chat-texto");
+    const badgeNoLeido = tarjeta.querySelector(".badge-chat-no-leido:not(.oculto)");
 
-        // Si está escuchando algo y no hay mensajes sin leer pendientes, muestra el tema
-        if (temaSonando && elemTexto && !badgeNoLeido) {
-          elemTexto.innerHTML = `<span style="color: #00f2fe; font-size: 0.78rem;">🎵 Escuchando: ${temaSonando}</span>`;
+    if (temaSonando) {
+      // 🎧 ACTIVAR MODO MÚSICA
+      tarjeta.dataset.musicaSonando = "true";
+
+      // Si está escuchando algo y no hay mensajes sin leer pendientes, muestra el tema
+      if (elemTexto && !badgeNoLeido) {
+        // Aseguramos que exista el backup del texto por seguridad
+        if (!elemTexto.dataset.textoOriginal) {
+          elemTexto.dataset.textoOriginal = elemTexto.textContent;
         }
-      });
+        elemTexto.innerHTML = `<span style="color: #00f2fe; font-size: 0.78rem;">🎵 Escuchando: ${temaSonando}</span>`;
+      }
+    } else {
+      // ⏸️ SE PAUSÓ LA MÚSICA (LIMPIEZA)
+      tarjeta.removeAttribute("data-musicaSonando");
+
+      if (elemTexto) {
+        // Restauramos el texto original (el último mensaje de la conversación)
+        elemTexto.textContent = elemTexto.dataset.textoOriginal || "Conversación vaciada";
+
+        // Si el contacto te había enviado un mensaje mientras escuchaba música, resaltarlo de nuevo
+        if (badgeNoLeido) {
+          elemTexto.classList.add("texto-resaltado");
+        }
+      }
+    }
+  });
 
 }
 
@@ -4855,10 +4907,34 @@ if (inputNuevoContacto && cajaSugerencias) {
 }
 
 if (btnAbrirContactos && modalContactos) {
-  btnAbrirContactos.addEventListener("click", () => {
-    renderizarListaContactosModal();
-    modalContactos.classList.remove("oculto");
-    if (capaConfirmarEliminar) capaConfirmarEliminar.classList.add("oculto");
+  btnAbrirContactos.addEventListener("click", async (e) => {
+    e.preventDefault();
+    console.log("🟢 Botón '+' presionado. Intentando abrir lista de contactos...");
+
+    try {
+      // 1. Ejecutamos la carga de Firebase de forma segura
+      if (typeof renderizarListaContactosModal === "function") {
+        await renderizarListaContactosModal();
+      } else {
+        console.error("❌ Error: La función renderizarListaContactosModal no existe.");
+      }
+
+      // 2. Forzamos la visibilidad del modal asegurando la propiedad display
+      modalContactos.classList.remove("oculto");
+      modalContactos.style.display = "flex";
+
+      // 3. Limpiamos cualquier capa de confirmación abierta
+      if (capaConfirmarEliminar) {
+        capaConfirmarEliminar.classList.add("oculto");
+      }
+
+      console.log("✅ Modal de contactos abierto correctamente.");
+    } catch (error) {
+      console.error("❌ Fallo crítico al abrir los contactos:", error);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Ocurrió un error al cargar la lista de contactos.", "⚠️", "#ff4b2b");
+      }
+    }
   });
 }
 
@@ -5452,7 +5528,7 @@ function mostrarToast(mensaje) {
 }
 
 // 🌟 Modal de Confirmación con Flow (Promesa)
-window.mostrarConfirmacionCustom = function({ titulo, mensaje, textoAceptar, colorBtn }) {
+window.mostrarConfirmacionCustom = function ({ titulo, mensaje, textoAceptar, colorBtn }) {
   return new Promise((resolve) => {
     // 1. Crear el fondo (Overlay)
     const overlay = document.createElement('div');
@@ -5488,10 +5564,10 @@ window.mostrarConfirmacionCustom = function({ titulo, mensaje, textoAceptar, col
     document.body.appendChild(overlay);
 
     // Efectos hover en los botones
-    modal.querySelector('#btn-cancel-custom').onmouseover = function() { this.style.background = 'rgba(255,255,255,0.1)'; };
-    modal.querySelector('#btn-cancel-custom').onmouseout = function() { this.style.background = 'rgba(255,255,255,0.05)'; };
-    modal.querySelector('#btn-accept-custom').onmouseover = function() { this.style.filter = 'brightness(1.2)'; };
-    modal.querySelector('#btn-accept-custom').onmouseout = function() { this.style.filter = 'brightness(1)'; };
+    modal.querySelector('#btn-cancel-custom').onmouseover = function () { this.style.background = 'rgba(255,255,255,0.1)'; };
+    modal.querySelector('#btn-cancel-custom').onmouseout = function () { this.style.background = 'rgba(255,255,255,0.05)'; };
+    modal.querySelector('#btn-accept-custom').onmouseover = function () { this.style.filter = 'brightness(1.2)'; };
+    modal.querySelector('#btn-accept-custom').onmouseout = function () { this.style.filter = 'brightness(1)'; };
 
     // Animación de entrada
     requestAnimationFrame(() => {
@@ -5504,7 +5580,7 @@ window.mostrarConfirmacionCustom = function({ titulo, mensaje, textoAceptar, col
       overlay.style.opacity = '0';
       modal.style.transform = 'translateY(20px) scale(0.95)';
       setTimeout(() => {
-        if(document.body.contains(overlay)) document.body.removeChild(overlay);
+        if (document.body.contains(overlay)) document.body.removeChild(overlay);
         resolve(resultado);
       }, 200); // Esperar que termine la animación
     };
@@ -6442,7 +6518,7 @@ function actualizarEstadoPantallaInicio() {
 
   // 🛡️ FRENO DE MANO: Si el chat privado está abierto, mantiene oculta la lista de chats
   const chatPrivadoAbierto = pantallaChatPrivado && (
-    pantallaChatPrivado.style.display === "flex" || 
+    pantallaChatPrivado.style.display === "flex" ||
     pantallaChatPrivado.classList.contains("pantalla-completa")
   );
 
@@ -6786,11 +6862,11 @@ function cargarPlaylistAdmin() {
           <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">🎵 ${cancion.titulo}</span>
           <button class="btn-borrar-cancion-admin" data-id="${key}" style="background: rgba(255,75,43,0.15); border: none; color: #ff4b2b; padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="Eliminar canción">🗑️</button>
         `;
-        
+
         // --- EVENTO DE CLIC ACTUALIZADO CON FLOW ---
         filaCancion.querySelector(".btn-borrar-cancion-admin").addEventListener("click", async (e) => {
-          e.preventDefault(); 
-          
+          e.preventDefault();
+
           // Usamos la nueva función custom
           const confirmado = await mostrarConfirmacionCustom({
             titulo: "Eliminar canción",
@@ -6798,12 +6874,12 @@ function cargarPlaylistAdmin() {
             textoAceptar: "Eliminar",
             colorBtn: "#ff4b2b"
           });
-          
+
           if (confirmado) {
             try {
               await set(ref(db, `playlist_global/${key}`), null);
               if (typeof mostrarAvisoPremium === "function") {
-                  mostrarAvisoPremium("Canción eliminada", "🗑️", "#ff4b2b");
+                mostrarAvisoPremium("Canción eliminada", "🗑️", "#ff4b2b");
               }
             } catch (error) {
               console.error("❌ Error de Firebase al eliminar canción:", error);
@@ -7066,7 +7142,7 @@ function escucharRadioGlobal() {
       }
     } else {
       if (playerYouTube && typeof playerYouTube.pauseVideo === "function") {
-        try { playerYouTube.pauseVideo(); } catch (e) {}
+        try { playerYouTube.pauseVideo(); } catch (e) { }
       }
       estaReproduciendoMusica = false;
       if (btnPlayerPlay) {
@@ -7075,6 +7151,6 @@ function escucharRadioGlobal() {
       }
     }
   });
-  
+
   registrarSuscripcion(unsubRadio); // 👈 Aseguramos que se limpie
 }
