@@ -380,12 +380,16 @@ onAuthStateChanged(auth, async (user) => {
             if (btnAdmin) btnAdmin.style.display = "inline-block";
             if (btnAdmin && modalAdmin) {
               btnAdmin.onclick = () => {
+                modalAdmin.classList.remove("oculto"); // 👈 Remueve el bloqueo de CSS
                 modalAdmin.style.display = "flex";
                 if (typeof cargarUsuariosPendientes === "function") cargarUsuariosPendientes();
               };
             }
             if (btnCerrarAdmin && modalAdmin) {
-              btnCerrarAdmin.onclick = () => modalAdmin.style.display = "none";
+              btnCerrarAdmin.onclick = () => {
+                modalAdmin.classList.add("oculto"); // 👈 Oculta de nuevo al cerrar
+                modalAdmin.style.display = "none";
+              };
             }
           } else {
             if (btnAdmin) btnAdmin.style.display = "none";
