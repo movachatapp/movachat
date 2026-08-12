@@ -5451,6 +5451,70 @@ function mostrarToast(mensaje) {
   }, 2500);
 }
 
+// 🌟 Modal de Confirmación con Flow (Promesa)
+window.mostrarConfirmacionCustom = function({ titulo, mensaje, textoAceptar, colorBtn }) {
+  return new Promise((resolve) => {
+    // 1. Crear el fondo (Overlay)
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(5px);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 9999; opacity: 0; transition: opacity 0.2s ease;
+    `;
+
+    // 2. Crear la caja del modal
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      background: #141416; border-radius: 12px; padding: 24px;
+      width: 90%; max-width: 320px; text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      transform: translateY(20px) scale(0.95); transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      border: 1px solid rgba(255,255,255,0.05);
+    `;
+
+    // 3. Estructura HTML interna del modal
+    modal.innerHTML = `
+      <h3 style="color: #fff; margin: 0 0 10px 0; font-size: 1.1rem; font-weight: 600;">${titulo}</h3>
+      <p style="color: rgba(255,255,255,0.6); font-size: 0.85rem; margin-bottom: 24px; line-height: 1.4;">${mensaje}</p>
+      <div style="display: flex; gap: 12px; justify-content: center;">
+        <button id="btn-cancel-custom" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer; font-weight: 500; transition: background 0.2s;">Cancelar</button>
+        <button id="btn-accept-custom" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: ${colorBtn || '#ff4b2b'}; color: #fff; cursor: pointer; font-weight: bold; transition: filter 0.2s;">${textoAceptar || 'Aceptar'}</button>
+      </div>
+    `;
+
+    // Añadir al DOM
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Efectos hover en los botones
+    modal.querySelector('#btn-cancel-custom').onmouseover = function() { this.style.background = 'rgba(255,255,255,0.1)'; };
+    modal.querySelector('#btn-cancel-custom').onmouseout = function() { this.style.background = 'rgba(255,255,255,0.05)'; };
+    modal.querySelector('#btn-accept-custom').onmouseover = function() { this.style.filter = 'brightness(1.2)'; };
+    modal.querySelector('#btn-accept-custom').onmouseout = function() { this.style.filter = 'brightness(1)'; };
+
+    // Animación de entrada
+    requestAnimationFrame(() => {
+      overlay.style.opacity = '1';
+      modal.style.transform = 'translateY(0) scale(1)';
+    });
+
+    // Función para cerrar y resolver la promesa
+    const cerrarModal = (resultado) => {
+      overlay.style.opacity = '0';
+      modal.style.transform = 'translateY(20px) scale(0.95)';
+      setTimeout(() => {
+        if(document.body.contains(overlay)) document.body.removeChild(overlay);
+        resolve(resultado);
+      }, 200); // Esperar que termine la animación
+    };
+
+    // Asignar eventos de clic a los botones
+    modal.querySelector('#btn-cancel-custom').onclick = () => cerrarModal(false);
+    modal.querySelector('#btn-accept-custom').onclick = () => cerrarModal(true);
+  });
+};
+
 // ========================================================
 // 🔊 SISTEMA DE DESBLOQUEO Y DESPERTARES DE AUDIO FORZADO
 // ========================================================
@@ -6722,30 +6786,39 @@ function cargarPlaylistAdmin() {
           <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">🎵 ${cancion.titulo}</span>
           <button class="btn-borrar-cancion-admin" data-id="${key}" style="background: rgba(255,75,43,0.15); border: none; color: #ff4b2b; padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="Eliminar canción">🗑️</button>
         `;
-        filaCancion.querySelector(".btn-borrar-cancion-admin").addEventListener("click", async () => {
+        
+        // --- EVENTO DE CLIC ACTUALIZADO CON FLOW ---
+        filaCancion.querySelector(".btn-borrar-cancion-admin").addEventListener("click", async (e) => {
+          e.preventDefault(); 
+          
+          // Usamos la nueva función custom
           const confirmado = await mostrarConfirmacionCustom({
-            titulo: "¿Eliminar canción?",
-            mensaje: `¿Deseas eliminar "${cancion.titulo}" de la playlist?`,
-            icono: "trash-2",
+            titulo: "Eliminar canción",
+            mensaje: `¿Estás seguro que deseas eliminar <br><strong style="color:#fff;">"${cancion.titulo}"</strong>?`,
             textoAceptar: "Eliminar",
             colorBtn: "#ff4b2b"
           });
+          
           if (confirmado) {
             try {
               await set(ref(db, `playlist_global/${key}`), null);
-              if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium("Canción eliminada de la nube 🗑️", "✨", "#ff4b2b");
+              if (typeof mostrarAvisoPremium === "function") {
+                  mostrarAvisoPremium("Canción eliminada", "🗑️", "#ff4b2b");
+              }
             } catch (error) {
-              console.error("Error al eliminar canción:", error);
+              console.error("❌ Error de Firebase al eliminar canción:", error);
             }
           }
         });
+        // -----------------------------------
+
         contenedorListaAdmin.appendChild(filaCancion);
       });
     } else {
       contenedorListaAdmin.innerHTML = `<p style="color: rgba(255,255,255,0.4); font-size: 0.75rem; text-align: center; margin: 4px 0;">No hay canciones en la playlist.</p>`;
     }
   });
-  registrarSuscripcion(unsubAdmin); // 👈 Añadido
+  registrarSuscripcion(unsubAdmin); // 👈 Sigue aquí para evitar el laberinto de sesiones
 }
 
 // 4. Guardar Canciones desde Admin
