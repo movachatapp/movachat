@@ -6356,19 +6356,32 @@ function actualizarChecksEnPantalla(ultimoKeyLeido) {
 function actualizarEstadoPantallaInicio() {
   const pantallaBienvenida = document.getElementById("pantalla-bienvenida");
   const pantallaChats = document.getElementById("pantalla-chats");
+  const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
   const listaChats = document.getElementById("lista-chats-principal");
 
   if (!pantallaBienvenida || !pantallaChats || !listaChats) return;
 
-  // Contamos cuantas tarjetas de chats de contactos reales existen (excluyendo Mi Estado)
+  // 🛡️ FRENO DE MANO: Si el chat privado está abierto, mantiene oculta la lista de chats
+  const chatPrivadoAbierto = pantallaChatPrivado && (
+    pantallaChatPrivado.style.display === "flex" || 
+    pantallaChatPrivado.classList.contains("pantalla-completa")
+  );
+
+  if (chatPrivadoAbierto) {
+    pantallaBienvenida.style.display = "none";
+    pantallaChats.style.display = "none";
+    return;
+  }
+
+  // Contamos cuántas tarjetas de chats de contactos reales existen (excluyendo Mi Estado)
   const tarjetasContactos = listaChats.querySelectorAll(".tarjeta-chat:not(#tarjeta-mi-estado-propio)");
 
   if (tarjetasContactos.length === 0) {
-    // 📭 SIN CHATS (o al cargar/refrescar): Mostrar pantalla de bienvenida completa
+    // 📭 SIN CHATS: Mostrar pantalla de bienvenida
     pantallaBienvenida.style.display = "flex";
     pantallaChats.style.display = "none";
   } else {
-    // 💬 CON CHATS: Ocultar bienvenida y mostrar la bandeja de entrada
+    // 💬 CON CHATS: Ocultar bienvenida y mostrar lista de chats
     pantallaBienvenida.style.display = "none";
     pantallaChats.style.display = "flex";
   }
