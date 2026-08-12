@@ -2,14 +2,20 @@
 // 📱 SERVICE WORKER MOVACHAT (Versión Optimizada v1.0.1)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.1';
+const CACHE_NAME = 'movachat-v1.0.2';
 
 // Recursos estáticos base
 const ASSETS_TO_CACHE = [
+  './',
+  './index.html',
+  './app.js',
   './styles.css',
   './manifest.json',
   './assets/logo/icon-192.png',
-  './assets/logo/icon-512.png'
+  './assets/logo/icon-512.png',
+  './assets/sounds/enviado.mp3',   // 👈 Guardado en Caché
+  './assets/sounds/grabando.mp3',  // 👈 Guardado en Caché
+  './assets/sounds/recibido.mp3'   // 👈 Guardado en Caché (Sonido de notificación)
 ];
 
 // 1. Instalar el Service Worker

@@ -5445,14 +5445,15 @@ window.reproducirSonidoRecibido = function (contactoUid = null) {
   }
 };
 
-// 🔊 Función para reproducir sonido de mensaje enviado
 window.reproducirSonidoEnviado = function () {
-  const audioEnviado = document.getElementById("sonido-enviado");
-  if (audioEnviado) {
-    audioEnviado.currentTime = 0;
-    audioEnviado.play().catch(() => {
-      despertarAudioForzado();
-    });
+  if (typeof window.reproducirSonido === "function") {
+    window.reproducirSonido("enviado");
+  } else {
+    const audioEnviado = document.getElementById("sonido-enviado");
+    if (audioEnviado) {
+      audioEnviado.currentTime = 0;
+      audioEnviado.play().catch(() => {});
+    }
   }
 };
 

@@ -12,6 +12,14 @@
   <!-- Optimización de Carga de Recursos Externos -->
   <link rel="preconnect" href="https://unpkg.com">
   <link rel="dns-prefetch" href="https://unpkg.com">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+
+  <!-- 🚀 PRECARGA DE AUDIOS Y RECURSOS CRÍTICOS (Instant Audio / PWA) -->
+  <link rel="preload" href="assets/sounds/recibido.mp3" as="audio" type="audio/mpeg">
+  <link rel="preload" href="assets/sounds/enviado.mp3" as="audio" type="audio/mpeg">
+  <link rel="preload" href="assets/sounds/grabando.mp3" as="audio" type="audio/mpeg">
+  <link rel="preload" href="styles.css" as="style">
 
   <!-- Ícono Principal (Favicon para PC y Navegadores) -->
   <link rel="icon" type="image/png" sizes="192x192" href="assets/logo/icon-192.png">
@@ -37,8 +45,6 @@
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
 </head>
-
-<body>
 
   <!-- Pantalla de Bienvenida / Autenticación -->
   <div id="pantalla-auth" class="pantalla-auth">
