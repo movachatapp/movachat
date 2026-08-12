@@ -371,23 +371,34 @@ onAuthStateChanged(auth, async (user) => {
           });
           registrarSuscripcion(unsubSilenciados);
 
-          // Panel Admin Lógica...
+          // 🔕 SINCRONIZAR SILENCIADOS (Y REGISTRAR SU ESCUCHADOR)
+          // ... (mantén tu código de silenciados intacto hasta aquí) ...
+          
+          // 🎵 ENCENDIDO SEGURO DE MÚSICA AL INICIAR SESIÓN
+          sincronizarPlaylistFirebase();
+          escucharRadioGlobal();
+
+          // ⚙️ PANEL ADMIN LÓGICA Y RECONEXIÓN
           const btnAdmin = document.getElementById("btn-abrir-admin");
           const modalAdmin = document.getElementById("modal-admin");
           const btnCerrarAdmin = document.getElementById("btn-cerrar-admin");
 
           if (datosUsuario.rol === "admin") {
             if (btnAdmin) btnAdmin.style.display = "inline-block";
+            
+            // 🚀 Clave: Renderizar la lista del admin inmediatamente al iniciar sesión
+            cargarPlaylistAdmin(); 
+
             if (btnAdmin && modalAdmin) {
               btnAdmin.onclick = () => {
-                modalAdmin.classList.remove("oculto"); // 👈 Remueve el bloqueo de CSS
+                modalAdmin.classList.remove("oculto"); 
                 modalAdmin.style.display = "flex";
                 if (typeof cargarUsuariosPendientes === "function") cargarUsuariosPendientes();
               };
             }
             if (btnCerrarAdmin && modalAdmin) {
               btnCerrarAdmin.onclick = () => {
-                modalAdmin.classList.add("oculto"); // 👈 Oculta de nuevo al cerrar
+                modalAdmin.classList.add("oculto"); 
                 modalAdmin.style.display = "none";
               };
             }
@@ -6681,8 +6692,7 @@ function obtenerYouTubeId(url) {
 // 2. Sincronizar Playlist Global con Firebase
 function sincronizarPlaylistFirebase() {
   const playlistRef = ref(db, "playlist_global");
-  
-  onValue(playlistRef, (snapshot) => {
+  const unsubPlaylist = onValue(playlistRef, (snapshot) => {
     playlistGlobalData = [];
     if (snapshot.exists()) {
       const datos = snapshot.val();
@@ -6691,8 +6701,8 @@ function sincronizarPlaylistFirebase() {
       });
     }
   });
+  registrarSuscripcion(unsubPlaylist); // 👈 Añadido para limpieza al cerrar sesión
 }
-sincronizarPlaylistFirebase();
 
 // 3. Renderizar Lista de Canciones en Panel Admin
 function cargarPlaylistAdmin() {
@@ -6700,24 +6710,18 @@ function cargarPlaylistAdmin() {
   if (!contenedorListaAdmin) return;
 
   const playlistRef = ref(db, "playlist_global");
-
-  onValue(playlistRef, (snapshot) => {
+  const unsubAdmin = onValue(playlistRef, (snapshot) => {
     contenedorListaAdmin.innerHTML = "";
-
     if (snapshot.exists()) {
       const canciones = snapshot.val();
-
       Object.keys(canciones).forEach((key) => {
         const cancion = canciones[key];
         const filaCancion = document.createElement("div");
-
         filaCancion.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.04); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem;";
-
         filaCancion.innerHTML = `
           <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">🎵 ${cancion.titulo}</span>
           <button class="btn-borrar-cancion-admin" data-id="${key}" style="background: rgba(255,75,43,0.15); border: none; color: #ff4b2b; padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="Eliminar canción">🗑️</button>
         `;
-
         filaCancion.querySelector(".btn-borrar-cancion-admin").addEventListener("click", async () => {
           const confirmado = await mostrarConfirmacionCustom({
             titulo: "¿Eliminar canción?",
@@ -6726,27 +6730,23 @@ function cargarPlaylistAdmin() {
             textoAceptar: "Eliminar",
             colorBtn: "#ff4b2b"
           });
-
           if (confirmado) {
             try {
               await set(ref(db, `playlist_global/${key}`), null);
-              if (typeof mostrarAvisoPremium === "function") {
-                mostrarAvisoPremium("Canción eliminada de la nube 🗑️", "✨", "#ff4b2b");
-              }
+              if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium("Canción eliminada de la nube 🗑️", "✨", "#ff4b2b");
             } catch (error) {
               console.error("Error al eliminar canción:", error);
             }
           }
         });
-
         contenedorListaAdmin.appendChild(filaCancion);
       });
     } else {
       contenedorListaAdmin.innerHTML = `<p style="color: rgba(255,255,255,0.4); font-size: 0.75rem; text-align: center; margin: 4px 0;">No hay canciones en la playlist.</p>`;
     }
   });
+  registrarSuscripcion(unsubAdmin); // 👈 Añadido
 }
-cargarPlaylistAdmin();
 
 // 4. Guardar Canciones desde Admin
 const btnAdminGuardarYt = document.getElementById("btn-admin-guardar-yt");
@@ -6965,25 +6965,22 @@ async function actualizarEstadoEscuchandoFirebase(tituloTema) {
 // 🎧 Escuchar sincronización de MovaRadio global para todos los perfiles
 function escucharRadioGlobal() {
   const radioRef = ref(db, "mova_radio_activa");
-
   const unsubRadio = onValue(radioRef, (snapshot) => {
+    // ... (Mantén todo el código original que tienes dentro de esta función) ...
+    // Solo copia tu lógica interna intacta aquí
     if (!snapshot.exists()) return;
-
     const estadoRadio = snapshot.val();
     const txtInfoPerfil = document.getElementById("txt-cancion-actual-perfil");
     const btnPlayerPlay = document.getElementById("btn-player-play");
 
     if (estadoRadio.reproduciendo && estadoRadio.youtubeId) {
       if (txtInfoPerfil) txtInfoPerfil.textContent = estadoRadio.titulo;
-
       if (btnPlayerPlay) {
         btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
         if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
       }
-
       if (playerYouTube && typeof playerYouTube.loadVideoById === "function") {
         try {
-          // Si es una canción distinta a la cargada, actualizar
           const urlActual = playerYouTube.getVideoUrl ? playerYouTube.getVideoUrl() : "";
           if (!urlActual.includes(estadoRadio.youtubeId)) {
             playerYouTube.loadVideoById(estadoRadio.youtubeId);
@@ -7005,11 +7002,6 @@ function escucharRadioGlobal() {
       }
     }
   });
-
-  if (typeof registrarSuscripcion === "function") {
-    registrarSuscripcion(unsubRadio);
-  }
+  
+  registrarSuscripcion(unsubRadio); // 👈 Aseguramos que se limpie
 }
-
-// Iniciar escuchador global
-escucharRadioGlobal();
