@@ -3194,6 +3194,25 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
             elemBadge.classList.remove("oculto");
           }
           if (elemTexto) elemTexto.classList.add("texto-resaltado");
+
+          // 🔊 DISPARAR SONIDO Y VIBRACIÓN EN LA LISTA GENERAL DE CHATS
+          if (ultimoMsg) {
+            const idEmisor = ultimoMsg.emisor || ultimoMsg.emisorUid;
+            const haceCuanto = Date.now() - (ultimoMsg.timestamp || 0);
+
+            // Solo suena si el mensaje es del contacto y llegó en los últimos 5 segundos (evita sonar al cargar la app)
+            if (idEmisor === contactoUid && haceCuanto < 5000) {
+              window.mensajesNotificados = window.mensajesNotificados || new Set();
+
+              if (!window.mensajesNotificados.has(ultimoMsgKey)) {
+                window.mensajesNotificados.add(ultimoMsgKey); // Evita duplicados
+
+                if (typeof window.reproducirSonidoRecibido === "function") {
+                  window.reproducirSonidoRecibido(contactoUid);
+                }
+              }
+            }
+          }
         } else {
           if (elemBadge) {
             elemBadge.textContent = "0";
