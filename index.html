@@ -881,12 +881,38 @@
     </div>
   </div>
 
+  <!-- ⚠️ MODAL DE CONFIRMACIÓN CUSTOM REUTILIZABLE (GLASSMORPHISM) -->
+  <div id="modal-custom-confirm"
+    style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center;">
+    <div
+      style="background: rgba(18, 22, 36, 0.95); border: 1px solid rgba(255, 75, 43, 0.3); border-radius: 20px; padding: 22px; width: 88%; max-width: 320px; box-shadow: 0 10px 30px rgba(255, 75, 43, 0.2); text-align: center;">
+
+      <div id="box-confirm-icon"
+        style="width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 75, 43, 0.1); border: 1px solid rgba(255, 75, 43, 0.3); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto; color: #ff4b2b;">
+        <i id="icon-confirm-modal" data-lucide="log-out" style="width: 22px; height: 22px;"></i>
+      </div>
+
+      <h4 id="txt-confirm-titulo" style="margin: 0 0 6px 0; color: #fff; font-size: 1rem; font-weight: 600;">¿Cerrar
+        sesión?</h4>
+      <p id="txt-confirm-mensaje"
+        style="margin: 0 0 16px 0; color: rgba(255,255,255,0.6); font-size: 0.8rem; line-height: 1.4;"></p>
+
+      <div style="display: flex; gap: 8px;">
+        <button type="button" id="btn-confirm-cancelar"
+          style="flex: 1; background: rgba(255,255,255,0.08); color: #fff; border: none; padding: 10px; border-radius: 10px; cursor: pointer; font-size: 0.82rem; font-weight: 500; transition: 0.2s;">Cancelar</button>
+        <button type="button" id="btn-confirm-aceptar"
+          style="flex: 1; background: #ff4b2b; color: #fff; border: none; padding: 10px; border-radius: 10px; cursor: pointer; font-size: 0.82rem; font-weight: 600; box-shadow: 0 4px 12px rgba(255, 75, 43, 0.3); transition: 0.2s;">Aceptar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 🔊 AUDIOS DEL SISTEMA -->
   <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
   <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
 
   <!-- 🎵 REPRODUCTOR OCULTO DE YOUTUBE API -->
-  <div id="youtube-player-oculto" style="display: none;"></div>
+  <div id="youtube-player-oculto"
+    style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; left: -9999px;"></div>
   <script src="https://www.youtube.com/iframe_api"></script>
 
   <!-- 📜 SCRIPTS PRINCIPALES (SIEMPRE AL FINAL DEL BODY) -->

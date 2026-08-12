@@ -54,6 +54,12 @@ let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
 
+// 🎵 Variables de MovaRadio
+let playerYouTube = null;
+let playlistGlobalData = [];
+let indiceCancionActual = 0;
+let estaReproduciendoMusica = false;
+
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
 const authForm = document.getElementById("form-auth");
@@ -2120,13 +2126,21 @@ function asignarEventosMenuCabecera() {
       }
 
       else if (accion === "cerrar-sesion") {
-        if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+        const confirmado = await mostrarConfirmacionCustom({
+          titulo: "¿Cerrar sesión?",
+          mensaje: "¿Estás seguro de que deseas salir de MovaChat?",
+          icono: "log-out",
+          textoAceptar: "Salir",
+          colorBtn: "#ff4b2b"
+        });
+
+        if (confirmado) {
           try {
             const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
             await signOut(auth);
 
             if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
+              mostrarAvisoPremium("Sesión cerrada correctamente 👏", "👋", "#ff4b2b");
             }
           } catch (error) {
             console.error("Error al cerrar sesión:", error);
@@ -6514,10 +6528,10 @@ if (inputMensaje) {
 })();
 
 // ========================================================
-// 🎵 MÓDULO DE MÚSICA GLOBAL (ADMIN Y CLIENTE)
+// 🎵 MÓDULO DE MÚSICA GLOBAL Y REPRODUCTOR (MovaRadio)
 // ========================================================
 
-// 1. Función para extraer el ID de un enlace de YouTube de forma limpia
+// 1. Extraer ID de YouTube
 function obtenerYouTubeId(url) {
   if (!url) return null;
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -6525,52 +6539,69 @@ function obtenerYouTubeId(url) {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// 2. Lógica del Admin para guardar canciones en Firebase (SIN PROMPT NATIVO)
-const btnAdminGuardarYt = document.getElementById("btn-admin-guardar-yt");
-const inputAdminUrlYt = document.getElementById("input-admin-url-yt");
-const inputAdminTituloYt = document.getElementById("input-admin-titulo-yt");
-
-if (btnAdminGuardarYt && inputAdminUrlYt) {
-  btnAdminGuardarYt.addEventListener("click", async () => {
-    const urlIngresada = inputAdminUrlYt.value.trim();
-    // Lee directamente el valor introducido en el input de arriba
-    const tituloIngresado = inputAdminTituloYt ? inputAdminTituloYt.value.trim() : "";
-    const ytId = obtenerYouTubeId(urlIngresada);
-
-    if (!ytId) {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Enlace de YouTube no válido ⚠️", "⚠️", "#ff4b2b");
-      }
-      return;
-    }
-
-    // Si el usuario dejó la casilla de título vacía, asigna un nombre por defecto
-    const tituloCancion = tituloIngresado || "Tema MovaChill";
-
-    try {
-      const playlistRef = ref(db, "playlist_global");
-      const nuevaCancionRef = push(playlistRef);
-
-      await set(nuevaCancionRef, {
-        youtubeId: ytId,
-        titulo: tituloCancion,
-        timestamp: Date.now()
+// 2. Sincronización en Tiempo Real de la Playlist con Firebase
+function sincronizarPlaylistFirebase() {
+  const playlistRef = ref(db, "playlist_global");
+  
+  onValue(playlistRef, (snapshot) => {
+    playlistGlobalData = [];
+    if (snapshot.exists()) {
+      const datos = snapshot.val();
+      Object.keys(datos).forEach((k) => {
+        playlistGlobalData.push({ id: k, ...datos[k] });
       });
-
-      // Limpia ambos campos tras guardar exitosamente
-      inputAdminUrlYt.value = "";
-      if (inputAdminTituloYt) inputAdminTituloYt.value = "";
-
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("¡Canción añadida a la Playlist! 🎧", "🚀", "#00f2fe");
-      }
-    } catch (err) {
-      console.error("Error al guardar canción en Firebase:", err);
     }
   });
 }
+sincronizarPlaylistFirebase();
 
-// 3. Renderizar la lista de canciones dentro del Panel Admin
+// 🎭 Función helper dinámica para modal de confirmación MovaChat
+function mostrarConfirmacionCustom(opciones = {}) {
+  const {
+    titulo = "¿Estás seguro?",
+    mensaje = "",
+    icono = "alert-circle",
+    textoAceptar = "Aceptar",
+    colorBtn = "#ff4b2b"
+  } = typeof opciones === "string" ? { mensaje: opciones } : opciones;
+
+  return new Promise((resolve) => {
+    const modal = document.getElementById("modal-custom-confirm");
+    const txtTitulo = document.getElementById("txt-confirm-titulo");
+    const txtMensaje = document.getElementById("txt-confirm-mensaje");
+    const boxIcon = document.getElementById("box-confirm-icon");
+    const btnAceptar = document.getElementById("btn-confirm-aceptar");
+    const btnCancelar = document.getElementById("btn-confirm-cancelar");
+
+    if (!modal) return resolve(false);
+
+    if (txtTitulo) txtTitulo.textContent = titulo;
+    if (txtMensaje) txtMensaje.textContent = mensaje;
+    if (btnAceptar) {
+      btnAceptar.textContent = textoAceptar;
+      btnAceptar.style.background = colorBtn;
+    }
+
+    if (boxIcon) {
+      boxIcon.innerHTML = `<i data-lucide="${icono}" style="width: 22px; height: 22px;"></i>`;
+    }
+
+    modal.style.display = "flex";
+    if (window.lucide) window.lucide.createIcons({ targets: [modal] });
+
+    const cerrar = (respuesta) => {
+      modal.style.display = "none";
+      btnAceptar.onclick = null;
+      btnCancelar.onclick = null;
+      resolve(respuesta);
+    };
+
+    btnAceptar.onclick = () => cerrar(true);
+    btnCancelar.onclick = () => cerrar(false);
+  });
+}
+
+// 3. Renderizar Lista de Canciones en el Panel Admin (ACTUALIZADO)
 function cargarPlaylistAdmin() {
   const contenedorListaAdmin = document.getElementById("admin-lista-playlist");
   if (!contenedorListaAdmin) return;
@@ -6586,17 +6617,19 @@ function cargarPlaylistAdmin() {
       Object.keys(canciones).forEach((key) => {
         const cancion = canciones[key];
         const filaCancion = document.createElement("div");
-        
+
         filaCancion.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.04); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem;";
-        
+
         filaCancion.innerHTML = `
-          <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px;">🎵 ${cancion.titulo}</span>
+          <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">🎵 ${cancion.titulo}</span>
           <button class="btn-borrar-cancion-admin" data-id="${key}" style="background: rgba(255,75,43,0.15); border: none; color: #ff4b2b; padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="Eliminar canción">🗑️</button>
         `;
 
-        // Evento para eliminar la canción de Firebase
         filaCancion.querySelector(".btn-borrar-cancion-admin").addEventListener("click", async () => {
-          if (confirm(`¿Eliminar "${cancion.titulo}" de la playlist?`)) {
+          // Llama al modal visual en lugar de la ventana del navegador
+          const confirmado = await mostrarConfirmacionCustom(`¿Eliminar "${cancion.titulo}" de la playlist?`);
+          
+          if (confirmado) {
             try {
               await set(ref(db, `playlist_global/${key}`), null);
               if (typeof mostrarAvisoPremium === "function") {
@@ -6616,17 +6649,87 @@ function cargarPlaylistAdmin() {
   });
 }
 
-// Ejecutar al iniciar la app si el usuario abre el admin
-const btnAbrirAdmin = document.getElementById("btn-abrir-admin");
-if (btnAbrirAdmin) {
-  const originalClick = btnAbrirAdmin.onclick;
-  btnAbrirAdmin.onclick = () => {
-    if (typeof originalClick === "function") originalClick();
-    cargarPlaylistAdmin();
-  };
+cargarPlaylistAdmin();
+
+// 4. Guardar Canciones desde el Panel Admin
+const btnAdminGuardarYt = document.getElementById("btn-admin-guardar-yt");
+const inputAdminUrlYt = document.getElementById("input-admin-url-yt");
+const inputAdminTituloYt = document.getElementById("input-admin-titulo-yt");
+
+if (btnAdminGuardarYt && inputAdminUrlYt) {
+  btnAdminGuardarYt.addEventListener("click", async () => {
+    const urlIngresada = inputAdminUrlYt.value.trim();
+    const tituloIngresado = inputAdminTituloYt ? inputAdminTituloYt.value.trim() : "";
+    const ytId = obtenerYouTubeId(urlIngresada);
+
+    if (!ytId) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Enlace de YouTube no válido ⚠️", "⚠️", "#ff4b2b");
+      }
+      return;
+    }
+
+    const tituloCancion = tituloIngresado || "Tema MovaChill";
+
+    try {
+      const playlistRef = ref(db, "playlist_global");
+      const nuevaCancionRef = push(playlistRef);
+
+      await set(nuevaCancionRef, {
+        youtubeId: ytId,
+        titulo: tituloCancion,
+        timestamp: Date.now()
+      });
+
+      inputAdminUrlYt.value = "";
+      if (inputAdminTituloYt) inputAdminTituloYt.value = "";
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("¡Canción añadida a la Playlist! 🎧", "🚀", "#00f2fe");
+      }
+    } catch (err) {
+      console.error("Error al guardar canción en Firebase:", err);
+    }
+  });
 }
 
-// 4. Control de Volumen
+// 5. Motor de YouTube API con detección automática para Módulos ES
+function inicializarReproductorYT() {
+  if (playerYouTube) return; // Evita doble inicialización
+
+  playerYouTube = new YT.Player('youtube-player-oculto', {
+    height: '0',
+    width: '0',
+    playerVars: {
+      'autoplay': 0,
+      'controls': 0,
+      'enablejsapi': 1,
+      'origin': window.location.origin
+    },
+    events: {
+      'onReady': () => {
+        console.log("✅ Reproductor de YouTube listo");
+        sincronizarPlaylistFirebase();
+      },
+      'onStateChange': (e) => {
+        if (e.data === YT.PlayerState.ENDED) reproducirSiguienteCancion();
+      }
+    }
+  });
+}
+
+// Escuchar si el script carga después o si ya había cargado antes de app.js
+if (window.YT && window.YT.Player) {
+  inicializarReproductorYT();
+} else {
+  window.onYouTubeIframeAPIReady = inicializarReproductorYT;
+}
+
+// 6. Controles de Interfaz
+const btnPlayerPlay = document.getElementById("btn-player-play");
+const btnPlayerNext = document.getElementById("btn-player-next");
+const btnPlayerPrev = document.getElementById("btn-player-prev");
+const txtInfoPerfil = document.getElementById("txt-cancion-actual-perfil");
 const sliderVolumen = document.getElementById("slider-volumen-musica");
 
 if (sliderVolumen) {
@@ -6637,64 +6740,6 @@ if (sliderVolumen) {
     }
   });
 }
-
-// ========================================================
-// 🎧 MOTOR DE REPRODUCCIÓN YOUTUBE & RICH PRESENCE
-// ========================================================
-
-let playerYouTube = null;
-let playlistGlobalData = [];
-let indiceCancionActual = 0;
-let estaReproduciendoMusica = false;
-
-// Busca esta parte en tu app.js y agrega la línea 'origin'
-window.onYouTubeIframeAPIReady = function() {
-  playerYouTube = new YT.Player('youtube-player-oculto', {
-    height: '0',
-    width: '0',
-    playerVars: {
-      'autoplay': 0,
-      'controls': 0,
-      'enablejsapi': 1,
-      'origin': window.location.origin // 👈 AGREGA ESTA LÍNEA
-    },
-    events: {
-      'onReady': onPlayerReady,
-      'onStateChange': onPlayerStateChange
-    }
-  });
-};
-
-function onPlayerReady(event) {
-  sincronizarPlaylistFirebase();
-}
-
-function onPlayerStateChange(event) {
-  // Si la canción termina (código 0), pasar automáticamente a la siguiente
-  if (event.data === YT.PlayerState.ENDED) {
-    reproducirSiguienteCancion();
-  }
-}
-
-// 2. Sincronizar canciones subidas por el Admin desde Firebase
-function sincronizarPlaylistFirebase() {
-  const playlistRef = ref(db, "playlist_global");
-  
-  onValue(playlistRef, (snapshot) => {
-    playlistGlobalData = [];
-    if (snapshot.exists()) {
-      const datos = snapshot.val();
-      Object.keys(datos).forEach((k) => {
-        playlistGlobalData.push({ id: k, ...datos[k] });
-      });
-    }
-  });
-}
-
-// 3. Controles de Reproducción (Play/Pause y Next)
-const btnPlayerPlay = document.getElementById("btn-player-play");
-const btnPlayerNext = document.getElementById("btn-player-next");
-const txtInfoPerfil = document.getElementById("txt-cancion-actual-perfil");
 
 if (btnPlayerPlay) {
   btnPlayerPlay.addEventListener("click", () => {
@@ -6710,7 +6755,7 @@ if (btnPlayerPlay) {
     if (estadoReproduccion === YT.PlayerState.PLAYING) {
       playerYouTube.pauseVideo();
       estaReproduciendoMusica = false;
-      btnPlayerPlay.innerHTML = `<i data-lucide="play" style="width: 16px; height: 16px; fill: #000;"></i>`;
+      btnPlayerPlay.innerHTML = `<i data-lucide="play" style="width: 14px; height: 14px; fill: #000;"></i>`;
       actualizarEstadoEscuchandoFirebase(null);
       if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium("Música pausada ⏸️", "💤", "#888888");
     } else {
@@ -6719,7 +6764,7 @@ if (btnPlayerPlay) {
         playerYouTube.loadVideoById(cancion.youtubeId);
         playerYouTube.playVideo();
         estaReproduciendoMusica = true;
-        btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 16px; height: 16px; fill: #000;"></i>`;
+        btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
         if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
         actualizarEstadoEscuchandoFirebase(cancion.titulo);
         if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Reproduciendo: ${cancion.titulo} 🎵`, "🎧", "#00f2fe");
@@ -6730,25 +6775,35 @@ if (btnPlayerPlay) {
 }
 
 if (btnPlayerNext) {
-  btnPlayerNext.addEventListener("click", () => {
-    reproducirSiguienteCancion();
-  });
+  btnPlayerNext.addEventListener("click", () => reproducirSiguienteCancion());
 }
-
-// Listener para el botón Anterior
-const btnPlayerPrev = document.getElementById("btn-player-prev");
 
 if (btnPlayerPrev) {
-  btnPlayerPrev.addEventListener("click", () => {
-    reproducirAnteriorCancion();
-  });
+  btnPlayerPrev.addEventListener("click", () => reproducirAnteriorCancion());
 }
 
-// Función para retroceder o repetir lista
+function reproducirSiguienteCancion() {
+  if (playlistGlobalData.length === 0) return;
+  indiceCancionActual = (indiceCancionActual + 1) % playlistGlobalData.length;
+  const cancion = playlistGlobalData[indiceCancionActual];
+
+  if (playerYouTube && cancion) {
+    playerYouTube.loadVideoById(cancion.youtubeId);
+    playerYouTube.playVideo();
+    estaReproduciendoMusica = true;
+
+    if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
+    if (btnPlayerPlay) {
+      btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
+      if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
+    }
+    actualizarEstadoEscuchandoFirebase(cancion.titulo);
+    if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Siguiente: ${cancion.titulo} ⏭️`, "🎧", "#00f2fe");
+  }
+}
+
 function reproducirAnteriorCancion() {
   if (playlistGlobalData.length === 0) return;
-
-  // Retroceder un índice con bucle al final si llega a 0
   indiceCancionActual = (indiceCancionActual - 1 + playlistGlobalData.length) % playlistGlobalData.length;
   const cancion = playlistGlobalData[indiceCancionActual];
 
@@ -6767,7 +6822,7 @@ function reproducirAnteriorCancion() {
   }
 }
 
-// 4. Sincronizar en Firebase lo que el usuario está escuchando ("Rich Presence")
+// 7. Estado Rich Presence en Firebase
 async function actualizarEstadoEscuchandoFirebase(tituloTema) {
   const user = auth.currentUser;
   if (!user) return;
