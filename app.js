@@ -47,6 +47,22 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
+// 🧹 REGISTRO GLOBAL DE SUSCRIPCIONES Y LIMPIEZA
+window.movaSubscriptions = [];
+
+function registrarSuscripcion(unsubFn) {
+  if (typeof unsubFn === "function") {
+    window.movaSubscriptions.push(unsubFn);
+  }
+}
+
+function desuscribirTodoFirebase() {
+  window.movaSubscriptions.forEach((unsub) => {
+    try { unsub(); } catch (e) {}
+  });
+  window.movaSubscriptions = [];
+}
+
 // --- DECLARACIÓN DE VARIABLES GLOBALES DE ESTADO ---
 let streamCamaraLive = null;
 let segundosRestantes = 10;
@@ -179,6 +195,72 @@ if (authForm) {
   });
 }
 
+// 🧹 LIMPIEZA TOTAL DE SESIÓN Y DOM AL CERRAR SESIÓN O RE-ENTRAR
+function limpiarEstadoSesionCompleto() {
+  // 1. Desconectar TODOS los escuchadores onValue de Firebase
+  desuscribirTodoFirebase();
+
+  // Apagar escuchadores de chat privado activo si estaban encendidos
+  if (typeof listenerChatActivo === "function") { listenerChatActivo(); listenerChatActivo = null; }
+  if (typeof listenerConfigActivo === "function") { listenerConfigActivo(); listenerConfigActivo = null; }
+  if (typeof listenerEscribiendoActivo === "function") { listenerEscribiendoActivo(); listenerEscribiendoActivo = null; }
+  if (typeof listenerLecturaActivo === "function") { listenerLecturaActivo(); listenerLecturaActivo = null; }
+  if (typeof listenerPresenciaContactoActivo === "function") { listenerPresenciaContactoActivo(); listenerPresenciaContactoActivo = null; }
+  if (typeof window.desuscribirLedContacto === "function") { window.desuscribirLedContacto(); window.desuscribirLedContacto = null; }
+
+  // 2. Resetear variables globales de estado
+  if (typeof contactosRegistradosSet !== "undefined") contactosRegistradosSet.clear();
+  window.contactoActivoUid = null;
+  contactoActivoUid = null;
+  window.mensajeEnEdicionId = null;
+  window.burbujaEnEdicion = null;
+  window.mensajeReenviadoActivo = null;
+
+  // 3. Detener reproductor de música si está sonando
+  if (typeof playerYouTube !== "undefined" && playerYouTube && typeof playerYouTube.pauseVideo === "function") {
+    try { playerYouTube.pauseVideo(); } catch (e) {}
+  }
+  if (typeof estaReproduciendoMusica !== "undefined") estaReproduciendoMusica = false;
+
+  // 4. Vaciar contenedores HTML del DOM
+  const listaChats = document.getElementById("lista-chats-principal");
+  if (listaChats) {
+    // Preservar la tarjeta de Mi Estado
+    const miEstadoHTML = document.getElementById("tarjeta-mi-estado-propio")?.outerHTML || "";
+    listaChats.innerHTML = miEstadoHTML;
+  }
+
+  const historial = document.querySelector(".historial-mensajes");
+  if (historial) historial.innerHTML = "";
+
+  const listaAdmin = document.getElementById("admin-lista-playlist");
+  if (listaAdmin) listaAdmin.innerHTML = "";
+
+  // 5. Restablecer vista de autenticación y ocultar app principal
+  const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
+  if (pantallaChatPrivado) {
+    pantallaChatPrivado.classList.remove("pantalla-completa");
+    pantallaChatPrivado.style.display = "none";
+  }
+
+  const pantallaPerfil = document.getElementById("pantalla-perfil");
+  if (pantallaPerfil) pantallaPerfil.style.display = "none";
+
+  const pantallaChats = document.getElementById("pantalla-chats");
+  if (pantallaChats) pantallaChats.style.display = "flex";
+
+  const menuFlotante = document.querySelector(".menu-flotante");
+  if (menuFlotante) menuFlotante.style.display = "flex";
+
+  const encabezado = document.querySelector(".encabezado-inicio");
+  if (encabezado) encabezado.style.display = "flex";
+
+  document.querySelectorAll(".modal-overlay, #modal-admin, #modal-custom-confirm").forEach(modal => {
+    modal.classList.add("oculto");
+    modal.style.display = "none";
+  });
+}
+
 // Listener de Estado de Autenticación con Guardián de Acceso
 onAuthStateChanged(auth, async (user) => {
   const authPantalla = document.getElementById("pantalla-auth");
@@ -197,58 +279,35 @@ onAuthStateChanged(auth, async (user) => {
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
+          // Limpiar por seguridad cualquier resto de sesión previa
+          if (typeof contactosRegistradosSet !== "undefined") contactosRegistradosSet.clear();
+
           if (typeof iniciarControlPresenciaReal === "function") {
             iniciarControlPresenciaReal();
           }
 
-          // 🌐 Cargar redes sociales del perfil
           if (typeof cargarEstadoRedesPropias === "function") {
             cargarEstadoRedesPropias();
           }
 
-          // 🚀 2. INYECCIÓN DIRECTA DE DATOS REALES EN EL PERFIL
+          // Inyectar datos en perfil...
           const elemNombreSpan = document.querySelector("#texto-perfil-nombre span");
           const elemFotoPerfil = document.querySelector(".avatar-perfil-img");
           const elemTextoEstado = document.querySelector(".texto-estado");
           const elemLedPerfil = document.querySelector(".btn-estado-sutil .punto-online");
 
-          // A) Asignar nombre registrado
-          if (elemNombreSpan) {
-            elemNombreSpan.textContent = datosUsuario.nombre || user.displayName || "Usuario Mova";
-          }
+          if (elemNombreSpan) elemNombreSpan.textContent = datosUsuario.nombre || user.displayName || "Usuario Mova";
+          if (elemFotoPerfil && datosUsuario.fotoUrl) elemFotoPerfil.src = datosUsuario.fotoUrl;
+          if (elemTextoEstado) elemTextoEstado.textContent = datosUsuario.estadoTexto || "Disponible. Toca para añadir estado...";
 
-          // B) Asignar foto de perfil si la subió
-          if (elemFotoPerfil && datosUsuario.fotoUrl) {
-            elemFotoPerfil.src = datosUsuario.fotoUrl;
-          }
-
-          // C) Cargar texto de estado guardado en Firebase
-          const fraseEstado = datosUsuario.estadoTexto || "Disponible. Toca para añadir estado...";
-          if (elemTextoEstado) elemTextoEstado.textContent = fraseEstado;
-
-          // D) Ajustar color LED según estado
-          if (elemLedPerfil) {
-            const estadoConexion = datosUsuario.estadoConexion || "online";
-            if (estadoConexion === "ocupado") {
-              elemLedPerfil.style.backgroundColor = "#ef4444";
-              elemLedPerfil.style.boxShadow = "0 0 10px #ef4444";
-            } else if (estadoConexion === "offline" || estadoConexion === "invisible") {
-              elemLedPerfil.style.backgroundColor = "#888888";
-              elemLedPerfil.style.boxShadow = "0 0 10px #888888";
-            } else {
-              elemLedPerfil.style.backgroundColor = "#00f2fe";
-              elemLedPerfil.style.boxShadow = "0 0 10px #00f2fe";
-            }
-          }
-
-          // 🚀 3. CARGAR CONTACTOS Y LISTA
+          // CARGAR CONTACTOS Y LISTA
           if (typeof cargarContactosAprobados === "function") {
             cargarContactosAprobados(user.uid);
           }
 
-          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE (CON PROGRAMADOR Y LIMPIEZA AUTOMÁTICA)
+          // 🔕 SINCRONIZAR SILENCIADOS (Y REGISTRAR SU ESCUCHADOR)
           const refSilenciados = ref(db, `silenciados/${user.uid}`);
-          onValue(refSilenciados, (snapshot) => {
+          const unsubSilenciados = onValue(refSilenciados, (snapshot) => {
             if (snapshot.exists()) {
               const silenciadosBD = snapshot.val();
               const objetivosIconos = [];
@@ -264,12 +323,10 @@ onAuthStateChanged(auth, async (user) => {
                   const hastaMs = parseInt(valorHasta, 10);
                   if (!isNaN(hastaMs) && ahora < hastaMs) {
                     estaVigente = true;
-                    // Programar temporizador de desactivación automática en tiempo real
                     if (typeof programarAutoDesactivacionSilencio === "function") {
                       programarAutoDesactivacionSilencio(contactoUid, hastaMs);
                     }
                   } else {
-                    // Expiró el tiempo mientras la app estaba cerrada
                     if (typeof limpiarSilencioExpirado === "function") {
                       limpiarSilencioExpirado(contactoUid);
                     } else {
@@ -288,7 +345,6 @@ onAuthStateChanged(auth, async (user) => {
 
                   if (tarjeta) {
                     tarjeta.classList.add("chat-silenciado-zona");
-
                     const contenedorHora = tarjeta.querySelector(".chat-cabecera");
                     if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
                       contenedorHora.insertAdjacentHTML("beforeend", `
@@ -313,35 +369,31 @@ onAuthStateChanged(auth, async (user) => {
               }
             }
           });
+          registrarSuscripcion(unsubSilenciados);
 
-          // 🚀 4. Lógica de Panel Admin
+          // Panel Admin Lógica...
           const btnAdmin = document.getElementById("btn-abrir-admin");
           const modalAdmin = document.getElementById("modal-admin");
           const btnCerrarAdmin = document.getElementById("btn-cerrar-admin");
 
           if (datosUsuario.rol === "admin") {
             if (btnAdmin) btnAdmin.style.display = "inline-block";
-
             if (btnAdmin && modalAdmin) {
               btnAdmin.onclick = () => {
                 modalAdmin.style.display = "flex";
-                if (typeof cargarUsuariosPendientes === "function") {
-                  cargarUsuariosPendientes();
-                }
+                if (typeof cargarUsuariosPendientes === "function") cargarUsuariosPendientes();
               };
             }
-
             if (btnCerrarAdmin && modalAdmin) {
-              btnCerrarAdmin.onclick = () => {
-                modalAdmin.style.display = "none";
-              };
+              btnCerrarAdmin.onclick = () => modalAdmin.style.display = "none";
             }
           } else {
             if (btnAdmin) btnAdmin.style.display = "none";
           }
 
         } else {
-          // ⏳ Bloqueo real si está pendiente
+          // Bloqueo si está pendiente
+          limpiarEstadoSesionCompleto();
           await signOut(auth);
           if (authPantalla) authPantalla.style.display = "flex";
           if (typeof mostrarAvisoPremium === "function") {
@@ -349,15 +401,19 @@ onAuthStateChanged(auth, async (user) => {
           }
         }
       } else {
+        limpiarEstadoSesionCompleto();
         await signOut(auth);
         if (authPantalla) authPantalla.style.display = "flex";
       }
     } catch (error) {
       console.error("❌ Error al verificar acceso:", error);
+      limpiarEstadoSesionCompleto();
       await signOut(auth);
       if (authPantalla) authPantalla.style.display = "flex";
     }
   } else {
+    // 🔴 USUARIO DESCONECTADO (LOGOUT)
+    limpiarEstadoSesionCompleto();
     if (authPantalla) authPantalla.style.display = "flex";
   }
 });
@@ -2003,6 +2059,10 @@ if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
 // ========================================================
 function asignarEventosMenuCabecera() {
   document.querySelectorAll(".opcion-cabecera-item").forEach((item) => {
+    // Evitar asignar múltiples escuchadores al mismo elemento si la función se llama varias veces
+    if (item.dataset.eventoAsignado) return;
+    item.dataset.eventoAsignado = "true";
+
     item.addEventListener("click", async (e) => {
       e.stopPropagation();
       const accion = item.getAttribute("data-accion");
@@ -2016,7 +2076,6 @@ function asignarEventosMenuCabecera() {
 
       // --- OPCIONES PANTALLA PRINCIPAL ---
       if (accion === "mi-perfil") {
-        // Busca cualquier elemento dentro de la barra inferior que contenga el texto "Perfil"
         const elementosNav = document.querySelectorAll(".barra-navegacion *, footer *");
         const btnPerfilInferior = Array.from(elementosNav).find((el) =>
           el.textContent && el.textContent.trim().toLowerCase() === "perfil"
@@ -2025,7 +2084,6 @@ function asignarEventosMenuCabecera() {
         if (btnPerfilInferior) {
           btnPerfilInferior.click();
         } else {
-          // Si no lo halla por texto, alterna las pantallas directamente
           const pantallaPerfil = document.getElementById("pantalla-perfil") || document.querySelector(".pantalla-perfil");
           const pantallaChats = document.getElementById("pantalla-chats") || document.querySelector(".pantalla-chats");
 
@@ -2065,7 +2123,6 @@ function asignarEventosMenuCabecera() {
       }
 
       else if (accion === "sincronizar") {
-        const usuarioActual = auth.currentUser;
         if (!usuarioActual) return;
 
         if (typeof mostrarAvisoPremium === "function") {
@@ -2075,8 +2132,10 @@ function asignarEventosMenuCabecera() {
         try {
           // 1. Forzar reconexión física de Firebase Realtime Database
           const { goOffline, goOnline } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
-          goOffline(db);
-          goOnline(db);
+          if (typeof db !== "undefined") {
+            goOffline(db);
+            goOnline(db);
+          }
 
           // 2. Volver a cargar la lista de contactos y reenganchar escuchadores
           if (typeof cargarContactosAprobados === "function") {
@@ -2951,7 +3010,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
   let timerExpiracionEfimera = null;
 
-  onValue(mensajesRef, async (snapshot) => {
+  const unsubMensajesContacto = onValue(mensajesRef, async (snapshot) => {
     const contenedorLista = document.getElementById("lista-chats-principal");
     if (!contenedorLista) return;
 
@@ -5385,6 +5444,17 @@ let audioDesbloqueado = false;
 function despertarAudioForzado() {
   if (audioDesbloqueado) return;
 
+  // 🎵 Despertar MovaRadio para cualquier usuario al primer toque
+  if (typeof playerYouTube !== "undefined" && playerYouTube && typeof playerYouTube.playVideo === "function") {
+    try {
+      if (typeof estaReproduciendoMusica !== "undefined" && estaReproduciendoMusica) {
+        playerYouTube.playVideo();
+      }
+    } catch (e) {
+      console.log("Esperando inicialización de YouTube:", e);
+    }
+  }
+
   const audioRecibido = document.getElementById("sonido-recibido");
   const audioEnviado = document.getElementById("sonido-enviado");
 
@@ -5405,12 +5475,10 @@ function despertarAudioForzado() {
   };
 
   Promise.all([activarAudio(audioRecibido), activarAudio(audioEnviado)]).then((resultados) => {
-    // Si al menos un elemento de audio se activó correctamente
     if (resultados.some((res) => res === true)) {
       audioDesbloqueado = true;
-      console.log("🔊 Motor de audio despertado y listo para todas las pantallas.");
+      console.log("🔊 Motor de audio y MovaRadio despertados para el perfil.");
 
-      // Retiramos los eventos solo cuando la activación ha sido exitosa
       document.removeEventListener("click", despertarAudioForzado);
       document.removeEventListener("touchstart", despertarAudioForzado);
       document.removeEventListener("pointerdown", despertarAudioForzado);
@@ -5616,6 +5684,9 @@ const contactosRegistradosSet = new Set();
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
+
+  // 🧹 RESTABLECER MEMORIA AL INICIAR SESIÓN (Resuelve el fallo al cerrar/abrir)
+  contactosRegistradosSet.clear();
 
   const usuariosRef = ref(db, 'usuarios');
   const fijadosRef = ref(db, `fijados/${usuarioActualUid}`);
@@ -6281,22 +6352,25 @@ function actualizarChecksEnPantalla(ultimoKeyLeido) {
   }
 }
 
-// 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
+// 🔄 Control dinámico de la pantalla de bienvenida y lista de chats
 function actualizarEstadoPantallaInicio() {
-  const contenedorVacio = document.getElementById("pantalla-lista-vacia");
-  const listaChats = document.querySelector(".lista-chats");
+  const pantallaBienvenida = document.getElementById("pantalla-bienvenida");
+  const pantallaChats = document.getElementById("pantalla-chats");
+  const listaChats = document.getElementById("lista-chats-principal");
 
-  if (!contenedorVacio || !listaChats) return;
+  if (!pantallaBienvenida || !pantallaChats || !listaChats) return;
 
-  // Contamos cuántas tarjetas de chat reales hay cargadas
-  const tarjetasReales = listaChats.querySelectorAll(".tarjeta-chat");
+  // Contamos cuantas tarjetas de chats de contactos reales existen (excluyendo Mi Estado)
+  const tarjetasContactos = listaChats.querySelectorAll(".tarjeta-chat:not(#tarjeta-mi-estado-propio)");
 
-  if (tarjetasReales.length === 0) {
-    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida orientada a buscar amigos
-    contenedorVacio.classList.remove("oculto");
+  if (tarjetasContactos.length === 0) {
+    // 📭 SIN CHATS (o al cargar/refrescar): Mostrar pantalla de bienvenida completa
+    pantallaBienvenida.style.display = "flex";
+    pantallaChats.style.display = "none";
   } else {
-    // 💬 CON CHATS: Ocultamos la tarjeta por completo para darle prioridad a la lista
-    contenedorVacio.classList.add("oculto");
+    // 💬 CON CHATS: Ocultar bienvenida y mostrar la bandeja de entrada
+    pantallaBienvenida.style.display = "none";
+    pantallaChats.style.display = "flex";
   }
 }
 
@@ -6528,34 +6602,8 @@ if (inputMensaje) {
 })();
 
 // ========================================================
-// 🎵 MÓDULO DE MÚSICA GLOBAL Y REPRODUCTOR (MovaRadio)
+// 🎭 HELPER MODAL CUSTOM REUTILIZABLE
 // ========================================================
-
-// 1. Extraer ID de YouTube
-function obtenerYouTubeId(url) {
-  if (!url) return null;
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
-}
-
-// 2. Sincronización en Tiempo Real de la Playlist con Firebase
-function sincronizarPlaylistFirebase() {
-  const playlistRef = ref(db, "playlist_global");
-  
-  onValue(playlistRef, (snapshot) => {
-    playlistGlobalData = [];
-    if (snapshot.exists()) {
-      const datos = snapshot.val();
-      Object.keys(datos).forEach((k) => {
-        playlistGlobalData.push({ id: k, ...datos[k] });
-      });
-    }
-  });
-}
-sincronizarPlaylistFirebase();
-
-// 🎭 Función helper dinámica para modal de confirmación MovaChat
 function mostrarConfirmacionCustom(opciones = {}) {
   const {
     titulo = "¿Estás seguro?",
@@ -6601,7 +6649,35 @@ function mostrarConfirmacionCustom(opciones = {}) {
   });
 }
 
-// 3. Renderizar Lista de Canciones en el Panel Admin (ACTUALIZADO)
+// ========================================================
+// 🎵 MÓDULO DE MÚSICA GLOBAL Y REPRODUCTOR (MovaRadio)
+// ========================================================
+
+// 1. Extraer ID de YouTube
+function obtenerYouTubeId(url) {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+
+// 2. Sincronizar Playlist Global con Firebase
+function sincronizarPlaylistFirebase() {
+  const playlistRef = ref(db, "playlist_global");
+  
+  onValue(playlistRef, (snapshot) => {
+    playlistGlobalData = [];
+    if (snapshot.exists()) {
+      const datos = snapshot.val();
+      Object.keys(datos).forEach((k) => {
+        playlistGlobalData.push({ id: k, ...datos[k] });
+      });
+    }
+  });
+}
+sincronizarPlaylistFirebase();
+
+// 3. Renderizar Lista de Canciones en Panel Admin
 function cargarPlaylistAdmin() {
   const contenedorListaAdmin = document.getElementById("admin-lista-playlist");
   if (!contenedorListaAdmin) return;
@@ -6626,9 +6702,14 @@ function cargarPlaylistAdmin() {
         `;
 
         filaCancion.querySelector(".btn-borrar-cancion-admin").addEventListener("click", async () => {
-          // Llama al modal visual en lugar de la ventana del navegador
-          const confirmado = await mostrarConfirmacionCustom(`¿Eliminar "${cancion.titulo}" de la playlist?`);
-          
+          const confirmado = await mostrarConfirmacionCustom({
+            titulo: "¿Eliminar canción?",
+            mensaje: `¿Deseas eliminar "${cancion.titulo}" de la playlist?`,
+            icono: "trash-2",
+            textoAceptar: "Eliminar",
+            colorBtn: "#ff4b2b"
+          });
+
           if (confirmado) {
             try {
               await set(ref(db, `playlist_global/${key}`), null);
@@ -6648,10 +6729,9 @@ function cargarPlaylistAdmin() {
     }
   });
 }
-
 cargarPlaylistAdmin();
 
-// 4. Guardar Canciones desde el Panel Admin
+// 4. Guardar Canciones desde Admin
 const btnAdminGuardarYt = document.getElementById("btn-admin-guardar-yt");
 const inputAdminUrlYt = document.getElementById("input-admin-url-yt");
 const inputAdminTituloYt = document.getElementById("input-admin-titulo-yt");
@@ -6693,9 +6773,9 @@ if (btnAdminGuardarYt && inputAdminUrlYt) {
   });
 }
 
-// 5. Motor de YouTube API con detección automática para Módulos ES
+// 5. Motor de YouTube API
 function inicializarReproductorYT() {
-  if (playerYouTube) return; // Evita doble inicialización
+  if (playerYouTube) return;
 
   playerYouTube = new YT.Player('youtube-player-oculto', {
     height: '0',
@@ -6707,10 +6787,7 @@ function inicializarReproductorYT() {
       'origin': window.location.origin
     },
     events: {
-      'onReady': () => {
-        console.log("✅ Reproductor de YouTube listo");
-        sincronizarPlaylistFirebase();
-      },
+      'onReady': () => sincronizarPlaylistFirebase(),
       'onStateChange': (e) => {
         if (e.data === YT.PlayerState.ENDED) reproducirSiguienteCancion();
       }
@@ -6718,14 +6795,13 @@ function inicializarReproductorYT() {
   });
 }
 
-// Escuchar si el script carga después o si ya había cargado antes de app.js
 if (window.YT && window.YT.Player) {
   inicializarReproductorYT();
 } else {
   window.onYouTubeIframeAPIReady = inicializarReproductorYT;
 }
 
-// 6. Controles de Interfaz
+// 6. Controles de Reproducción
 const btnPlayerPlay = document.getElementById("btn-player-play");
 const btnPlayerNext = document.getElementById("btn-player-next");
 const btnPlayerPrev = document.getElementById("btn-player-prev");
@@ -6743,33 +6819,62 @@ if (sliderVolumen) {
 
 if (btnPlayerPlay) {
   btnPlayerPlay.addEventListener("click", () => {
-    if (!playerYouTube || playlistGlobalData.length === 0) {
+    if (playlistGlobalData.length === 0) {
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("No hay canciones disponibles en la playlist 🎧", "⚠️", "#ff4b2b");
       }
       return;
     }
 
-    const estadoReproduccion = playerYouTube.getPlayerState();
-
-    if (estadoReproduccion === YT.PlayerState.PLAYING) {
-      playerYouTube.pauseVideo();
-      estaReproduciendoMusica = false;
-      btnPlayerPlay.innerHTML = `<i data-lucide="play" style="width: 14px; height: 14px; fill: #000;"></i>`;
-      actualizarEstadoEscuchandoFirebase(null);
-      if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium("Música pausada ⏸️", "💤", "#888888");
-    } else {
-      const cancion = playlistGlobalData[indiceCancionActual];
-      if (cancion) {
-        playerYouTube.loadVideoById(cancion.youtubeId);
-        playerYouTube.playVideo();
-        estaReproduciendoMusica = true;
-        btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
-        if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
-        actualizarEstadoEscuchandoFirebase(cancion.titulo);
-        if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Reproduciendo: ${cancion.titulo} 🎵`, "🎧", "#00f2fe");
+    if (!playerYouTube || typeof playerYouTube.getPlayerState !== "function") {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Conectando con YouTube, reintenta en un segundo... ⏳", "🔄", "#ffb100");
       }
+      return;
     }
+
+    try {
+      const estadoReproduccion = playerYouTube.getPlayerState();
+
+      if (estadoReproduccion === YT.PlayerState.PLAYING) {
+        // ⏸️ PAUSAR
+        playerYouTube.pauseVideo();
+        estaReproduciendoMusica = false;
+        btnPlayerPlay.innerHTML = `<i data-lucide="play" style="width: 14px; height: 14px; fill: #000;"></i>`;
+        actualizarEstadoEscuchandoFirebase(null);
+
+        // ☁️ Notificar pausa a todos en Firebase
+        set(ref(db, "mova_radio_activa"), {
+          reproduciendo: false
+        });
+
+        if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium("Música pausada ⏸️", "💤", "#888888");
+      } else {
+        // ▶️ REPRODUCIR
+        const cancion = playlistGlobalData[indiceCancionActual] || playlistGlobalData[0];
+        if (cancion) {
+          playerYouTube.loadVideoById(cancion.youtubeId);
+          playerYouTube.playVideo();
+          estaReproduciendoMusica = true;
+          btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
+          if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
+          actualizarEstadoEscuchandoFirebase(cancion.titulo);
+
+          // ☁️ Notificar canción activa a todos en Firebase
+          set(ref(db, "mova_radio_activa"), {
+            youtubeId: cancion.youtubeId,
+            titulo: cancion.titulo,
+            reproduciendo: true,
+            timestamp: Date.now()
+          });
+
+          if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Reproduciendo: ${cancion.titulo} 🎵`, "🎧", "#00f2fe");
+        }
+      }
+    } catch (e) {
+      console.error("Error al controlar reproductor de YouTube:", e);
+    }
+
     if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
   });
 }
@@ -6822,7 +6927,7 @@ function reproducirAnteriorCancion() {
   }
 }
 
-// 7. Estado Rich Presence en Firebase
+// 7. Rich Presence en Firebase
 async function actualizarEstadoEscuchandoFirebase(tituloTema) {
   const user = auth.currentUser;
   if (!user) return;
@@ -6839,3 +6944,55 @@ async function actualizarEstadoEscuchandoFirebase(tituloTema) {
     console.error("Error al actualizar estado de música en Firebase:", err);
   }
 }
+
+// 🎧 Escuchar sincronización de MovaRadio global para todos los perfiles
+function escucharRadioGlobal() {
+  const radioRef = ref(db, "mova_radio_activa");
+
+  const unsubRadio = onValue(radioRef, (snapshot) => {
+    if (!snapshot.exists()) return;
+
+    const estadoRadio = snapshot.val();
+    const txtInfoPerfil = document.getElementById("txt-cancion-actual-perfil");
+    const btnPlayerPlay = document.getElementById("btn-player-play");
+
+    if (estadoRadio.reproduciendo && estadoRadio.youtubeId) {
+      if (txtInfoPerfil) txtInfoPerfil.textContent = estadoRadio.titulo;
+
+      if (btnPlayerPlay) {
+        btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
+        if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
+      }
+
+      if (playerYouTube && typeof playerYouTube.loadVideoById === "function") {
+        try {
+          // Si es una canción distinta a la cargada, actualizar
+          const urlActual = playerYouTube.getVideoUrl ? playerYouTube.getVideoUrl() : "";
+          if (!urlActual.includes(estadoRadio.youtubeId)) {
+            playerYouTube.loadVideoById(estadoRadio.youtubeId);
+          }
+          playerYouTube.playVideo();
+          estaReproduciendoMusica = true;
+        } catch (e) {
+          console.warn("Esperando toque en pantalla del usuario para activar reproductor.");
+        }
+      }
+    } else {
+      if (playerYouTube && typeof playerYouTube.pauseVideo === "function") {
+        try { playerYouTube.pauseVideo(); } catch (e) {}
+      }
+      estaReproduciendoMusica = false;
+      if (btnPlayerPlay) {
+        btnPlayerPlay.innerHTML = `<i data-lucide="play" style="width: 14px; height: 14px; fill: #000;"></i>`;
+        if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
+      }
+    }
+  });
+
+  if (typeof registrarSuscripcion === "function") {
+    registrarSuscripcion(unsubRadio);
+  }
+}
+
+// Iniciar escuchador global
+escucharRadioGlobal();
