@@ -5355,11 +5355,13 @@ let audioDesbloqueado = false;
 function despertarAudioForzado() {
   if (audioDesbloqueado) return;
 
-  const audioRecibido = document.getElementById("sonido-recibido");
-  const audioEnviado = document.getElementById("sonido-enviado");
+  // Incluimos los 3 archivos de audio registrados en el HTML
+  const idsSonidos = ["sonido-recibido", "sonido-enviado", "sonido-grabando"];
 
-  const activarAudio = (elem) => {
+  const activarAudio = (id) => {
+    const elem = document.getElementById(id);
     if (!elem) return Promise.resolve(false);
+
     elem.volume = 0.01;
     return elem.play()
       .then(() => {
@@ -5369,12 +5371,12 @@ function despertarAudioForzado() {
         return true;
       })
       .catch((e) => {
-        console.log("Intento de activación de audio diferido:", e);
+        console.log(`Intento de activación de audio diferido (${id}):`, e);
         return false;
       });
   };
 
-  Promise.all([activarAudio(audioRecibido), activarAudio(audioEnviado)]).then((resultados) => {
+  Promise.all(idsSonidos.map((id) => activarAudio(id))).then((resultados) => {
     // Si al menos un elemento de audio se activó correctamente
     if (resultados.some((res) => res === true)) {
       audioDesbloqueado = true;
@@ -5388,14 +5390,14 @@ function despertarAudioForzado() {
   });
 }
 
-// Escuchadores de interacción inicial (Sin 'once: true' para reintentar si el navegador falla la primera vez)
+// Escuchadores de interacción inicial
 document.addEventListener("click", despertarAudioForzado);
 document.addEventListener("touchstart", despertarAudioForzado);
 document.addEventListener("pointerdown", despertarAudioForzado);
 
-// 🔊 FUNCIÓN DE REPRODUCCIÓN Y VIBRACIÓN CON DIAGNÓSTICO EN CONSOLA
-window.reproducirSonidoRecibido = function (contactoUid = null) {
-  console.log("🔔 Intentando reproducir sonido para el contacto:", contactoUid);
+// 🔊 MOTOR UNIFICADO DE REPRODUCCIÓN Y VIBRACIÓN
+window.reproducirSonido = function (tipo = "recibido", contactoUid = null) {
+  console.log(`🔔 Intentando reproducir sonido [${tipo}]` + (contactoUid ? ` para: ${contactoUid}` : ""));
 
   // 1. Verificar si las notificaciones generales están desactivadas
   const notifEstado = localStorage.getItem("movachat-notificaciones");
@@ -5404,8 +5406,8 @@ window.reproducirSonidoRecibido = function (contactoUid = null) {
     return;
   }
 
-  // 2. Verificar si este contacto específico está silenciado
-  if (contactoUid) {
+  // 2. Verificar si este contacto específico está silenciado (solo aplica para mensajes recibidos)
+  if (tipo === "recibido" && contactoUid) {
     const tiempoGuardado = localStorage.getItem(`silenciado_hasta_${contactoUid}`);
     if (tiempoGuardado) {
       if (tiempoGuardado === "indefinido") {
@@ -5420,44 +5422,52 @@ window.reproducirSonidoRecibido = function (contactoUid = null) {
     }
   }
 
-  // 3. VIBRACIÓN HÁPTICA (Se dispara primero)
+  // 3. VIBRACIÓN HÁPTICA ADAPTATIVA
   if ("vibrate" in navigator) {
     try {
-      navigator.vibrate([200, 100, 200]);
-      console.log("📳 Vibración ejecutada.");
+      if (tipo === "recibido") {
+        navigator.vibrate([200, 100, 200]);
+      } else if (tipo === "enviado") {
+        navigator.vibrate([50]);
+      } else if (tipo === "grabando") {
+        navigator.vibrate([100]);
+      }
     } catch (e) {
       console.warn("⚠️ No se pudo activar la vibración:", e);
     }
   }
 
-  // 4. REPRODUCCIÓN DE AUDIO (Usando la etiqueta HTML)
-  const audioRecibido = document.getElementById("sonido-recibido");
-  if (audioRecibido) {
-    audioRecibido.currentTime = 0;
-    audioRecibido.play()
-      .then(() => console.log("🔊 ¡Sonido reproducido con éxito!"))
+  // 4. REPRODUCCIÓN DE AUDIO
+  const idAudio = `sonido-${tipo}`;
+  const elemAudio = document.getElementById(idAudio);
+
+  if (elemAudio) {
+    elemAudio.currentTime = 0;
+    elemAudio.play()
+      .then(() => console.log(`🔊 Sonido '${idAudio}' reproducido con éxito.`))
       .catch((err) => {
-        console.error("❌ Chrome bloqueó la reproducción de audio:", err);
+        console.error(`❌ El navegador bloqueó la reproducción de '${idAudio}':`, err);
         if (typeof despertarAudioForzado === "function") despertarAudioForzado();
       });
   } else {
-    console.error("❌ No se encontró el elemento HTML <audio id='sonido-recibido'>");
+    console.error(`❌ No se encontró el elemento HTML <audio id='${idAudio}'>`);
   }
+};
+
+// Wrappers globales para mantener compatibilidad
+window.reproducirSonidoRecibido = function (contactoUid = null) {
+  window.reproducirSonido("recibido", contactoUid);
 };
 
 window.reproducirSonidoEnviado = function () {
-  if (typeof window.reproducirSonido === "function") {
-    window.reproducirSonido("enviado");
-  } else {
-    const audioEnviado = document.getElementById("sonido-enviado");
-    if (audioEnviado) {
-      audioEnviado.currentTime = 0;
-      audioEnviado.play().catch(() => {});
-    }
-  }
+  window.reproducirSonido("enviado");
 };
 
-// Función global para alternar visibilidad de contraseña
+window.reproducirSonidoGrabando = function () {
+  window.reproducirSonido("grabando");
+};
+
+// 👁️ FUNCIÓN GLOBAL PARA ALTERNAR VISIBILIDAD DE CONTRASEÑA
 window.togglePasswordVisibility = function () {
   const inputPass = document.getElementById("auth-password");
   const iconoOjito = document.getElementById("icono-ojito");

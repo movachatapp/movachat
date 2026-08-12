@@ -1,8 +1,8 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada v1.0.1)
+// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada v1.0.0.0.0.0)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.2';
+const CACHE_NAME = 'movachat-v1.0.0.0.0.0';
 
 // Recursos estáticos base
 const ASSETS_TO_CACHE = [
@@ -13,9 +13,9 @@ const ASSETS_TO_CACHE = [
   './manifest.json',
   './assets/logo/icon-192.png',
   './assets/logo/icon-512.png',
-  './assets/sounds/enviado.mp3',   // 👈 Guardado en Caché
-  './assets/sounds/grabando.mp3',  // 👈 Guardado en Caché
-  './assets/sounds/recibido.mp3'   // 👈 Guardado en Caché (Sonido de notificación)
+  './assets/sounds/enviado.mp3',
+  './assets/sounds/grabando.mp3',
+  './assets/sounds/recibido.mp3'
 ];
 
 // 1. Instalar el Service Worker
@@ -60,7 +60,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // OTROS RECURSOS (Imágenes, Fuentes, CSS): Buscar en caché primero
+  // OTROS RECURSOS (Imágenes, Fuentes, CSS, Audios): Buscar en caché primero
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -80,7 +80,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// 4. RECEPTOR DE NOTIFICACIONES PUSH
+// 4. RECEPTOR DE NOTIFICACIONES PUSH EN SEGUNDO PLANO
 self.addEventListener('push', (event) => {
   let data = { 
     titulo: 'MovaChat 💬', 
@@ -100,7 +100,9 @@ self.addEventListener('push', (event) => {
     body: data.cuerpo || 'Tienes un nuevo mensaje recibido 📩',
     icon: data.icono || './assets/logo/icon-192.png',
     badge: './assets/logo/icon-192.png',
-    vibrate: [200, 100, 200],
+    vibrate: [200, 100, 200, 100, 200], // Patrón de doble pulso de vibración
+    tag: 'nuevo-mensaje',                // Evita acumulaciones masivas de notificaciones
+    renotify: true,                     // Fuerza alerta visual y vibración incluso con mensajes seguidos
     data: { url: self.registration.scope }
   };
 
@@ -115,11 +117,13 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Si la ventana de la WebApp ya está abierta, enfocarse en ella
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
           return client.focus();
         }
       }
+      // Si no hay ninguna ventana abierta, lanzar una nueva
       if (clients.openWindow) {
         return clients.openWindow('./');
       }
