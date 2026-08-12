@@ -1,8 +1,8 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada v1.0.0.0.0.0)
+// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada v1.0.0.0.0.2)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.0.0.0.1';
+const CACHE_NAME = 'movachat-v1.0.0.0.0.3';
 
 // Recursos estáticos base
 const ASSETS_TO_CACHE = [
@@ -13,6 +13,7 @@ const ASSETS_TO_CACHE = [
   './manifest.json',
   './assets/logo/icon-192.png',
   './assets/logo/icon-512.png',
+  './assets/logo/badge-72.png', // ⚪ Silueta monocromática precachada
   './assets/sounds/enviado.mp3',
   './assets/sounds/grabando.mp3',
   './assets/sounds/recibido.mp3'
@@ -98,11 +99,11 @@ self.addEventListener('push', (event) => {
 
   const opciones = {
     body: data.cuerpo || 'Tienes un nuevo mensaje recibido 📩',
-    icon: data.icono || './assets/logo/icon-192.png',
-    badge: './assets/logo/icon-192.png',
-    vibrate: [200, 100, 200, 100, 200], // Patrón de doble pulso de vibración
-    tag: 'nuevo-mensaje',                // Evita acumulaciones masivas de notificaciones
-    renotify: true,                     // Fuerza alerta visual y vibración incluso con mensajes seguidos
+    icon: data.icono || './assets/logo/icon-192.png',  // 🖼️ Foto/Logo a color en la tarjeta
+    badge: './assets/logo/badge-72.png',                // ⚪ Silueta monocromática para la barra de estado
+    vibrate: [200, 100, 200, 100, 200],                 // Patrón de doble pulso de vibración
+    tag: 'nuevo-mensaje',                                // Evita acumulaciones masivas de notificaciones
+    renotify: true,                                     // Fuerza alerta visual y vibración incluso con mensajes seguidos
     data: { url: self.registration.scope }
   };
 

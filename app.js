@@ -191,6 +191,23 @@ onAuthStateChanged(auth, async (user) => {
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
+          // 🚀 ENRUTAMIENTO INICIAL SEGÚN NAVEGACIÓN Y CHATS
+          if (typeof switchPantalla === "function") {
+            switchPantalla(pantallaChats, pantallaBienvenida, pantallaPerfil, pantallaChatPrivado);
+          } else if (pantallaChats) {
+            pantallaChats.style.display = "flex";
+            if (pantallaBienvenida) pantallaBienvenida.style.display = "none";
+            if (pantallaPerfil) pantallaPerfil.style.display = "none";
+            if (pantallaChatPrivado) pantallaChatPrivado.style.display = "none";
+          }
+
+          // Marcar botón "Inicio" como activo en la barra inferior
+          const botonesMenu = document.querySelectorAll(".menu-flotante .menu-btn");
+          if (botonesMenu.length > 0) {
+            botonesMenu.forEach(b => b.classList.remove("activo"));
+            botonesMenu[0].classList.add("activo");
+          }
+
           if (typeof iniciarControlPresenciaReal === "function") {
             iniciarControlPresenciaReal();
           }
@@ -2120,17 +2137,10 @@ function asignarEventosMenuCabecera() {
       }
 
       else if (accion === "cerrar-sesion") {
-        if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
-          try {
-            const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-            await signOut(auth);
-
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
-            }
-          } catch (error) {
-            console.error("Error al cerrar sesión:", error);
-          }
+        const modalCerrarSesion = document.getElementById("modal-confirmar-cerrar-sesion");
+        if (modalCerrarSesion) {
+          modalCerrarSesion.classList.remove("oculto");
+          if (window.lucide) window.lucide.createIcons({ targets: [modalCerrarSesion] });
         }
       }
     });
@@ -6305,19 +6315,24 @@ function actualizarChecksEnPantalla(ultimoKeyLeido) {
 // 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
 function actualizarEstadoPantallaInicio() {
   const contenedorVacio = document.getElementById("pantalla-lista-vacia");
-  const listaChats = document.querySelector(".lista-chats");
+  const pantallaBienvenida = document.getElementById("pantalla-bienvenida");
+  const listaChats = document.querySelector("#lista-chats-principal") || document.querySelector(".lista-chats");
 
-  if (!contenedorVacio || !listaChats) return;
+  if (!listaChats) return;
 
-  // Contamos cuántas tarjetas de chat reales hay cargadas
-  const tarjetasReales = listaChats.querySelectorAll(".tarjeta-chat");
+  // Contamos tarjetas reales de conversación (omitimos la de "Mi Estado")
+  const tarjetasReales = Array.from(listaChats.querySelectorAll(".tarjeta-chat")).filter(
+    (t) => t.id !== "tarjeta-mi-estado-propio" && !t.classList.contains("tarjeta-estado-propio")
+  );
 
   if (tarjetasReales.length === 0) {
-    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida orientada a buscar amigos
-    contenedorVacio.classList.remove("oculto");
+    // 📭 SIN CHATS: Mostramos la bienvenida para invitar a agregar personas
+    if (contenedorVacio) contenedorVacio.classList.remove("oculto");
+    if (pantallaBienvenida) pantallaBienvenida.style.display = "flex";
   } else {
-    // 💬 CON CHATS: Ocultamos la tarjeta por completo para darle prioridad a la lista
-    contenedorVacio.classList.add("oculto");
+    // 💬 CON CHATS: Ocultamos bienvenida y mostramos la bandeja de chats limpia
+    if (contenedorVacio) contenedorVacio.classList.add("oculto");
+    if (pantallaBienvenida) pantallaBienvenida.style.display = "none";
   }
 }
 
@@ -6378,17 +6393,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada)
+// 🔔 NOTIFICACIONES PUSH NATIVAS (Con icono y badge separados)
 window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
-  // Si la app está en segundo plano o minimizada
   if (document.hidden && Notification.permission === "granted") {
     const opciones = {
       body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo/icon-192.png",
-      badge: "assets/logo/icon-192.png",
+      icon: avatarUrl || "assets/logo/icon-192.png", // 🖼️ Foto a color en la tarjeta desplegable
+      badge: "assets/logo/badge-72.png",             // ⚪ Silueta transparente para la barra de estado
       vibrate: [100, 50, 100],
       tag: "movachat-mensaje",
       renotify: true
@@ -6402,7 +6416,6 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
       new Notification(`Mensaje de ${nombreRemitente}`, opciones);
     }
   } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
     if (typeof actualizarBadgesNotificaciones === "function") {
       actualizarBadgesNotificaciones();
     }
@@ -6547,3 +6560,36 @@ if (inputMensaje) {
     }
   });
 })();
+
+// 🚪 LÓGICA DE CONFIRMACIÓN PARA CERRAR SESIÓN (MODAL GLASSMORPHISM)
+document.addEventListener("DOMContentLoaded", () => {
+  const modalCerrarSesion = document.getElementById("modal-confirmar-cerrar-sesion");
+  const btnCancelar = document.getElementById("btn-cancelar-cerrar-sesion");
+  const btnAceptar = document.getElementById("btn-aceptar-cerrar-sesion");
+
+  if (btnCancelar && modalCerrarSesion) {
+    btnCancelar.onclick = () => modalCerrarSesion.classList.add("oculto");
+  }
+
+  if (modalCerrarSesion) {
+    modalCerrarSesion.onclick = (e) => {
+      if (e.target === modalCerrarSesion) modalCerrarSesion.classList.add("oculto");
+    };
+  }
+
+  if (btnAceptar && modalCerrarSesion) {
+    btnAceptar.onclick = async () => {
+      modalCerrarSesion.classList.add("oculto");
+      try {
+        const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        await signOut(auth);
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
+        }
+      } catch (error) {
+        console.error("Error al cerrar sesión:", error);
+      }
+    };
+  }
+});
