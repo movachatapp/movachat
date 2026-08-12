@@ -3216,6 +3216,22 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       window.verificarEstadoBloqueo(contactoUid);
     }
   });
+
+  // 🎵 Escuchar en tiempo real si este contacto está escuchando música
+      onValue(ref(db, `usuarios/${contactoUid}/escuchandoMusica`), (musicaSnap) => {
+        const temaSonando = musicaSnap.exists() ? musicaSnap.val() : null;
+        const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
+        if (!tarjeta) return;
+
+        const elemTexto = tarjeta.querySelector(".chat-texto");
+        const badgeNoLeido = tarjeta.querySelector(".badge-chat-no-leido:not(.oculto)");
+
+        // Si está escuchando algo y no hay mensajes sin leer pendientes, muestra el tema
+        if (temaSonando && elemTexto && !badgeNoLeido) {
+          elemTexto.innerHTML = `<span style="color: #00f2fe; font-size: 0.78rem;">🎵 Escuchando: ${temaSonando}</span>`;
+        }
+      });
+
 }
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
@@ -5191,10 +5207,25 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// 🌐 SISTEMA ÚNICO DE REDES SOCIALES PERSONALES (Firebase v10 Modular)
+// 🌐 SISTEMA DE REDES SOCIALES CON MODAL GLASSMORPHISM (Firebase v10)
+let redSocialActiva = null;
+
 function conectarRedesSociales() {
   const botonesRedes = document.querySelectorAll(".red-enlace");
+  const modalRedes = document.getElementById("modal-redes-bento");
+  const btnCerrarRedes = document.getElementById("btn-cerrar-redes");
+  const btnGuardarRed = document.getElementById("btn-guardar-red-bento");
+  const inputUsuarioRed = document.getElementById("input-usuario-red");
+  const tituloModalRed = document.getElementById("titulo-modal-red");
+  const prefijoRed = document.getElementById("prefijo-red-social");
 
+  const configuracionRedes = {
+    instagram: { titulo: "Instagram", prefijo: "@" },
+    tiktok: { titulo: "TikTok", prefijo: "@" },
+    facebook: { titulo: "Facebook", prefijo: "fb/" }
+  };
+
+  // 1. Abrir Modal Bento Personalizado al hacer clic en un icono
   botonesRedes.forEach(btn => {
     btn.addEventListener("click", async (e) => {
       e.preventDefault();
@@ -5206,55 +5237,76 @@ function conectarRedesSociales() {
       const tipoRed = btn.dataset.red; // 'instagram', 'tiktok', 'facebook'
       if (!tipoRed) return;
 
+      redSocialActiva = tipoRed;
       const redRef = ref(db, `usuarios/${user.uid}/redes/${tipoRed}`);
 
       try {
         const snap = await get(redRef);
         const urlExistente = snap.exists() ? snap.val() : "";
 
-        // Si ya tiene una red guardada, le consulta si desea abrirla o modificarla
-        if (urlExistente !== "") {
-          const opcion = confirm(`Tu ${tipoRed.toUpperCase()} actual es: ${urlExistente}\n\n¿Deseas EDITAR este enlace?\n(Presiona 'Cancelar' para abrir tu perfil en una pestaña nueva)`);
-          
-          if (!opcion) {
-            const urlFinal = urlExistente.startsWith("http") ? urlExistente : `https://${tipoRed}.com/${urlExistente.replace('@', '')}`;
-            window.open(urlFinal, "_blank");
-            return;
-          }
+        // Personalizar títulos y prefijo según la red tocada
+        if (tituloModalRed) {
+          const info = configuracionRedes[tipoRed] || { titulo: tipoRed.toUpperCase(), prefijo: "@" };
+          tituloModalRed.textContent = `Vincular ${info.titulo}`;
+          if (prefijoRed) prefijoRed.textContent = info.prefijo;
         }
 
-        // Solicitar usuario o enlace
-        const nuevaUrl = prompt(`Ingresa tu enlace o usuario de ${tipoRed.toUpperCase()}:`, urlExistente);
+        if (inputUsuarioRed) {
+          inputUsuarioRed.value = urlExistente;
+          inputUsuarioRed.placeholder = "ej: elena_rostova";
+        }
 
-        if (nuevaUrl !== null) {
-          const valorLimpio = nuevaUrl.trim();
-
-          if (valorLimpio === "") {
-            await remove(redRef);
-            btn.classList.remove("conectada");
-            btn.style.borderColor = "rgba(255, 255, 255, 0.08)";
-            btn.style.boxShadow = "none";
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium(`Red ${tipoRed} eliminada`, "🗑️", "#ff4b2b");
-            }
-          } else {
-            await set(redRef, valorLimpio);
-            btn.classList.add("conectada");
-            btn.style.borderColor = "#00f2fe";
-            btn.style.boxShadow = "0 0 10px rgba(0, 242, 254, 0.3)";
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium(`¡Red ${tipoRed} vinculada con éxito! 🚀`, "✅", "#00f2fe");
-            }
-          }
+        if (modalRedes) {
+          modalRedes.classList.remove("oculto");
+          setTimeout(() => inputUsuarioRed && inputUsuarioRed.focus(), 60);
         }
       } catch (error) {
-        console.error("Error al actualizar red social:", error);
+        console.error("Error al abrir red social:", error);
       }
     });
   });
+
+  // 2. Guardar o Borrar en Firebase desde la ventana Glassmorphism
+  if (btnGuardarRed && modalRedes && inputUsuarioRed) {
+    btnGuardarRed.onclick = async () => {
+      const user = auth ? auth.currentUser : null;
+      if (!user || !redSocialActiva) return;
+
+      const valorLimpio = inputUsuarioRed.value.trim().replace(/^[@/]+/, "");
+      const redRef = ref(db, `usuarios/${user.uid}/redes/${redSocialActiva}`);
+
+      try {
+        if (valorLimpio === "") {
+          await remove(redRef);
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium(`Red ${redSocialActiva} desvinculada`, "🗑️", "#ff4b2b");
+          }
+        } else {
+          await set(redRef, valorLimpio);
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium(`¡${redSocialActiva.toUpperCase()} vinculada con éxito! 🚀`, "✅", "#00f2fe");
+          }
+        }
+        modalRedes.classList.add("oculto");
+      } catch (err) {
+        console.error("Error al guardar en Firebase:", err);
+      }
+    };
+  }
+
+  // 3. Cerrar el modal al presionar X o tocar el fondo
+  if (btnCerrarRedes && modalRedes) {
+    btnCerrarRedes.onclick = () => modalRedes.classList.add("oculto");
+  }
+
+  if (modalRedes) {
+    modalRedes.onclick = (e) => {
+      if (e.target === modalRedes) modalRedes.classList.add("oculto");
+    };
+  }
 }
 
-// 🌐 Cargar estado neón de las redes guardadas en Firebase
+// 🌐 Cargar estado neón de las redes en la interfaz
 function cargarEstadoRedesPropias() {
   const user = auth ? auth.currentUser : null;
   if (!user) return;
@@ -6460,3 +6512,269 @@ if (inputMensaje) {
     }
   });
 })();
+
+// ========================================================
+// 🎵 MÓDULO DE MÚSICA GLOBAL (ADMIN Y CLIENTE)
+// ========================================================
+
+// 1. Función para extraer el ID de un enlace de YouTube de forma limpia
+function obtenerYouTubeId(url) {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+
+// 2. Lógica del Admin para guardar canciones en Firebase
+const btnAdminGuardarYt = document.getElementById("btn-admin-guardar-yt");
+const inputAdminUrlYt = document.getElementById("input-admin-url-yt");
+
+if (btnAdminGuardarYt && inputAdminUrlYt) {
+  btnAdminGuardarYt.addEventListener("click", async () => {
+    const urlIngresada = inputAdminUrlYt.value.trim();
+    const ytId = obtenerYouTubeId(urlIngresada);
+
+    if (!ytId) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Enlace de YouTube no válido ⚠️", "⚠️", "#ff4b2b");
+      } else {
+        alert("Enlace de YouTube no válido.");
+      }
+      return;
+    }
+
+    const tituloCancion = prompt("Ingresa el título de la canción:", "Tema MovaChill") || "Tema MovaChill";
+
+    try {
+      const playlistRef = ref(db, "playlist_global");
+      const nuevaCancionRef = push(playlistRef);
+
+      await set(nuevaCancionRef, {
+        youtubeId: ytId,
+        titulo: tituloCancion,
+        timestamp: Date.now()
+      });
+
+      inputAdminUrlYt.value = "";
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("¡Canción añadida a la Playlist Global! 🎧", "🚀", "#00f2fe");
+      }
+    } catch (err) {
+      console.error("Error al guardar canción en Firebase:", err);
+    }
+  });
+}
+
+// 3. Renderizar la lista de canciones dentro del Panel Admin
+function cargarPlaylistAdmin() {
+  const contenedorListaAdmin = document.getElementById("admin-lista-playlist");
+  if (!contenedorListaAdmin) return;
+
+  const playlistRef = ref(db, "playlist_global");
+
+  onValue(playlistRef, (snapshot) => {
+    contenedorListaAdmin.innerHTML = "";
+
+    if (snapshot.exists()) {
+      const canciones = snapshot.val();
+
+      Object.keys(canciones).forEach((key) => {
+        const cancion = canciones[key];
+        const filaCancion = document.createElement("div");
+        
+        filaCancion.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.04); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem;";
+        
+        filaCancion.innerHTML = `
+          <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px;">🎵 ${cancion.titulo}</span>
+          <button class="btn-borrar-cancion-admin" data-id="${key}" style="background: rgba(255,75,43,0.15); border: none; color: #ff4b2b; padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="Eliminar canción">🗑️</button>
+        `;
+
+        // Evento para eliminar la canción de Firebase
+        filaCancion.querySelector(".btn-borrar-cancion-admin").addEventListener("click", async () => {
+          if (confirm(`¿Eliminar "${cancion.titulo}" de la playlist?`)) {
+            try {
+              await set(ref(db, `playlist_global/${key}`), null);
+              if (typeof mostrarAvisoPremium === "function") {
+                mostrarAvisoPremium("Canción eliminada de la nube 🗑️", "✨", "#ff4b2b");
+              }
+            } catch (error) {
+              console.error("Error al eliminar canción:", error);
+            }
+          }
+        });
+
+        contenedorListaAdmin.appendChild(filaCancion);
+      });
+    } else {
+      contenedorListaAdmin.innerHTML = `<p style="color: rgba(255,255,255,0.4); font-size: 0.75rem; text-align: center; margin: 4px 0;">No hay canciones en la playlist.</p>`;
+    }
+  });
+}
+
+// Ejecutar al iniciar la app si el usuario abre el admin
+const btnAbrirAdmin = document.getElementById("btn-abrir-admin");
+if (btnAbrirAdmin) {
+  const originalClick = btnAbrirAdmin.onclick;
+  btnAbrirAdmin.onclick = () => {
+    if (typeof originalClick === "function") originalClick();
+    cargarPlaylistAdmin();
+  };
+}
+
+// 4. Control de Volumen
+const sliderVolumen = document.getElementById("slider-volumen-musica");
+
+if (sliderVolumen) {
+  sliderVolumen.addEventListener("input", (e) => {
+    const vol = parseInt(e.target.value, 10);
+    if (playerYouTube && typeof playerYouTube.setVolume === "function") {
+      playerYouTube.setVolume(vol);
+    }
+  });
+}
+
+// ========================================================
+// 🎧 MOTOR DE REPRODUCCIÓN YOUTUBE & RICH PRESENCE
+// ========================================================
+
+let playerYouTube = null;
+let playlistGlobalData = [];
+let indiceCancionActual = 0;
+let estaReproduciendoMusica = false;
+
+// 1. Inicialización de la API de YouTube de forma nativa
+window.onYouTubeIframeAPIReady = function() {
+  playerYouTube = new YT.Player('youtube-player-oculto', {
+    height: '0',
+    width: '0',
+    playerVars: {
+      'autoplay': 0,
+      'controls': 0,
+      'enablejsapi': 1
+    },
+    events: {
+      'onReady': onPlayerReady,
+      'onStateChange': onPlayerStateChange
+    }
+  });
+};
+
+function onPlayerReady(event) {
+  sincronizarPlaylistFirebase();
+}
+
+function onPlayerStateChange(event) {
+  // Si la canción termina (código 0), pasar automáticamente a la siguiente
+  if (event.data === YT.PlayerState.ENDED) {
+    reproducirSiguienteCancion();
+  }
+}
+
+// 2. Sincronizar canciones subidas por el Admin desde Firebase
+function sincronizarPlaylistFirebase() {
+  const playlistRef = ref(db, "playlist_global");
+  
+  onValue(playlistRef, (snapshot) => {
+    playlistGlobalData = [];
+    if (snapshot.exists()) {
+      const datos = snapshot.val();
+      Object.keys(datos).forEach((k) => {
+        playlistGlobalData.push({ id: k, ...datos[k] });
+      });
+    }
+  });
+}
+
+// 3. Controles de Reproducción (Play/Pause y Next)
+const btnPlayerPlay = document.getElementById("btn-player-play");
+const btnPlayerNext = document.getElementById("btn-player-next");
+const txtInfoPerfil = document.getElementById("txt-cancion-actual-perfil");
+
+if (btnPlayerPlay) {
+  btnPlayerPlay.addEventListener("click", () => {
+    if (!playerYouTube || playlistGlobalData.length === 0) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("No hay canciones disponibles en la playlist 🎧", "⚠️", "#ff4b2b");
+      }
+      return;
+    }
+
+    const estadoReproduccion = playerYouTube.getPlayerState();
+
+    if (estadoReproduccion === YT.PlayerState.PLAYING) {
+      playerYouTube.pauseVideo();
+      estaReproduciendoMusica = false;
+      btnPlayerPlay.innerHTML = `<i data-lucide="play" style="width: 16px; height: 16px; fill: #000;"></i>`;
+      actualizarEstadoEscuchandoFirebase(null);
+      if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium("Música pausada ⏸️", "💤", "#888888");
+    } else {
+      const cancion = playlistGlobalData[indiceCancionActual];
+      if (cancion) {
+        playerYouTube.loadVideoById(cancion.youtubeId);
+        playerYouTube.playVideo();
+        estaReproduciendoMusica = true;
+        btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 16px; height: 16px; fill: #000;"></i>`;
+        if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
+        actualizarEstadoEscuchandoFirebase(cancion.titulo);
+        if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Reproduciendo: ${cancion.titulo} 🎵`, "🎧", "#00f2fe");
+      }
+    }
+    if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
+  });
+}
+
+if (btnPlayerNext) {
+  btnPlayerNext.addEventListener("click", () => {
+    reproducirSiguienteCancion();
+  });
+}
+
+// Listener para el botón Anterior
+const btnPlayerPrev = document.getElementById("btn-player-prev");
+
+if (btnPlayerPrev) {
+  btnPlayerPrev.addEventListener("click", () => {
+    reproducirAnteriorCancion();
+  });
+}
+
+// Función para retroceder o repetir lista
+function reproducirAnteriorCancion() {
+  if (playlistGlobalData.length === 0) return;
+
+  // Retroceder un índice con bucle al final si llega a 0
+  indiceCancionActual = (indiceCancionActual - 1 + playlistGlobalData.length) % playlistGlobalData.length;
+  const cancion = playlistGlobalData[indiceCancionActual];
+
+  if (playerYouTube && cancion) {
+    playerYouTube.loadVideoById(cancion.youtubeId);
+    playerYouTube.playVideo();
+    estaReproduciendoMusica = true;
+
+    if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
+    if (btnPlayerPlay) {
+      btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
+      if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
+    }
+    actualizarEstadoEscuchandoFirebase(cancion.titulo);
+    if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Anterior: ${cancion.titulo} ⏮️`, "🎧", "#00f2fe");
+  }
+}
+
+// 4. Sincronizar en Firebase lo que el usuario está escuchando ("Rich Presence")
+async function actualizarEstadoEscuchandoFirebase(tituloTema) {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const nodoEscuchandoRef = ref(db, `usuarios/${user.uid}/escuchandoMusica`);
+
+  try {
+    if (tituloTema) {
+      await set(nodoEscuchandoRef, tituloTema);
+    } else {
+      await set(nodoEscuchandoRef, null);
+    }
+  } catch (err) {
+    console.error("Error al actualizar estado de música en Firebase:", err);
+  }
+}
