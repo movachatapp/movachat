@@ -3865,8 +3865,3 @@ body.modo-ahorro #badge-campanita,
 body.modo-ahorro .puntos-escribiendo span {
   animation: none !important;
 }
-
-#menu-cabecera-chat button svg,
-#menu-cabecera-chat button i {
-    pointer-events: none;
-}

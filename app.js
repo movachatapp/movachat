@@ -47,34 +47,12 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
-// 🧹 REGISTRO GLOBAL DE SUSCRIPCIONES Y LIMPIEZA
-window.movaSubscriptions = [];
-
-function registrarSuscripcion(unsubFn) {
-  if (typeof unsubFn === "function") {
-    window.movaSubscriptions.push(unsubFn);
-  }
-}
-
-function desuscribirTodoFirebase() {
-  window.movaSubscriptions.forEach((unsub) => {
-    try { unsub(); } catch (e) { }
-  });
-  window.movaSubscriptions = [];
-}
-
 // --- DECLARACIÓN DE VARIABLES GLOBALES DE ESTADO ---
 let streamCamaraLive = null;
 let segundosRestantes = 10;
 let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
-
-// 🎵 Variables de MovaRadio
-let playerYouTube = null;
-let playlistGlobalData = [];
-let indiceCancionActual = 0;
-let estaReproduciendoMusica = false;
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -195,72 +173,6 @@ if (authForm) {
   });
 }
 
-// 🧹 LIMPIEZA TOTAL DE SESIÓN Y DOM AL CERRAR SESIÓN O RE-ENTRAR
-function limpiarEstadoSesionCompleto() {
-  // 1. Desconectar TODOS los escuchadores onValue de Firebase
-  desuscribirTodoFirebase();
-
-  // Apagar escuchadores de chat privado activo si estaban encendidos
-  if (typeof listenerChatActivo === "function") { listenerChatActivo(); listenerChatActivo = null; }
-  if (typeof listenerConfigActivo === "function") { listenerConfigActivo(); listenerConfigActivo = null; }
-  if (typeof listenerEscribiendoActivo === "function") { listenerEscribiendoActivo(); listenerEscribiendoActivo = null; }
-  if (typeof listenerLecturaActivo === "function") { listenerLecturaActivo(); listenerLecturaActivo = null; }
-  if (typeof listenerPresenciaContactoActivo === "function") { listenerPresenciaContactoActivo(); listenerPresenciaContactoActivo = null; }
-  if (typeof window.desuscribirLedContacto === "function") { window.desuscribirLedContacto(); window.desuscribirLedContacto = null; }
-
-  // 2. Resetear variables globales de estado
-  if (typeof contactosRegistradosSet !== "undefined") contactosRegistradosSet.clear();
-  window.contactoActivoUid = null;
-  contactoActivoUid = null;
-  window.mensajeEnEdicionId = null;
-  window.burbujaEnEdicion = null;
-  window.mensajeReenviadoActivo = null;
-
-  // 3. Detener reproductor de música si está sonando
-  if (typeof playerYouTube !== "undefined" && playerYouTube && typeof playerYouTube.pauseVideo === "function") {
-    try { playerYouTube.pauseVideo(); } catch (e) { }
-  }
-  if (typeof estaReproduciendoMusica !== "undefined") estaReproduciendoMusica = false;
-
-  // 4. Vaciar contenedores HTML del DOM
-  const listaChats = document.getElementById("lista-chats-principal");
-  if (listaChats) {
-    // Preservar la tarjeta de Mi Estado
-    const miEstadoHTML = document.getElementById("tarjeta-mi-estado-propio")?.outerHTML || "";
-    listaChats.innerHTML = miEstadoHTML;
-  }
-
-  const historial = document.querySelector(".historial-mensajes");
-  if (historial) historial.innerHTML = "";
-
-  const listaAdmin = document.getElementById("admin-lista-playlist");
-  if (listaAdmin) listaAdmin.innerHTML = "";
-
-  // 5. Restablecer vista de autenticación y ocultar app principal
-  const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
-  if (pantallaChatPrivado) {
-    pantallaChatPrivado.classList.remove("pantalla-completa");
-    pantallaChatPrivado.style.display = "none";
-  }
-
-  const pantallaPerfil = document.getElementById("pantalla-perfil");
-  if (pantallaPerfil) pantallaPerfil.style.display = "none";
-
-  const pantallaChats = document.getElementById("pantalla-chats");
-  if (pantallaChats) pantallaChats.style.display = "flex";
-
-  const menuFlotante = document.querySelector(".menu-flotante");
-  if (menuFlotante) menuFlotante.style.display = "flex";
-
-  const encabezado = document.querySelector(".encabezado-inicio");
-  if (encabezado) encabezado.style.display = "flex";
-
-  document.querySelectorAll(".modal-overlay, #modal-admin, #modal-custom-confirm").forEach(modal => {
-    modal.classList.add("oculto");
-    modal.style.display = "none";
-  });
-}
-
 // Listener de Estado de Autenticación con Guardián de Acceso
 onAuthStateChanged(auth, async (user) => {
   const authPantalla = document.getElementById("pantalla-auth");
@@ -279,35 +191,58 @@ onAuthStateChanged(auth, async (user) => {
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
-          // Limpiar por seguridad cualquier resto de sesión previa
-          if (typeof contactosRegistradosSet !== "undefined") contactosRegistradosSet.clear();
-
           if (typeof iniciarControlPresenciaReal === "function") {
             iniciarControlPresenciaReal();
           }
 
+          // 🌐 Cargar redes sociales del perfil
           if (typeof cargarEstadoRedesPropias === "function") {
             cargarEstadoRedesPropias();
           }
 
-          // Inyectar datos en perfil...
+          // 🚀 2. INYECCIÓN DIRECTA DE DATOS REALES EN EL PERFIL
           const elemNombreSpan = document.querySelector("#texto-perfil-nombre span");
           const elemFotoPerfil = document.querySelector(".avatar-perfil-img");
           const elemTextoEstado = document.querySelector(".texto-estado");
           const elemLedPerfil = document.querySelector(".btn-estado-sutil .punto-online");
 
-          if (elemNombreSpan) elemNombreSpan.textContent = datosUsuario.nombre || user.displayName || "Usuario Mova";
-          if (elemFotoPerfil && datosUsuario.fotoUrl) elemFotoPerfil.src = datosUsuario.fotoUrl;
-          if (elemTextoEstado) elemTextoEstado.textContent = datosUsuario.estadoTexto || "Disponible. Toca para añadir estado...";
+          // A) Asignar nombre registrado
+          if (elemNombreSpan) {
+            elemNombreSpan.textContent = datosUsuario.nombre || user.displayName || "Usuario Mova";
+          }
 
-          // CARGAR CONTACTOS Y LISTA
+          // B) Asignar foto de perfil si la subió
+          if (elemFotoPerfil && datosUsuario.fotoUrl) {
+            elemFotoPerfil.src = datosUsuario.fotoUrl;
+          }
+
+          // C) Cargar texto de estado guardado en Firebase
+          const fraseEstado = datosUsuario.estadoTexto || "Disponible. Toca para añadir estado...";
+          if (elemTextoEstado) elemTextoEstado.textContent = fraseEstado;
+
+          // D) Ajustar color LED según estado
+          if (elemLedPerfil) {
+            const estadoConexion = datosUsuario.estadoConexion || "online";
+            if (estadoConexion === "ocupado") {
+              elemLedPerfil.style.backgroundColor = "#ef4444";
+              elemLedPerfil.style.boxShadow = "0 0 10px #ef4444";
+            } else if (estadoConexion === "offline" || estadoConexion === "invisible") {
+              elemLedPerfil.style.backgroundColor = "#888888";
+              elemLedPerfil.style.boxShadow = "0 0 10px #888888";
+            } else {
+              elemLedPerfil.style.backgroundColor = "#00f2fe";
+              elemLedPerfil.style.boxShadow = "0 0 10px #00f2fe";
+            }
+          }
+
+          // 🚀 3. CARGAR CONTACTOS Y LISTA
           if (typeof cargarContactosAprobados === "function") {
             cargarContactosAprobados(user.uid);
           }
 
-          // 🔕 SINCRONIZAR SILENCIADOS (Y REGISTRAR SU ESCUCHADOR)
+          // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE (CON PROGRAMADOR Y LIMPIEZA AUTOMÁTICA)
           const refSilenciados = ref(db, `silenciados/${user.uid}`);
-          const unsubSilenciados = onValue(refSilenciados, (snapshot) => {
+          onValue(refSilenciados, (snapshot) => {
             if (snapshot.exists()) {
               const silenciadosBD = snapshot.val();
               const objetivosIconos = [];
@@ -323,10 +258,12 @@ onAuthStateChanged(auth, async (user) => {
                   const hastaMs = parseInt(valorHasta, 10);
                   if (!isNaN(hastaMs) && ahora < hastaMs) {
                     estaVigente = true;
+                    // Programar temporizador de desactivación automática en tiempo real
                     if (typeof programarAutoDesactivacionSilencio === "function") {
                       programarAutoDesactivacionSilencio(contactoUid, hastaMs);
                     }
                   } else {
+                    // Expiró el tiempo mientras la app estaba cerrada
                     if (typeof limpiarSilencioExpirado === "function") {
                       limpiarSilencioExpirado(contactoUid);
                     } else {
@@ -345,6 +282,7 @@ onAuthStateChanged(auth, async (user) => {
 
                   if (tarjeta) {
                     tarjeta.classList.add("chat-silenciado-zona");
+
                     const contenedorHora = tarjeta.querySelector(".chat-cabecera");
                     if (contenedorHora && !contenedorHora.querySelector(".indicador-silencio-neon")) {
                       contenedorHora.insertAdjacentHTML("beforeend", `
@@ -369,16 +307,8 @@ onAuthStateChanged(auth, async (user) => {
               }
             }
           });
-          registrarSuscripcion(unsubSilenciados);
 
-          // 🔕 SINCRONIZAR SILENCIADOS (Y REGISTRAR SU ESCUCHADOR)
-          // ... (mantén tu código de silenciados intacto hasta aquí) ...
-
-          // 🎵 ENCENDIDO SEGURO DE MÚSICA AL INICIAR SESIÓN
-          sincronizarPlaylistFirebase();
-          escucharRadioGlobal();
-
-          // ⚙️ PANEL ADMIN LÓGICA Y RECONEXIÓN
+          // 🚀 4. Lógica de Panel Admin
           const btnAdmin = document.getElementById("btn-abrir-admin");
           const modalAdmin = document.getElementById("modal-admin");
           const btnCerrarAdmin = document.getElementById("btn-cerrar-admin");
@@ -386,19 +316,17 @@ onAuthStateChanged(auth, async (user) => {
           if (datosUsuario.rol === "admin") {
             if (btnAdmin) btnAdmin.style.display = "inline-block";
 
-            // 🚀 Clave: Renderizar la lista del admin inmediatamente al iniciar sesión
-            cargarPlaylistAdmin();
-
             if (btnAdmin && modalAdmin) {
               btnAdmin.onclick = () => {
-                modalAdmin.classList.remove("oculto");
                 modalAdmin.style.display = "flex";
-                if (typeof cargarUsuariosPendientes === "function") cargarUsuariosPendientes();
+                if (typeof cargarUsuariosPendientes === "function") {
+                  cargarUsuariosPendientes();
+                }
               };
             }
+
             if (btnCerrarAdmin && modalAdmin) {
               btnCerrarAdmin.onclick = () => {
-                modalAdmin.classList.add("oculto");
                 modalAdmin.style.display = "none";
               };
             }
@@ -407,8 +335,7 @@ onAuthStateChanged(auth, async (user) => {
           }
 
         } else {
-          // Bloqueo si está pendiente
-          limpiarEstadoSesionCompleto();
+          // ⏳ Bloqueo real si está pendiente
           await signOut(auth);
           if (authPantalla) authPantalla.style.display = "flex";
           if (typeof mostrarAvisoPremium === "function") {
@@ -416,19 +343,15 @@ onAuthStateChanged(auth, async (user) => {
           }
         }
       } else {
-        limpiarEstadoSesionCompleto();
         await signOut(auth);
         if (authPantalla) authPantalla.style.display = "flex";
       }
     } catch (error) {
       console.error("❌ Error al verificar acceso:", error);
-      limpiarEstadoSesionCompleto();
       await signOut(auth);
       if (authPantalla) authPantalla.style.display = "flex";
     }
   } else {
-    // 🔴 USUARIO DESCONECTADO (LOGOUT)
-    limpiarEstadoSesionCompleto();
     if (authPantalla) authPantalla.style.display = "flex";
   }
 });
@@ -2074,10 +1997,6 @@ if (btnOpcionesCabecera && menuCabeceraFlotante && listaOpcionesCabecera) {
 // ========================================================
 function asignarEventosMenuCabecera() {
   document.querySelectorAll(".opcion-cabecera-item").forEach((item) => {
-    // Evitar asignar múltiples escuchadores al mismo elemento si la función se llama varias veces
-    if (item.dataset.eventoAsignado) return;
-    item.dataset.eventoAsignado = "true";
-
     item.addEventListener("click", async (e) => {
       e.stopPropagation();
       const accion = item.getAttribute("data-accion");
@@ -2091,6 +2010,7 @@ function asignarEventosMenuCabecera() {
 
       // --- OPCIONES PANTALLA PRINCIPAL ---
       if (accion === "mi-perfil") {
+        // Busca cualquier elemento dentro de la barra inferior que contenga el texto "Perfil"
         const elementosNav = document.querySelectorAll(".barra-navegacion *, footer *");
         const btnPerfilInferior = Array.from(elementosNav).find((el) =>
           el.textContent && el.textContent.trim().toLowerCase() === "perfil"
@@ -2099,6 +2019,7 @@ function asignarEventosMenuCabecera() {
         if (btnPerfilInferior) {
           btnPerfilInferior.click();
         } else {
+          // Si no lo halla por texto, alterna las pantallas directamente
           const pantallaPerfil = document.getElementById("pantalla-perfil") || document.querySelector(".pantalla-perfil");
           const pantallaChats = document.getElementById("pantalla-chats") || document.querySelector(".pantalla-chats");
 
@@ -2138,6 +2059,7 @@ function asignarEventosMenuCabecera() {
       }
 
       else if (accion === "sincronizar") {
+        const usuarioActual = auth.currentUser;
         if (!usuarioActual) return;
 
         if (typeof mostrarAvisoPremium === "function") {
@@ -2147,10 +2069,8 @@ function asignarEventosMenuCabecera() {
         try {
           // 1. Forzar reconexión física de Firebase Realtime Database
           const { goOffline, goOnline } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
-          if (typeof db !== "undefined") {
-            goOffline(db);
-            goOnline(db);
-          }
+          goOffline(db);
+          goOnline(db);
 
           // 2. Volver a cargar la lista de contactos y reenganchar escuchadores
           if (typeof cargarContactosAprobados === "function") {
@@ -2200,21 +2120,13 @@ function asignarEventosMenuCabecera() {
       }
 
       else if (accion === "cerrar-sesion") {
-        const confirmado = await mostrarConfirmacionCustom({
-          titulo: "¿Cerrar sesión?",
-          mensaje: "¿Estás seguro de que deseas salir de MovaChat?",
-          icono: "log-out",
-          textoAceptar: "Salir",
-          colorBtn: "#ff4b2b"
-        });
-
-        if (confirmado) {
+        if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
           try {
             const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
             await signOut(auth);
 
             if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Sesión cerrada correctamente 👏", "👋", "#ff4b2b");
+              mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
             }
           } catch (error) {
             console.error("Error al cerrar sesión:", error);
@@ -2411,25 +2323,8 @@ function iniciarControlPresenciaReal() {
   // Escuchar cuando el usuario minimiza o vuelve a abrir la app
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      // 1. Desactivar presencia en línea
       update(userRef, { presenciaReal: false });
-
-      // 2. Limpiar estado de música en Firebase
-      if (auth.currentUser) {
-        set(ref(db, `usuarios/${auth.currentUser.uid}/escuchandoMusica`), null);
-      }
-
-      // 3. Pausar reproductor local si está sonando
-      if (typeof player !== "undefined" && typeof player.pauseVideo === "function") {
-        player.pauseVideo();
-      }
-      const audioPlayer = document.getElementById("reproductor-audio");
-      if (audioPlayer && !audioPlayer.paused) {
-        audioPlayer.pause();
-      }
-
     } else if (auth.currentUser) {
-      // Al volver a la app, activa la presencia en línea de nuevo
       update(userRef, { presenciaReal: true });
     }
   });
@@ -3042,7 +2937,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
   let timerExpiracionEfimera = null;
 
-  const unsubMensajesContacto = onValue(mensajesRef, async (snapshot) => {
+  onValue(mensajesRef, async (snapshot) => {
     const contenedorLista = document.getElementById("lista-chats-principal");
     if (!contenedorLista) return;
 
@@ -3252,24 +3147,11 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
 
     if (ultimoMsg) {
-      const textoFinal = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
-      if (elemTexto) {
-        // 🚀 Guardamos el texto real en la memoria de la tarjeta
-        elemTexto.dataset.textoOriginal = textoFinal;
-
-        // Solo lo dibujamos si NO está sonando música en este momento
-        if (!tarjetaContacto.dataset.musicaSonando) {
-          elemTexto.textContent = textoFinal;
-        }
-      }
+      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
     } else {
-      if (elemTexto) {
-        elemTexto.dataset.textoOriginal = "Conversación vaciada";
-        if (!tarjetaContacto.dataset.musicaSonando) {
-          elemTexto.textContent = "Conversación vaciada";
-        }
-      }
+      // Mantiene la tarjeta visible marcando el estado de vaciado
+      if (elemTexto) elemTexto.textContent = "Conversación vaciada";
       if (elemHora) elemHora.textContent = "--:--";
     }
 
@@ -3334,44 +3216,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       window.verificarEstadoBloqueo(contactoUid);
     }
   });
-
-  // 🎵 Escuchar en tiempo real si este contacto está escuchando música
-  onValue(ref(db, `usuarios/${contactoUid}/escuchandoMusica`), (musicaSnap) => {
-    const temaSonando = musicaSnap.exists() ? musicaSnap.val() : null;
-    const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
-    if (!tarjeta) return;
-
-    const elemTexto = tarjeta.querySelector(".chat-texto");
-    const badgeNoLeido = tarjeta.querySelector(".badge-chat-no-leido:not(.oculto)");
-
-    if (temaSonando) {
-      // 🎧 ACTIVAR MODO MÚSICA
-      tarjeta.dataset.musicaSonando = "true";
-
-      // Si está escuchando algo y no hay mensajes sin leer pendientes, muestra el tema
-      if (elemTexto && !badgeNoLeido) {
-        // Aseguramos que exista el backup del texto por seguridad
-        if (!elemTexto.dataset.textoOriginal) {
-          elemTexto.dataset.textoOriginal = elemTexto.textContent;
-        }
-        elemTexto.innerHTML = `<span style="color: #00f2fe; font-size: 0.78rem;">🎵 Escuchando: ${temaSonando}</span>`;
-      }
-    } else {
-      // ⏸️ SE PAUSÓ LA MÚSICA (LIMPIEZA)
-      tarjeta.removeAttribute("data-musicaSonando");
-
-      if (elemTexto) {
-        // Restauramos el texto original (el último mensaje de la conversación)
-        elemTexto.textContent = elemTexto.dataset.textoOriginal || "Conversación vaciada";
-
-        // Si el contacto te había enviado un mensaje mientras escuchaba música, resaltarlo de nuevo
-        if (badgeNoLeido) {
-          elemTexto.classList.add("texto-resaltado");
-        }
-      }
-    }
-  });
-
 }
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
@@ -4907,34 +4751,10 @@ if (inputNuevoContacto && cajaSugerencias) {
 }
 
 if (btnAbrirContactos && modalContactos) {
-  btnAbrirContactos.addEventListener("click", async (e) => {
-    e.preventDefault();
-    console.log("🟢 Botón '+' presionado. Intentando abrir lista de contactos...");
-
-    try {
-      // 1. Ejecutamos la carga de Firebase de forma segura
-      if (typeof renderizarListaContactosModal === "function") {
-        await renderizarListaContactosModal();
-      } else {
-        console.error("❌ Error: La función renderizarListaContactosModal no existe.");
-      }
-
-      // 2. Forzamos la visibilidad del modal asegurando la propiedad display
-      modalContactos.classList.remove("oculto");
-      modalContactos.style.display = "flex";
-
-      // 3. Limpiamos cualquier capa de confirmación abierta
-      if (capaConfirmarEliminar) {
-        capaConfirmarEliminar.classList.add("oculto");
-      }
-
-      console.log("✅ Modal de contactos abierto correctamente.");
-    } catch (error) {
-      console.error("❌ Fallo crítico al abrir los contactos:", error);
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Ocurrió un error al cargar la lista de contactos.", "⚠️", "#ff4b2b");
-      }
-    }
+  btnAbrirContactos.addEventListener("click", () => {
+    renderizarListaContactosModal();
+    modalContactos.classList.remove("oculto");
+    if (capaConfirmarEliminar) capaConfirmarEliminar.classList.add("oculto");
   });
 }
 
@@ -5527,70 +5347,6 @@ function mostrarToast(mensaje) {
   }, 2500);
 }
 
-// 🌟 Modal de Confirmación con Flow (Promesa)
-window.mostrarConfirmacionCustom = function ({ titulo, mensaje, textoAceptar, colorBtn }) {
-  return new Promise((resolve) => {
-    // 1. Crear el fondo (Overlay)
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-      background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(5px);
-      display: flex; justify-content: center; align-items: center;
-      z-index: 9999; opacity: 0; transition: opacity 0.2s ease;
-    `;
-
-    // 2. Crear la caja del modal
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-      background: #141416; border-radius: 12px; padding: 24px;
-      width: 90%; max-width: 320px; text-align: center;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
-      transform: translateY(20px) scale(0.95); transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      border: 1px solid rgba(255,255,255,0.05);
-    `;
-
-    // 3. Estructura HTML interna del modal
-    modal.innerHTML = `
-      <h3 style="color: #fff; margin: 0 0 10px 0; font-size: 1.1rem; font-weight: 600;">${titulo}</h3>
-      <p style="color: rgba(255,255,255,0.6); font-size: 0.85rem; margin-bottom: 24px; line-height: 1.4;">${mensaje}</p>
-      <div style="display: flex; gap: 12px; justify-content: center;">
-        <button id="btn-cancel-custom" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer; font-weight: 500; transition: background 0.2s;">Cancelar</button>
-        <button id="btn-accept-custom" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: ${colorBtn || '#ff4b2b'}; color: #fff; cursor: pointer; font-weight: bold; transition: filter 0.2s;">${textoAceptar || 'Aceptar'}</button>
-      </div>
-    `;
-
-    // Añadir al DOM
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    // Efectos hover en los botones
-    modal.querySelector('#btn-cancel-custom').onmouseover = function () { this.style.background = 'rgba(255,255,255,0.1)'; };
-    modal.querySelector('#btn-cancel-custom').onmouseout = function () { this.style.background = 'rgba(255,255,255,0.05)'; };
-    modal.querySelector('#btn-accept-custom').onmouseover = function () { this.style.filter = 'brightness(1.2)'; };
-    modal.querySelector('#btn-accept-custom').onmouseout = function () { this.style.filter = 'brightness(1)'; };
-
-    // Animación de entrada
-    requestAnimationFrame(() => {
-      overlay.style.opacity = '1';
-      modal.style.transform = 'translateY(0) scale(1)';
-    });
-
-    // Función para cerrar y resolver la promesa
-    const cerrarModal = (resultado) => {
-      overlay.style.opacity = '0';
-      modal.style.transform = 'translateY(20px) scale(0.95)';
-      setTimeout(() => {
-        if (document.body.contains(overlay)) document.body.removeChild(overlay);
-        resolve(resultado);
-      }, 200); // Esperar que termine la animación
-    };
-
-    // Asignar eventos de clic a los botones
-    modal.querySelector('#btn-cancel-custom').onclick = () => cerrarModal(false);
-    modal.querySelector('#btn-accept-custom').onclick = () => cerrarModal(true);
-  });
-};
-
 // ========================================================
 // 🔊 SISTEMA DE DESBLOQUEO Y DESPERTARES DE AUDIO FORZADO
 // ========================================================
@@ -5598,17 +5354,6 @@ let audioDesbloqueado = false;
 
 function despertarAudioForzado() {
   if (audioDesbloqueado) return;
-
-  // 🎵 Despertar MovaRadio para cualquier usuario al primer toque
-  if (typeof playerYouTube !== "undefined" && playerYouTube && typeof playerYouTube.playVideo === "function") {
-    try {
-      if (typeof estaReproduciendoMusica !== "undefined" && estaReproduciendoMusica) {
-        playerYouTube.playVideo();
-      }
-    } catch (e) {
-      console.log("Esperando inicialización de YouTube:", e);
-    }
-  }
 
   const audioRecibido = document.getElementById("sonido-recibido");
   const audioEnviado = document.getElementById("sonido-enviado");
@@ -5630,10 +5375,12 @@ function despertarAudioForzado() {
   };
 
   Promise.all([activarAudio(audioRecibido), activarAudio(audioEnviado)]).then((resultados) => {
+    // Si al menos un elemento de audio se activó correctamente
     if (resultados.some((res) => res === true)) {
       audioDesbloqueado = true;
-      console.log("🔊 Motor de audio y MovaRadio despertados para el perfil.");
+      console.log("🔊 Motor de audio despertado y listo para todas las pantallas.");
 
+      // Retiramos los eventos solo cuando la activación ha sido exitosa
       document.removeEventListener("click", despertarAudioForzado);
       document.removeEventListener("touchstart", despertarAudioForzado);
       document.removeEventListener("pointerdown", despertarAudioForzado);
@@ -5839,9 +5586,6 @@ const contactosRegistradosSet = new Set();
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
-
-  // 🧹 RESTABLECER MEMORIA AL INICIAR SESIÓN (Resuelve el fallo al cerrar/abrir)
-  contactosRegistradosSet.clear();
 
   const usuariosRef = ref(db, 'usuarios');
   const fijadosRef = ref(db, `fijados/${usuarioActualUid}`);
@@ -6507,38 +6251,22 @@ function actualizarChecksEnPantalla(ultimoKeyLeido) {
   }
 }
 
-// 🔄 Control dinámico de la pantalla de bienvenida y lista de chats
+// 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
 function actualizarEstadoPantallaInicio() {
-  const pantallaBienvenida = document.getElementById("pantalla-bienvenida");
-  const pantallaChats = document.getElementById("pantalla-chats");
-  const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
-  const listaChats = document.getElementById("lista-chats-principal");
+  const contenedorVacio = document.getElementById("pantalla-lista-vacia");
+  const listaChats = document.querySelector(".lista-chats");
 
-  if (!pantallaBienvenida || !pantallaChats || !listaChats) return;
+  if (!contenedorVacio || !listaChats) return;
 
-  // 🛡️ FRENO DE MANO: Si el chat privado está abierto, mantiene oculta la lista de chats
-  const chatPrivadoAbierto = pantallaChatPrivado && (
-    pantallaChatPrivado.style.display === "flex" ||
-    pantallaChatPrivado.classList.contains("pantalla-completa")
-  );
+  // Contamos cuántas tarjetas de chat reales hay cargadas
+  const tarjetasReales = listaChats.querySelectorAll(".tarjeta-chat");
 
-  if (chatPrivadoAbierto) {
-    pantallaBienvenida.style.display = "none";
-    pantallaChats.style.display = "none";
-    return;
-  }
-
-  // Contamos cuántas tarjetas de chats de contactos reales existen (excluyendo Mi Estado)
-  const tarjetasContactos = listaChats.querySelectorAll(".tarjeta-chat:not(#tarjeta-mi-estado-propio)");
-
-  if (tarjetasContactos.length === 0) {
-    // 📭 SIN CHATS: Mostrar pantalla de bienvenida
-    pantallaBienvenida.style.display = "flex";
-    pantallaChats.style.display = "none";
+  if (tarjetasReales.length === 0) {
+    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida orientada a buscar amigos
+    contenedorVacio.classList.remove("oculto");
   } else {
-    // 💬 CON CHATS: Ocultar bienvenida y mostrar lista de chats
-    pantallaBienvenida.style.display = "none";
-    pantallaChats.style.display = "flex";
+    // 💬 CON CHATS: Ocultamos la tarjeta por completo para darle prioridad a la lista
+    contenedorVacio.classList.add("oculto");
   }
 }
 
@@ -6768,389 +6496,3 @@ if (inputMensaje) {
     }
   });
 })();
-
-// ========================================================
-// 🎭 HELPER MODAL CUSTOM REUTILIZABLE
-// ========================================================
-function mostrarConfirmacionCustom(opciones = {}) {
-  const {
-    titulo = "¿Estás seguro?",
-    mensaje = "",
-    icono = "alert-circle",
-    textoAceptar = "Aceptar",
-    colorBtn = "#ff4b2b"
-  } = typeof opciones === "string" ? { mensaje: opciones } : opciones;
-
-  return new Promise((resolve) => {
-    const modal = document.getElementById("modal-custom-confirm");
-    const txtTitulo = document.getElementById("txt-confirm-titulo");
-    const txtMensaje = document.getElementById("txt-confirm-mensaje");
-    const boxIcon = document.getElementById("box-confirm-icon");
-    const btnAceptar = document.getElementById("btn-confirm-aceptar");
-    const btnCancelar = document.getElementById("btn-confirm-cancelar");
-
-    if (!modal) return resolve(false);
-
-    if (txtTitulo) txtTitulo.textContent = titulo;
-    if (txtMensaje) txtMensaje.textContent = mensaje;
-    if (btnAceptar) {
-      btnAceptar.textContent = textoAceptar;
-      btnAceptar.style.background = colorBtn;
-    }
-
-    if (boxIcon) {
-      boxIcon.innerHTML = `<i data-lucide="${icono}" style="width: 22px; height: 22px;"></i>`;
-    }
-
-    modal.style.display = "flex";
-    if (window.lucide) window.lucide.createIcons({ targets: [modal] });
-
-    const cerrar = (respuesta) => {
-      modal.style.display = "none";
-      btnAceptar.onclick = null;
-      btnCancelar.onclick = null;
-      resolve(respuesta);
-    };
-
-    btnAceptar.onclick = () => cerrar(true);
-    btnCancelar.onclick = () => cerrar(false);
-  });
-}
-
-// ========================================================
-// 🎵 MÓDULO DE MÚSICA GLOBAL Y REPRODUCTOR (MovaRadio)
-// ========================================================
-
-// 1. Extraer ID de YouTube
-function obtenerYouTubeId(url) {
-  if (!url) return null;
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
-}
-
-// 2. Sincronizar Playlist Global con Firebase
-function sincronizarPlaylistFirebase() {
-  const playlistRef = ref(db, "playlist_global");
-  const unsubPlaylist = onValue(playlistRef, (snapshot) => {
-    playlistGlobalData = [];
-    if (snapshot.exists()) {
-      const datos = snapshot.val();
-      Object.keys(datos).forEach((k) => {
-        playlistGlobalData.push({ id: k, ...datos[k] });
-      });
-    }
-  });
-  registrarSuscripcion(unsubPlaylist); // 👈 Añadido para limpieza al cerrar sesión
-}
-
-// 3. Renderizar Lista de Canciones en Panel Admin
-function cargarPlaylistAdmin() {
-  const contenedorListaAdmin = document.getElementById("admin-lista-playlist");
-  if (!contenedorListaAdmin) return;
-
-  const playlistRef = ref(db, "playlist_global");
-  const unsubAdmin = onValue(playlistRef, (snapshot) => {
-    contenedorListaAdmin.innerHTML = "";
-    if (snapshot.exists()) {
-      const canciones = snapshot.val();
-      Object.keys(canciones).forEach((key) => {
-        const cancion = canciones[key];
-        const filaCancion = document.createElement("div");
-        filaCancion.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.04); padding: 6px 10px; border-radius: 6px; font-size: 0.8rem;";
-        filaCancion.innerHTML = `
-          <span style="color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">🎵 ${cancion.titulo}</span>
-          <button class="btn-borrar-cancion-admin" data-id="${key}" style="background: rgba(255,75,43,0.15); border: none; color: #ff4b2b; padding: 4px 8px; border-radius: 4px; cursor: pointer;" title="Eliminar canción">🗑️</button>
-        `;
-
-        // --- EVENTO DE CLIC ACTUALIZADO CON FLOW ---
-        filaCancion.querySelector(".btn-borrar-cancion-admin").addEventListener("click", async (e) => {
-          e.preventDefault();
-
-          // Usamos la nueva función custom
-          const confirmado = await mostrarConfirmacionCustom({
-            titulo: "Eliminar canción",
-            mensaje: `¿Estás seguro que deseas eliminar <br><strong style="color:#fff;">"${cancion.titulo}"</strong>?`,
-            textoAceptar: "Eliminar",
-            colorBtn: "#ff4b2b"
-          });
-
-          if (confirmado) {
-            try {
-              await set(ref(db, `playlist_global/${key}`), null);
-              if (typeof mostrarAvisoPremium === "function") {
-                mostrarAvisoPremium("Canción eliminada", "🗑️", "#ff4b2b");
-              }
-            } catch (error) {
-              console.error("❌ Error de Firebase al eliminar canción:", error);
-            }
-          }
-        });
-        // -----------------------------------
-
-        contenedorListaAdmin.appendChild(filaCancion);
-      });
-    } else {
-      contenedorListaAdmin.innerHTML = `<p style="color: rgba(255,255,255,0.4); font-size: 0.75rem; text-align: center; margin: 4px 0;">No hay canciones en la playlist.</p>`;
-    }
-  });
-  registrarSuscripcion(unsubAdmin); // 👈 Sigue aquí para evitar el laberinto de sesiones
-}
-
-// 4. Guardar Canciones desde Admin
-const btnAdminGuardarYt = document.getElementById("btn-admin-guardar-yt");
-const inputAdminUrlYt = document.getElementById("input-admin-url-yt");
-const inputAdminTituloYt = document.getElementById("input-admin-titulo-yt");
-
-if (btnAdminGuardarYt && inputAdminUrlYt) {
-  btnAdminGuardarYt.addEventListener("click", async () => {
-    const urlIngresada = inputAdminUrlYt.value.trim();
-    const tituloIngresado = inputAdminTituloYt ? inputAdminTituloYt.value.trim() : "";
-    const ytId = obtenerYouTubeId(urlIngresada);
-
-    if (!ytId) {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Enlace de YouTube no válido ⚠️", "⚠️", "#ff4b2b");
-      }
-      return;
-    }
-
-    const tituloCancion = tituloIngresado || "Tema MovaChill";
-
-    try {
-      const playlistRef = ref(db, "playlist_global");
-      const nuevaCancionRef = push(playlistRef);
-
-      await set(nuevaCancionRef, {
-        youtubeId: ytId,
-        titulo: tituloCancion,
-        timestamp: Date.now()
-      });
-
-      inputAdminUrlYt.value = "";
-      if (inputAdminTituloYt) inputAdminTituloYt.value = "";
-
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("¡Canción añadida a la Playlist! 🎧", "🚀", "#00f2fe");
-      }
-    } catch (err) {
-      console.error("Error al guardar canción en Firebase:", err);
-    }
-  });
-}
-
-// 5. Motor de YouTube API
-function inicializarReproductorYT() {
-  if (playerYouTube) return;
-
-  playerYouTube = new YT.Player('youtube-player-oculto', {
-    height: '0',
-    width: '0',
-    playerVars: {
-      'autoplay': 0,
-      'controls': 0,
-      'enablejsapi': 1,
-      'origin': window.location.origin
-    },
-    events: {
-      'onReady': () => sincronizarPlaylistFirebase(),
-      'onStateChange': (e) => {
-        if (e.data === YT.PlayerState.ENDED) reproducirSiguienteCancion();
-      }
-    }
-  });
-}
-
-if (window.YT && window.YT.Player) {
-  inicializarReproductorYT();
-} else {
-  window.onYouTubeIframeAPIReady = inicializarReproductorYT;
-}
-
-// 6. Controles de Reproducción
-const btnPlayerPlay = document.getElementById("btn-player-play");
-const btnPlayerNext = document.getElementById("btn-player-next");
-const btnPlayerPrev = document.getElementById("btn-player-prev");
-const txtInfoPerfil = document.getElementById("txt-cancion-actual-perfil");
-const sliderVolumen = document.getElementById("slider-volumen-musica");
-
-if (sliderVolumen) {
-  sliderVolumen.addEventListener("input", (e) => {
-    const vol = parseInt(e.target.value, 10);
-    if (playerYouTube && typeof playerYouTube.setVolume === "function") {
-      playerYouTube.setVolume(vol);
-    }
-  });
-}
-
-if (btnPlayerPlay) {
-  btnPlayerPlay.addEventListener("click", () => {
-    if (playlistGlobalData.length === 0) {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("No hay canciones disponibles en la playlist 🎧", "⚠️", "#ff4b2b");
-      }
-      return;
-    }
-
-    if (!playerYouTube || typeof playerYouTube.getPlayerState !== "function") {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Conectando con YouTube, reintenta en un segundo... ⏳", "🔄", "#ffb100");
-      }
-      return;
-    }
-
-    try {
-      const estadoReproduccion = playerYouTube.getPlayerState();
-
-      if (estadoReproduccion === YT.PlayerState.PLAYING) {
-        // ⏸️ PAUSAR
-        playerYouTube.pauseVideo();
-        estaReproduciendoMusica = false;
-        btnPlayerPlay.innerHTML = `<i data-lucide="play" style="width: 14px; height: 14px; fill: #000;"></i>`;
-        actualizarEstadoEscuchandoFirebase(null);
-
-        // ☁️ Notificar pausa a todos en Firebase
-        set(ref(db, "mova_radio_activa"), {
-          reproduciendo: false
-        });
-
-        if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium("Música pausada ⏸️", "💤", "#888888");
-      } else {
-        // ▶️ REPRODUCIR
-        const cancion = playlistGlobalData[indiceCancionActual] || playlistGlobalData[0];
-        if (cancion) {
-          playerYouTube.loadVideoById(cancion.youtubeId);
-          playerYouTube.playVideo();
-          estaReproduciendoMusica = true;
-          btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
-          if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
-          actualizarEstadoEscuchandoFirebase(cancion.titulo);
-
-          // ☁️ Notificar canción activa a todos en Firebase
-          set(ref(db, "mova_radio_activa"), {
-            youtubeId: cancion.youtubeId,
-            titulo: cancion.titulo,
-            reproduciendo: true,
-            timestamp: Date.now()
-          });
-
-          if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Reproduciendo: ${cancion.titulo} 🎵`, "🎧", "#00f2fe");
-        }
-      }
-    } catch (e) {
-      console.error("Error al controlar reproductor de YouTube:", e);
-    }
-
-    if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
-  });
-}
-
-if (btnPlayerNext) {
-  btnPlayerNext.addEventListener("click", () => reproducirSiguienteCancion());
-}
-
-if (btnPlayerPrev) {
-  btnPlayerPrev.addEventListener("click", () => reproducirAnteriorCancion());
-}
-
-function reproducirSiguienteCancion() {
-  if (playlistGlobalData.length === 0) return;
-  indiceCancionActual = (indiceCancionActual + 1) % playlistGlobalData.length;
-  const cancion = playlistGlobalData[indiceCancionActual];
-
-  if (playerYouTube && cancion) {
-    playerYouTube.loadVideoById(cancion.youtubeId);
-    playerYouTube.playVideo();
-    estaReproduciendoMusica = true;
-
-    if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
-    if (btnPlayerPlay) {
-      btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
-      if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
-    }
-    actualizarEstadoEscuchandoFirebase(cancion.titulo);
-    if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Siguiente: ${cancion.titulo} ⏭️`, "🎧", "#00f2fe");
-  }
-}
-
-function reproducirAnteriorCancion() {
-  if (playlistGlobalData.length === 0) return;
-  indiceCancionActual = (indiceCancionActual - 1 + playlistGlobalData.length) % playlistGlobalData.length;
-  const cancion = playlistGlobalData[indiceCancionActual];
-
-  if (playerYouTube && cancion) {
-    playerYouTube.loadVideoById(cancion.youtubeId);
-    playerYouTube.playVideo();
-    estaReproduciendoMusica = true;
-
-    if (txtInfoPerfil) txtInfoPerfil.textContent = cancion.titulo;
-    if (btnPlayerPlay) {
-      btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
-      if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
-    }
-    actualizarEstadoEscuchandoFirebase(cancion.titulo);
-    if (typeof mostrarAvisoPremium === "function") mostrarAvisoPremium(`Anterior: ${cancion.titulo} ⏮️`, "🎧", "#00f2fe");
-  }
-}
-
-// 7. Rich Presence en Firebase
-async function actualizarEstadoEscuchandoFirebase(tituloTema) {
-  const user = auth.currentUser;
-  if (!user) return;
-
-  const nodoEscuchandoRef = ref(db, `usuarios/${user.uid}/escuchandoMusica`);
-
-  try {
-    if (tituloTema) {
-      await set(nodoEscuchandoRef, tituloTema);
-    } else {
-      await set(nodoEscuchandoRef, null);
-    }
-  } catch (err) {
-    console.error("Error al actualizar estado de música en Firebase:", err);
-  }
-}
-
-// 🎧 Escuchar sincronización de MovaRadio global para todos los perfiles
-function escucharRadioGlobal() {
-  const radioRef = ref(db, "mova_radio_activa");
-  const unsubRadio = onValue(radioRef, (snapshot) => {
-    // ... (Mantén todo el código original que tienes dentro de esta función) ...
-    // Solo copia tu lógica interna intacta aquí
-    if (!snapshot.exists()) return;
-    const estadoRadio = snapshot.val();
-    const txtInfoPerfil = document.getElementById("txt-cancion-actual-perfil");
-    const btnPlayerPlay = document.getElementById("btn-player-play");
-
-    if (estadoRadio.reproduciendo && estadoRadio.youtubeId) {
-      if (txtInfoPerfil) txtInfoPerfil.textContent = estadoRadio.titulo;
-      if (btnPlayerPlay) {
-        btnPlayerPlay.innerHTML = `<i data-lucide="pause" style="width: 14px; height: 14px; fill: #000;"></i>`;
-        if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
-      }
-      if (playerYouTube && typeof playerYouTube.loadVideoById === "function") {
-        try {
-          const urlActual = playerYouTube.getVideoUrl ? playerYouTube.getVideoUrl() : "";
-          if (!urlActual.includes(estadoRadio.youtubeId)) {
-            playerYouTube.loadVideoById(estadoRadio.youtubeId);
-          }
-          playerYouTube.playVideo();
-          estaReproduciendoMusica = true;
-        } catch (e) {
-          console.warn("Esperando toque en pantalla del usuario para activar reproductor.");
-        }
-      }
-    } else {
-      if (playerYouTube && typeof playerYouTube.pauseVideo === "function") {
-        try { playerYouTube.pauseVideo(); } catch (e) { }
-      }
-      estaReproduciendoMusica = false;
-      if (btnPlayerPlay) {
-        btnPlayerPlay.innerHTML = `<i data-lucide="play" style="width: 14px; height: 14px; fill: #000;"></i>`;
-        if (window.lucide) window.lucide.createIcons({ targets: [btnPlayerPlay] });
-      }
-    }
-  });
-
-  registrarSuscripcion(unsubRadio); // 👈 Aseguramos que se limpie
-}
