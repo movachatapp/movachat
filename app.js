@@ -3040,18 +3040,18 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    // 🔊 ACTIVAR REPRODUCCIÓN GLOBAL DE SONIDO, VIBRACIÓN Y NOTIFICACIÓN
-    window.mensajesNotificadosGlobal = window.mensajesNotificadosGlobal || new Set();
+    // 🔊 ACTIVAR REPRODUCCIÓN GLOBAL DE SONIDO, VIBRACIÓN Y NOTIFICACIÓN (UNIFICADO)
+    window.mensajesNotificadosUnificados = window.mensajesNotificadosUnificados || new Set();
 
     if (!esPrimeraCargaGlobal && ultimoMsg && ultimoMsgKey) {
       const idEmisor = ultimoMsg.emisor || ultimoMsg.emisorUid;
       const haceCuanto = Date.now() - (ultimoMsg.timestamp || 0);
 
-      // Si el mensaje es del contacto (no mío), reciente y no ha sonado antes
-      if (idEmisor === contactoUid && haceCuanto < 8000 && !window.mensajesNotificadosGlobal.has(ultimoMsgKey)) {
-        window.mensajesNotificadosGlobal.add(ultimoMsgKey);
+      // Si el mensaje es del contacto (no mío), reciente y no ha sonado ni notificado aún
+      if (idEmisor === contactoUid && haceCuanto < 8000 && !window.mensajesNotificadosUnificados.has(ultimoMsgKey)) {
+        window.mensajesNotificadosUnificados.add(ultimoMsgKey); // 🛡️ Bloqueo anti-duplicados
 
-        // 1. Sonar y Vibrar en la app (pantalla de inicio o fuera del chat activo)
+        // 1. Sonar y Vibrar en la app
         if (typeof window.reproducirSonidoRecibido === "function") {
           window.reproducirSonidoRecibido(contactoUid);
         }
@@ -3086,7 +3086,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       return;
     }
 
-    // 🟢 3. CREAR O MANTENER TARJETA SI FUE VACIANO O TIENE MENSAJES
+    // 🟢 3. CREAR O MANTENER TARJETA SI FUE VACIADO O TIENE MENSAJES
     if (!tarjetaContacto) {
       tarjetaContacto = document.createElement("div");
       tarjetaContacto.className = "tarjeta-chat contacto-item";
@@ -5961,7 +5961,7 @@ if (inputChatPrivado) {
 let listenerChatActivo = null;
 let listenerConfigActivo = null;
 
-// 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL (CORREGIDO)
+// 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL (CORREGIDO Y UNIFICADO)
 let listenerEscribiendoActivo = null;
 let listenerLecturaActivo = null;
 let listenerPresenciaContactoActivo = null;
@@ -6145,18 +6145,18 @@ function escucharMensajesChat(chatId) {
             }
           }
 
-          // 🟢 CORRECCIÓN: DEFINICIÓN DE TIEMPO PARA MENSAJES EN VIVO
+          // 🟢 DEFINICIÓN DE TIEMPO PARA MENSAJES EN VIVO
           const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
           const esMensajeNuevoEnVivo = haceCuantoEnviado < 5000;
           const esElUltimoMensaje = (msgId === keysMensajes[keysMensajes.length - 1]);
 
-          // 🛡️ ESCUDO ANTI-DUPLICADOS: Evita que un mensaje suene varias veces si editan o recargan
-          window.mensajesNotificados = window.mensajesNotificados || new Set();
-          const yaSono = window.mensajesNotificados.has(msgId);
+          // 🛡️ ESCUDO ANTI-DUPLICADOS UNIFICADO
+          window.mensajesNotificadosUnificados = window.mensajesNotificadosUnificados || new Set();
+          const yaSono = window.mensajesNotificadosUnificados.has(msgId);
 
           if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto && esElUltimoMensaje && !yaSono) {
 
-            window.mensajesNotificados.add(msgId); // 👈 Marcar como reproducido
+            window.mensajesNotificadosUnificados.add(msgId); // 👈 Marcar en la memoria unificada
 
             const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
             const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
@@ -6427,7 +6427,7 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
-  // 🟢 Ejecutar el conteo del marcador siempre, sin importar si está en segundo plano
+  // 🟢 Actualizar el conteo del marcador visual de la app
   if (typeof window.actualizarBadgesNotificaciones === "function") {
     window.actualizarBadgesNotificaciones();
   }
@@ -6438,7 +6438,8 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
       icon: avatarUrl || "./assets/logo/icon-192.png",
       badge: "./assets/logo/badge-72.png",
       vibrate: [100, 50, 100],
-      tag: "movachat-msg-" + Date.now(), // 👈 Tag dinámico único para acumular el conteo en el sistema
+      // 🚀 CLAVE FIX: Usamos un tag estático por remitente para reemplazar la notificación y evitar duplicados
+      tag: "movachat-chat-" + nombreRemitente.replace(/\s+/g, '-').toLowerCase(),
       renotify: true
     };
 
