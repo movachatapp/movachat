@@ -193,6 +193,22 @@ onAuthStateChanged(auth, async (user) => {
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
+          // 🚀 FIX: Activar automáticamente la pantalla principal de chats al entrar
+          if (typeof switchPantalla === "function" && pantallaChats && pantallaBienvenida && pantallaPerfil && pantallaChatPrivado) {
+            switchPantalla(pantallaChats, pantallaBienvenida, pantallaPerfil, pantallaChatPrivado);
+          } else if (pantallaChats) {
+            pantallaChats.style.display = "flex";
+            pantallaChats.style.flexDirection = "column";
+            pantallaChats.style.alignItems = "stretch";
+            if (pantallaBienvenida) pantallaBienvenida.style.display = "none";
+          }
+
+          // Activar visualmente el botón "Inicio" en el menú flotante
+          if (btnInicioMenu && botonesMenu) {
+            botonesMenu.forEach(b => b.classList.remove("activo"));
+            btnInicioMenu.classList.add("activo");
+          }
+
           if (typeof iniciarControlPresenciaReal === "function") {
             iniciarControlPresenciaReal();
           }
@@ -6307,18 +6323,33 @@ function actualizarChecksEnPantalla(ultimoKeyLeido) {
 function actualizarEstadoPantallaInicio() {
   const contenedorVacio = document.getElementById("pantalla-lista-vacia");
   const listaChats = document.querySelector(".lista-chats");
+  const pantallaBienvenida = document.getElementById("pantalla-bienvenida");
+  const pantallaChats = document.getElementById("pantalla-chats");
 
-  if (!contenedorVacio || !listaChats) return;
+  if (!listaChats) return;
 
   // Contamos cuántas tarjetas de chat reales hay cargadas
   const tarjetasReales = listaChats.querySelectorAll(".tarjeta-chat");
 
   if (tarjetasReales.length === 0) {
-    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida orientada a buscar amigos
-    contenedorVacio.classList.remove("oculto");
+    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida / buscar amigos
+    if (contenedorVacio) contenedorVacio.classList.remove("oculto");
   } else {
-    // 💬 CON CHATS: Ocultamos la tarjeta por completo para darle prioridad a la lista
-    contenedorVacio.classList.add("oculto");
+    // 💬 CON CHATS: Ocultamos la bienvenida y garantizamos que la lista se muestre limpia
+    if (contenedorVacio) contenedorVacio.classList.add("oculto");
+
+    const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
+    const estaEnChatPrivado = pantallaChatPrivado && (pantallaChatPrivado.style.display === "flex" || pantallaChatPrivado.classList.contains("pantalla-completa"));
+
+    // Si no está metido dentro de un chat privado, muestra directamente la lista de chats
+    if (!estaEnChatPrivado) {
+      if (pantallaBienvenida) pantallaBienvenida.style.display = "none";
+      if (pantallaChats) {
+        pantallaChats.style.display = "flex";
+        pantallaChats.style.flexDirection = "column";
+        pantallaChats.style.alignItems = "stretch";
+      }
+    }
   }
 }
 
