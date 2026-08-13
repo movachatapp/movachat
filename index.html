@@ -813,6 +813,21 @@
     </div>
   </div>
 
+  <!-- 🚪 MODAL PERSONALIZADO CERRAR SESIÓN (GLASSMORPHISM MOVACHAT) -->
+  <div id="modal-confirmar-cerrar-sesion" class="modal-overlay oculto">
+    <div class="modal-cristal modal-mova-caja" style="max-width: 350px; text-align: center;">
+      <div class="modal-mova-icono" style="font-size: 2.2rem; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 75, 43, 0.6));">🚪</div>
+      <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin-bottom: 8px; font-weight: 600;">Cerrar sesión</h3>
+      <p class="modal-mova-texto" style="font-size: 0.88rem; color: rgba(255, 255, 255, 0.7); line-height: 1.45; margin-bottom: 22px;">
+        ¿Estás seguro de que deseas salir de MovaChat? Tendrás que iniciar sesión de nuevo.
+      </p>
+      <div class="modal-mova-botones" style="display: flex; gap: 12px;">
+        <button id="btn-cancelar-logout-modal" class="btn-secundario" style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
+        <button id="btn-aceptar-logout-modal" class="btn-primario" style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);">Salir</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 🔊 AUDIOS DEL SISTEMA -->
   <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
   <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>

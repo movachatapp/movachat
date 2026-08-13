@@ -371,6 +371,10 @@ onAuthStateChanged(auth, async (user) => {
     }
   } else {
     if (authPantalla) authPantalla.style.display = "flex";
+    
+    // 🛡️ Limpiar formulario al quedar sin sesión activa
+    const formAuth = document.getElementById("form-auth");
+    if (formAuth) formAuth.reset();
   }
 });
 
@@ -2123,32 +2127,26 @@ function asignarEventosMenuCabecera() {
         if (usuarioActual && usuarioActual.email) {
           try {
             const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+            
+            // Disparar correo de restablecimiento seguro desde Firebase
             await sendPasswordResetEmail(auth, usuarioActual.email);
 
             if (typeof mostrarAvisoPremium === "function") {
               mostrarAvisoPremium(`Enlace enviado a <b>${usuarioActual.email}</b> 🔑`, "✉️", "#00f2fe");
             }
           } catch (error) {
-            console.error("Error al enviar correo:", error);
+            console.error("Error al enviar correo de cambio:", error);
             if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("No se pudo enviar el correo de cambio ⚠️", "❌", "#ff4b2b");
+              mostrarAvisoPremium("No se pudo enviar el correo de restablecimiento ⚠️", "❌", "#ff4b2b");
             }
           }
         }
       }
 
       else if (accion === "cerrar-sesion") {
-        if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
-          try {
-            const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-            await signOut(auth);
-
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
-            }
-          } catch (error) {
-            console.error("Error al cerrar sesión:", error);
-          }
+        const modalLogout = document.getElementById("modal-confirmar-cerrar-sesion");
+        if (modalLogout) {
+          modalLogout.classList.remove("oculto");
         }
       }
     });
@@ -6539,3 +6537,46 @@ if (inputMensaje) {
     }
   });
 })();
+
+// 🚪 CONTROL DEL MODAL DE CERRAR SESIÓN
+document.addEventListener("DOMContentLoaded", () => {
+  const modalLogout = document.getElementById("modal-confirmar-cerrar-sesion");
+  const btnCancelarLogout = document.getElementById("btn-cancelar-logout-modal");
+  const btnAceptarLogout = document.getElementById("btn-aceptar-logout-modal");
+
+  // A) Cancelar y cerrar modal
+  if (btnCancelarLogout && modalLogout) {
+    btnCancelarLogout.onclick = () => {
+      modalLogout.classList.add("oculto");
+    };
+  }
+
+  // Cerrar si toca la capa oscura exterior
+  if (modalLogout) {
+    modalLogout.onclick = (e) => {
+      if (e.target === modalLogout) modalLogout.classList.add("oculto");
+    };
+  }
+
+  // B) Confirmar salida real
+  if (btnAceptarLogout && modalLogout) {
+    btnAceptarLogout.onclick = async () => {
+      modalLogout.classList.add("oculto");
+
+      try {
+        const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        await signOut(auth);
+
+        // 🧹 FIX DE PRIVACIDAD: Borra inmediatamente correo y contraseña del formulario
+        const formAuth = document.getElementById("form-auth");
+        if (formAuth) formAuth.reset();
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
+        }
+      } catch (error) {
+        console.error("Error al cerrar sesión:", error);
+      }
+    };
+  }
+});
