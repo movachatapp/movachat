@@ -47,6 +47,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
+const contactosRegistradosSet = new Set();
+
 // --- DECLARACIÓN DE VARIABLES GLOBALES DE ESTADO ---
 let streamCamaraLive = null;
 let segundosRestantes = 10;
@@ -5393,7 +5395,31 @@ document.addEventListener("click", despertarAudioForzado);
 document.addEventListener("touchstart", despertarAudioForzado);
 document.addEventListener("pointerdown", despertarAudioForzado);
 
-// 🔊 FUNCIÓN DE REPRODUCCIÓN Y VIBRACIÓN CON DIAGNÓSTICO EN CONSOLA
+// ========================================================
+// 🔊 CONTROL DE SONIDOS Y VIBRACIÓN (MOVACHAT)
+// ========================================================
+
+// 🔓 Desbloquea el audio en la primera interacción del usuario (Requerido por Chrome/Safari)
+window.despertarAudioForzado = function () {
+  const sonidoRecibido = document.getElementById("sonido-recibido");
+  const sonidoEnviado = document.getElementById("sonido-enviado");
+
+  [sonidoRecibido, sonidoEnviado].forEach((audio) => {
+    if (audio) {
+      audio.play().then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      }).catch(() => {});
+    }
+  });
+};
+
+// Escuchar el primer clic/toque en la pantalla para desbloquear el sonido
+document.addEventListener("click", function desbloquear() {
+  window.despertarAudioForzado();
+}, { once: true });
+
+// 🔔 Función para reproducir sonido al RECIBIR mensaje
 window.reproducirSonidoRecibido = function (contactoUid = null) {
   console.log("🔔 Intentando reproducir sonido para el contacto:", contactoUid);
 
@@ -5420,7 +5446,7 @@ window.reproducirSonidoRecibido = function (contactoUid = null) {
     }
   }
 
-  // 3. VIBRACIÓN HÁPTICA (Se dispara primero)
+  // 3. VIBRACIÓN HÁPTICA
   if ("vibrate" in navigator) {
     try {
       navigator.vibrate([200, 100, 200]);
@@ -5430,7 +5456,7 @@ window.reproducirSonidoRecibido = function (contactoUid = null) {
     }
   }
 
-  // 4. REPRODUCCIÓN DE AUDIO (Usando la etiqueta HTML)
+  // 4. REPRODUCCIÓN DE AUDIO
   const audioRecibido = document.getElementById("sonido-recibido");
   if (audioRecibido) {
     audioRecibido.currentTime = 0;
@@ -5438,20 +5464,20 @@ window.reproducirSonidoRecibido = function (contactoUid = null) {
       .then(() => console.log("🔊 ¡Sonido reproducido con éxito!"))
       .catch((err) => {
         console.error("❌ Chrome bloqueó la reproducción de audio:", err);
-        if (typeof despertarAudioForzado === "function") despertarAudioForzado();
+        window.despertarAudioForzado();
       });
   } else {
     console.error("❌ No se encontró el elemento HTML <audio id='sonido-recibido'>");
   }
 };
 
-// 🔊 Función para reproducir sonido de mensaje enviado
+// 📤 Función para reproducir sonido al ENVIAR mensaje
 window.reproducirSonidoEnviado = function () {
   const audioEnviado = document.getElementById("sonido-enviado");
   if (audioEnviado) {
     audioEnviado.currentTime = 0;
     audioEnviado.play().catch(() => {
-      despertarAudioForzado();
+      window.despertarAudioForzado();
     });
   }
 };
@@ -5579,8 +5605,6 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
     }
   }
 };
-
-const contactosRegistradosSet = new Set();
 
 // 🟢 Cargar presencia y escuchadores de chats activos (OPTIMIZADO ANTI-CALENTAMIENTO)
 function cargarContactosAprobados(usuarioActualUid) {
