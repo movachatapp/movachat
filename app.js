@@ -189,10 +189,6 @@ onAuthStateChanged(auth, async (user) => {
         if (estadoAcceso === "aprobado") {
           // 🟢 ACCESO AUTORIZADO -> Entra a MovaChat
           if (authPantalla) authPantalla.style.display = "none";
-
-          // 🟢 Evita parpadeos de la pantalla de inicio de sesión en la PWA
-          localStorage.setItem("movachat_sesion_activa", "true");
-
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
           // 🚀 ENRUTAMIENTO INICIAL SEGÚN NAVEGACIÓN Y CHATS
@@ -357,7 +353,6 @@ onAuthStateChanged(auth, async (user) => {
 
         } else {
           // ⏳ Bloqueo real si está pendiente
-          localStorage.removeItem("movachat_sesion_activa");
           await signOut(auth);
           if (authPantalla) authPantalla.style.display = "flex";
           if (typeof mostrarAvisoPremium === "function") {
@@ -1287,16 +1282,13 @@ let estaEnviandoMensaje = false;
 // 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS)
 // ========================================================
 async function enviarMensajeNuevo() {
-  // 🛡️ CANDADO LÓGICO ANTI-DUPLICADOS
+  // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
   if (estaEnviandoMensaje) return;
 
   const texto = inputChat ? inputChat.value.trim() : "";
   const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
 
   if (texto === "" && !tieneAdjunto) return;
-
-  // 🔴 ACTIVAR CANDADO DE INMEDIATO (Bloquea clics dobles al instante)
-  estaEnviandoMensaje = true;
 
   const usuarioActual = auth.currentUser;
   const miUid = usuarioActual ? usuarioActual.uid : null;
@@ -1306,9 +1298,11 @@ async function enviarMensajeNuevo() {
     if (typeof mostrarAvisoPremium === "function") {
       mostrarAvisoPremium("Selecciona un contacto para chatear.", "⚠️", "#ff4b2b");
     }
-    estaEnviandoMensaje = false; // Liberar candado si falta un dato
     return;
   }
+
+  // Activar candado
+  estaEnviandoMensaje = true;
 
   // 🛡️ 1. VERIFICACIÓN DE BLOQUEO EN FIREBASE (AMBAS DIRECCIONES)
   try {
@@ -2338,24 +2332,10 @@ function iniciarControlPresenciaReal() {
 
   // Escuchar cuando el usuario minimiza o vuelve a abrir la app
   document.addEventListener("visibilitychange", () => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const userRef = ref(db, `usuarios/${user.uid}`);
-
     if (document.hidden) {
       update(userRef, { presenciaReal: false });
-    } else {
-      // Al volver a la app, actualizamos presencia y forzamos refresco de lectura
+    } else if (auth.currentUser) {
       update(userRef, { presenciaReal: true });
-
-      if (typeof actualizarBadgesNotificaciones === "function") {
-        actualizarBadgesNotificaciones();
-      }
-      if (window.contactoActivoUid && typeof escucharMensajesChat === "function") {
-        const chatId = obtenerChatId(user.uid, window.contactoActivoUid);
-        escucharMensajesChat(chatId);
-      }
     }
   });
 }
@@ -4160,17 +4140,19 @@ if (inputBuscadorPrincipal) {
   inputBuscadorPrincipal.addEventListener("input", (e) => {
     const textoBusqueda = e.target.value.toLowerCase().trim();
     const tarjetasChat = document.querySelectorAll("#pantalla-chats .tarjeta-chat");
+    const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
+
+    // Ocultar "Mi Estado" al buscar un contacto para limpiar la lista
+    if (tarjetaMiEstado) {
+      if (textoBusqueda.length > 0) {
+        tarjetaMiEstado.classList.add("oculto");
+      } else {
+        tarjetaMiEstado.classList.remove("oculto");
+      }
+    }
 
     tarjetasChat.forEach((tarjeta) => {
-      // Ignorar la tarjeta del estado en el filtrado de chats comunes
-      if (tarjeta.id === "tarjeta-mi-estado-propio") {
-        if (textoBusqueda.length > 0) {
-          tarjeta.style.display = "none";
-        } else {
-          tarjeta.style.display = "flex";
-        }
-        return;
-      }
+      if (tarjeta.id === "tarjeta-mi-estado-propio") return;
 
       const elementoNombre = tarjeta.querySelector(".chat-nombre") || tarjeta.querySelector(".nombre-contacto");
       const elementoTexto = tarjeta.querySelector(".chat-texto") || tarjeta.querySelector(".ultimo-mensaje");
@@ -4180,7 +4162,11 @@ if (inputBuscadorPrincipal) {
 
       const coincide = nombre.includes(textoBusqueda) || mensaje.includes(textoBusqueda);
 
-      tarjeta.style.display = coincide ? "flex" : "none";
+      if (coincide) {
+        tarjeta.classList.remove("oculto");
+      } else {
+        tarjeta.classList.add("oculto");
+      }
     });
   });
 }

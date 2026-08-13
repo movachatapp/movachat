@@ -135,14 +135,14 @@ body {
   }
 }
 
-/* --- FASE 2: ENCABEZADO DE INICIO (AJUSTADO PARA NOTCH) --- */
+/* --- FASE 2: ENCABEZADO DE INICIO --- */
 .encabezado-inicio {
   position: relative;
   z-index: 10;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: max(20px, env(safe-area-inset-top)) 24px 20px 24px;
+  padding: 20px 24px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 4px 15px -5px rgba(0, 242, 254, 0.15);
 }
@@ -186,7 +186,7 @@ body {
   transition: transform 0.3s ease;
 }
 
-/* --- FASE 2.1: MENÚ FLOTANTE INFERIOR --- */
+/* --- FASE 2.1: MENÚ FLOTANTE INFERIOR (CÁPSULA PERFILADA VERTICALMENTE) --- */
 .menu-flotante {
   position: absolute;
   bottom: 20px;
@@ -200,7 +200,7 @@ body {
   background: rgba(11, 12, 16, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  padding: 10px 38px;
+  padding: 10px 38px; /* ✂️ 10px arriba/abajo (2px menos) y 38px a los lados */
   border-radius: 40px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.1);
@@ -568,7 +568,7 @@ body {
   background: rgba(7, 10, 19, 0.85) !important;
   backdrop-filter: blur(25px) !important;
   -webkit-backdrop-filter: blur(25px) !important;
-  z-index: 1000 !important;
+  z-index: 100;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -787,11 +787,11 @@ body {
 /* FASE 3: ÁREA DE CHATS (INICIO)             */
 /* ========================================== */
 #pantalla-chats {
-  display: none;
+  display: none; /* Mantén tu display: none para alternar pantallas con JS */
   flex-direction: column;
   align-items: stretch !important;
-  height: 100dvh;
-  max-height: 100dvh;
+  height: 100dvh; /* Ocupa exactamente el 100% de la pantalla visible */
+  max-height: 100dvh; /* Evita que se encoja de más o se desplace al subir el teclado */
   overflow: hidden;
   position: relative;
 }
@@ -1114,17 +1114,17 @@ body {
   background: transparent;
 }
 
-/* ENCABEZADO CHAT PRIVADO (AJUSTADO PARA NOTCH) */
 .chat-privado-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: max(15px, env(safe-area-inset-top)) 20px 15px 20px;
+  padding: 15px 20px;
   background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 
+  /* 🟢 FIJAR ENCABEZADO Y EVITAR QUE EL TECLADO LO APLASTE */
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -1232,7 +1232,7 @@ body {
 .historial-mensajes {
   flex: 1;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  -webkit-overflow-scrolling: touch; /* 🟢 Scroll ultrasuave en móviles */
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -1363,6 +1363,7 @@ body {
   background: rgba(255, 255, 255, 0.07);
 }
 
+/* 🟢 EVITAR QUE LA BARRA INFERIOR SE APLASTE AL SUBIR EL TECLADO */
 .footer-chat,
 .caja-input-privado {
   flex-shrink: 0;
@@ -1400,7 +1401,7 @@ body {
 /* --- MENÚ CONTEXTUAL (GLASSMORPHISM PRO) --- */
 .menu-contextual {
   position: absolute;
-  z-index: 1500 !important;
+  z-index: 1000;
   background: rgba(15, 20, 35, 0.82);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -2080,6 +2081,8 @@ body {
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   animation: deslizarBuscadorInterno 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  /* 🟢 EVITA QUE SE APLASTE CUANDO SUBE EL TECLADO */
   flex-shrink: 0;
 }
 
@@ -2492,6 +2495,11 @@ body {
   pointer-events: auto !important;
 }
 
+#menu-tarjetas-chat {
+  pointer-events: auto !important;
+  z-index: 2147483647 !important;
+}
+
 /* --- TOAST DE NOTIFICACIÓN FLOTANTE --- */
 .toast-movachat {
   position: fixed;
@@ -2511,7 +2519,7 @@ body {
   color: white;
   font-size: 13px;
   font-weight: 500;
-  z-index: 2000 !important;
+  z-index: 999999;
   opacity: 0;
   pointer-events: none;
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -2540,7 +2548,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000 !important;
+  z-index: 9999;
   padding: 20px;
   box-sizing: border-box;
 }
@@ -2679,6 +2687,10 @@ body {
   font-weight: bold;
 }
 
+.grupo-iconos {
+  position: relative;
+}
+
 #menu-desplegable-cabecera {
   position: absolute !important;
   top: calc(100% + 10px) !important;
@@ -2691,7 +2703,7 @@ body {
   border-radius: 16px !important;
   padding: 6px !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.1) !important;
-  z-index: 1500 !important;
+  z-index: 99999 !important;
 }
 
 #lista-opciones-cabecera {
@@ -2767,7 +2779,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000 !important;
+  z-index: 10000;
   opacity: 1;
   transition: opacity 0.25s ease;
 }
@@ -2895,6 +2907,7 @@ body {
    💎 TEMA CLARO PREMIUM MOVACHAT (MÁXIMO GLASSMORPHISM)
    ======================================================== */
 
+/* 1. Fondo Cristal Helado y Mantenimiento de Neones Organicos */
 body.tema-claro {
   background-color: #dbe2ef !important;
   color: #0f172a !important;
@@ -2916,6 +2929,7 @@ body.tema-claro .esfera-morada {
   background: rgba(114, 9, 183, 0.18) !important;
 }
 
+/* 2. Encabezado de Inicio */
 body.tema-claro .encabezado-inicio {
   border-bottom: 1px solid rgba(148, 163, 184, 0.25) !important;
   box-shadow: 0 4px 15px -5px rgba(0, 180, 216, 0.12) !important;
@@ -2929,6 +2943,7 @@ body.tema-claro .icono-btn:hover {
   color: #0077b6 !important;
 }
 
+/* 3. Buscador y Filtros de Chats */
 body.tema-claro .caja-buscador {
   background: rgba(255, 255, 255, 0.6) !important;
   border: 1px solid rgba(148, 163, 184, 0.35) !important;
@@ -2964,6 +2979,7 @@ body.tema-claro .filtro-btn.activo {
   border-color: rgba(2, 132, 199, 0.4) !important;
 }
 
+/* 4. Tarjetas de Chat y Lista Bento */
 body.tema-claro .tarjeta-chat,
 body.tema-claro #tarjeta-mi-estado-propio {
   background: rgba(255, 255, 255, 0.6) !important;
@@ -2992,6 +3008,7 @@ body.tema-claro .texto-resaltado {
   color: #0f172a !important;
 }
 
+/* 5. Pantalla de Perfil */
 body.tema-claro .perfil-nombre {
   color: #0f172a !important;
 }
@@ -3073,6 +3090,7 @@ body.tema-claro .btn-qr {
   color: #0f172a !important;
 }
 
+/* 6. Barra Flotante Inferior de Navegación */
 body.tema-claro .menu-flotante {
   background: rgba(255, 255, 255, 0.75) !important;
   backdrop-filter: blur(20px) saturate(180%) !important;
@@ -3091,6 +3109,7 @@ body.tema-claro .menu-btn:hover {
   text-shadow: 0 0 10px rgba(2, 132, 199, 0.3) !important;
 }
 
+/* 7. Menú Desplegable de Cabecera */
 body.tema-claro #menu-desplegable-cabecera {
   background: rgba(255, 255, 255, 0.88) !important;
   backdrop-filter: blur(20px) !important;
@@ -3107,6 +3126,7 @@ body.tema-claro #lista-opciones-cabecera li:hover {
   color: #0284c7 !important;
 }
 
+/* 8. Chat Privado en Tema Claro */
 body.tema-claro .chat-privado-header {
   background: rgba(255, 255, 255, 0.6) !important;
   border-bottom: 1px solid rgba(148, 163, 184, 0.25) !important;
@@ -3152,7 +3172,7 @@ body.tema-claro .btn-emoji {
 }
 
 /* ========================================================
-   🔕 MODAL SILENCIAR NOTIFICACIONES POR TIEMPO
+   🔕 MODAL SILENCIAR NOTIFICACIONES POR TIEMPO (GLASSMORPHISM)
    ======================================================== */
 
 .modal-silenciar-caja {
@@ -3232,6 +3252,7 @@ body.tema-claro .btn-emoji {
   box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
 }
 
+/* --- INTEGRACIÓN CON TEMA CLARO --- */
 body.tema-claro .modal-silenciar-caja {
   background: rgba(255, 255, 255, 0.88) !important;
   border-color: rgba(148, 163, 184, 0.35) !important;
@@ -3309,6 +3330,7 @@ body.tema-claro .btn-opcion-tiempo.activo {
   box-shadow: 0 0 15px rgba(0, 242, 254, 0.35) !important;
 }
 
+/* --- INTEGRACIÓN TEMA CLARO --- */
 body.tema-claro .btn-opcion-temporal {
   background: rgba(241, 245, 249, 0.8) !important;
   border-color: rgba(148, 163, 184, 0.3) !important;
@@ -3326,7 +3348,7 @@ body.tema-claro .btn-opcion-temporal:hover {
 }
 
 /* ========================================================
-   🔍 LISTA FLOTANTE DE AUTOCOMPLETADO DE CONTACTOS
+   🔍 LISTA FLOTANTE DE AUTOCOMPLETADO DE CONTACTOS (GLASSMORPHISM)
    ======================================================== */
 
 .sugerencias-contactos-caja {
@@ -3393,6 +3415,7 @@ body.tema-claro .btn-opcion-temporal:hover {
   text-overflow: ellipsis;
 }
 
+/* --- INTEGRACIÓN TEMA CLARO --- */
 body.tema-claro .sugerencias-contactos-caja {
   background: rgba(255, 255, 255, 0.95) !important;
   border-color: rgba(148, 163, 184, 0.4) !important;
@@ -3412,6 +3435,7 @@ body.tema-claro .nombre-sugerencia-txt {
    ======================================================== */
 
 @media (max-width: 600px) {
+  /* Fija la posición arriba desde el inicio para evitar saltos al tocar botones */
   .modal-overlay {
     align-items: flex-start !important;
     padding-top: 15px !important;
@@ -3432,6 +3456,7 @@ body.tema-claro .nombre-sugerencia-txt {
    🚀 OPTIMIZACIÓN GPU Y BATERÍA (RENDIMIENTO MÓVIL)
    ======================================================== */
 
+/* Aceleración por Hardware para evitar sobrecalentamiento */
 .modal-overlay,
 .modal-cristal,
 .sugerencias-contactos-caja,
@@ -3442,6 +3467,7 @@ body.tema-claro .nombre-sugerencia-txt {
   backface-visibility: hidden;
 }
 
+/* Suavizado de desplazamiento fluido en móviles */
 .modal-cristal {
   -webkit-overflow-scrolling: touch;
 }
@@ -3450,7 +3476,14 @@ body.tema-claro .nombre-sugerencia-txt {
 /* CORRECCIÓN DE CAPAS (Z-INDEX UNIFICADO)   */
 /* ========================================== */
 
-/* Capa 1: Modales y Pantallas completas */
+/* Menús desplegables y contextuales */
+.menu-contextual,
+#menu-desplegable-cabecera,
+#menu-tarjetas-chat {
+  z-index: 500 !important;
+}
+
+/* Modales, Pantallas completas e Historias */
 .modal-overlay,
 .pantalla-auth,
 .visor-estado-flotante,
@@ -3459,14 +3492,7 @@ body.tema-claro .nombre-sugerencia-txt {
   z-index: 1000 !important;
 }
 
-/* Capa 2: Menús desplegables y contextuales (Siempre sobre los modales) */
-.menu-contextual,
-#menu-desplegable-cabecera,
-#menu-tarjetas-chat {
-  z-index: 1500 !important;
-}
-
-/* Capa 3: Notificaciones y Avisos Toasts (Siempre arriba de todo) */
+/* Notificaciones y Avisos Toasts (Siempre arriba de todo) */
 #toast-premium,
 .toast-movachat {
   z-index: 2000 !important;
@@ -3528,7 +3554,7 @@ body.tema-claro .nombre-sugerencia-txt {
   display: none !important;
 }
 
-/* ⚡ CHECKS DE ESTADO MOVACHAT */
+/* ⚡ CHECKS DE ESTADO MOVACHAT (ALTO CONTRASTE Y TIEMPO REAL) */
 .indicador-checks-mova {
   display: inline-flex;
   align-items: center;
@@ -3568,9 +3594,10 @@ body.tema-claro .nombre-sugerencia-txt {
 }
 
 /* ========================================================
-   🔮 SISTEMA DE AURAS MOVACHAT (CORREGIDO Y CENTRADO)
+   🔮 SISTEMA DE AURAS MOVACHAT (ESTILOS UNIFICADOS)
    ======================================================== */
 
+/* --- 1. ESFERAS DE FONDO DE CORRECCIÓN DE AURA --- */
 .esfera-cyan.aura-cyan-morado { background: rgba(0, 242, 254, 0.15); }
 .esfera-morada.aura-cyan-morado { background: rgba(127, 0, 255, 0.15); }
 .esfera-cyan.aura-fuego { background: rgba(255, 65, 108, 0.15); }
@@ -3580,7 +3607,7 @@ body.tema-claro .nombre-sugerencia-txt {
 .esfera-cyan.aura-matrix { background: rgba(17, 153, 142, 0.15); }
 .esfera-morada.aura-matrix { background: rgba(56, 239, 125, 0.15); }
 
-/* Contenedor tipo pastilla */
+/* --- 2. CONTENEDOR CONTENEDOR EN PASTILLA SLIDER --- */
 .selector-aura-pastilla {
   position: relative;
   display: flex;
@@ -3590,26 +3617,24 @@ body.tema-claro .nombre-sugerencia-txt {
   padding: 4px;
   gap: 4px;
   overflow: hidden;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
+  justify-content: space-around;
 }
 
-/* Indicador o Cápsula Deslizante */
+/* --- 3. CÁPSULA DESLIZANTE (Único elemento con marco/borde dinámico) --- */
 .glizzy-deslizante,
 #indicador-aura {
   position: absolute;
   top: 4px;
   bottom: 4px;
   left: 0;
-  width: 25%; /* Cada botón ocupa el 25% del contenedor */
   background: rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   pointer-events: none;
   z-index: 1;
-  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
+/* Colores dinámicos aplicados a la cápsula según el tema seleccionado */
 [data-aura="cyan-morado"] .glizzy-deslizante,
 [data-aura="cyber"] .glizzy-deslizante {
   border: 1px solid #00f2fe;
@@ -3631,14 +3656,14 @@ body.tema-claro .nombre-sugerencia-txt {
   box-shadow: 0 0 15px rgba(56, 239, 125, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.1);
 }
 
-/* Botones individuales */
+/* --- 4. BOTONES (Sin bordes propios para eliminar el doble marco) --- */
 .opcion-aura {
   flex: 1;
   background: transparent !important;
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
-  padding: 8px 2px;
+  padding: 8px 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3651,7 +3676,7 @@ body.tema-claro .nombre-sugerencia-txt {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
   color: rgba(255, 255, 255, 0.5);
   font-size: 11px;
   font-weight: 500;
@@ -3666,15 +3691,12 @@ body.tema-claro .nombre-sugerencia-txt {
   text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
 }
 
-/* 🟢 CORRECCIÓN CLAVE: Orbes neón con tamaño fijo circular */
+/* --- 5. ORBES Y PUNTOS DE COLOR --- */
 .orbe-aura {
-  width: 10px !important;
-  height: 10px !important;
-  min-width: 10px !important;
-  min-height: 10px !important;
-  border-radius: 50% !important;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   display: inline-block;
-  flex-shrink: 0;
 }
 
 .orbe-aura.cyan-morado { background: #00f2fe; box-shadow: 0 0 8px #00f2fe; }
@@ -3682,6 +3704,8 @@ body.tema-claro .nombre-sugerencia-txt {
 .orbe-aura.oceano      { background: #0072ff; box-shadow: 0 0 8px #0072ff; }
 .orbe-aura.matrix      { background: #38ef7d; box-shadow: 0 0 8px #38ef7d; }
 
+
+/* 🔮 MODAL DE ALERTA FUTURISTA Y CENTRADO */
 #modal-confirmar-limpiar-global {
   position: fixed;
   inset: 0;
@@ -3691,7 +3715,7 @@ body.tema-claro .nombre-sugerencia-txt {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000 !important;
+  z-index: 99999;
   padding: 20px;
 }
 
@@ -3805,6 +3829,7 @@ body.tema-claro .nombre-sugerencia-txt {
    ⚡ MODO AHORRO DE BATERÍA / MÁXIMO RENDIMIENTO
    ======================================================== */
 
+/* 1. Desactivar desenfoques Glassmorphism y acelerar renderizado */
 body.modo-ahorro *,
 body.modo-ahorro *::before,
 body.modo-ahorro *::after {
@@ -3814,11 +3839,13 @@ body.modo-ahorro *::after {
   text-shadow: none !important;
 }
 
+/* 2. Ocultar orbes de fondo neón con animaciones continuas */
 body.modo-ahorro .luces-fondo,
 body.modo-ahorro .esfera {
   display: none !important;
 }
 
+/* 3. Fondos sólidos de alto rendimiento para contenedores principales */
 body.modo-ahorro .contenedor-chat,
 body.modo-ahorro .menu-flotante,
 body.modo-ahorro .modal-cristal,
@@ -3832,6 +3859,7 @@ body.modo-ahorro .caja-ajustes {
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
+/* 4. Detener animaciones infinitas para liberar CPU/GPU */
 body.modo-ahorro .punto-online,
 body.modo-ahorro #badge-campanita,
 body.modo-ahorro .puntos-escribiendo span {

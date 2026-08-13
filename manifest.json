@@ -9,43 +9,19 @@
   "orientation": "portrait",
   "background_color": "#090d16",
   "theme_color": "#090d16",
-  "lang": "es",
-  "dir": "ltr",
-  "prefer_related_applications": false,
   "categories": ["social", "productivity"],
   "icons": [
     {
       "src": "assets/logo/icon-192.png",
       "type": "image/png",
       "sizes": "192x192",
-      "purpose": "any"
-    },
-    {
-      "src": "assets/logo/icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     },
     {
       "src": "assets/logo/icon-512.png",
       "type": "image/png",
       "sizes": "512x512",
-      "purpose": "any"
-    },
-    {
-      "src": "assets/logo/icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Mi Perfil",
-      "short_name": "Perfil",
-      "description": "Ir al perfil de usuario",
-      "url": "./index.html#perfil",
-      "icons": [{ "src": "assets/logo/icon-192.png", "sizes": "192x192" }]
+      "purpose": "any maskable"
     }
   ]
 }
