@@ -2901,7 +2901,7 @@ if (btnCampanita) {
 }
 
 // ========================================================
-// 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
+// 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA, PWA Y FILTROS
 // ========================================================
 window.actualizarBadgesNotificaciones = function () {
   const elemBadgeCampanita = document.getElementById("badge-campanita");
@@ -2917,12 +2917,11 @@ window.actualizarBadgesNotificaciones = function () {
     if (badge) {
       const num = parseInt(badge.textContent.trim(), 10) || 0;
 
-      if (num === 0) {
-        badge.classList.add("oculto");
-      }
-
-      if (!badge.classList.contains("oculto") && num > 0) {
+      if (num > 0) {
+        badge.classList.remove("oculto");
         totalNoLeidos += num;
+      } else {
+        badge.classList.add("oculto");
       }
     }
   });
@@ -2943,7 +2942,7 @@ window.actualizarBadgesNotificaciones = function () {
     elemBadgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
   }
 
-  // 📱 Sincronizar marcador nativo PWA / sistema operativo
+  // 📱 Sincronizar marcador nativo PWA / Icono en pantalla de inicio del teléfono
   if ("setAppBadge" in navigator) {
     if (totalNoLeidos > 0) {
       navigator.setAppBadge(totalNoLeidos).catch(() => {});
@@ -3229,20 +3228,23 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         elemBadge.classList.add("oculto");
       }
       if (elemTexto) elemTexto.classList.remove("texto-resaltado");
+
+      if (typeof window.actualizarBadgesNotificaciones === "function") {
+        window.actualizarBadgesNotificaciones();
+      }
     } else {
       get(lecturaRef).then((lecturaSnap) => {
         const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
-        let nuevos = 0;
-        let empezarAContar = (ultimoLeidoKey === "");
 
-        mensajesValidosKeys.forEach((k) => {
-          if (k === ultimoLeidoKey) {
-            empezarAContar = true;
-            return;
-          }
-          if (empezarAContar) {
+        // 🎯 LÓGICA PRECISA: Buscar la posición exacta del último mensaje leído
+        const idxUltimoLeido = ultimoLeidoKey ? mensajesValidosKeys.indexOf(ultimoLeidoKey) : -1;
+        let nuevos = 0;
+
+        mensajesValidosKeys.forEach((k, index) => {
+          // Si no hay lectura previa (-1) o si el mensaje es posterior al último leído
+          if (idxUltimoLeido === -1 || index > idxUltimoLeido) {
             const m = mensajes[k];
-            const idEmisor = m.emisor || m.emisorUid;
+            const idEmisor = m.emisor || m.emisorUid || m.remitente || m.remitenteId || m.uid;
             if (idEmisor === contactoUid) nuevos++;
           }
         });
@@ -3261,6 +3263,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           if (elemTexto) elemTexto.classList.remove("texto-resaltado");
         }
 
+        // 🚀 Sincronizar badges nativos y campanita en segundo plano
         if (typeof window.actualizarBadgesNotificaciones === "function") {
           window.actualizarBadgesNotificaciones();
         }
