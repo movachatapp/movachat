@@ -6183,7 +6183,7 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
-          // ⚡ EVALUACIÓN INDEPENDIENTE POR CADA MENSAJE
+          // 🟢 EVALUACIÓN INDEPENDIENTE POR CADA MENSAJE
           let htmlChecks = "";
           if (esMio) {
             let claseChecks = "enviado";
