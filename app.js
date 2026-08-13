@@ -6379,17 +6379,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada)
 window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
-  // Si la app está en segundo plano o minimizada
   if (document.hidden && Notification.permission === "granted") {
     const opciones = {
       body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo/icon-192.png",
-      badge: "assets/logo/icon-192.png",
+      icon: avatarUrl || "./assets/logo/icon-192.png",
+      badge: "./assets/logo/badge-72.png", // 👈 Debe llevar el "./" al inicio
       vibrate: [100, 50, 100],
       tag: "movachat-mensaje",
       renotify: true
@@ -6403,7 +6401,6 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
       new Notification(`Mensaje de ${nombreRemitente}`, opciones);
     }
   } else {
-    // Si la app está abierta en pantalla, actualizamos la campanita y badges
     if (typeof actualizarBadgesNotificaciones === "function") {
       actualizarBadgesNotificaciones();
     }
