@@ -49,6 +49,9 @@ const db = getDatabase(app);
 
 const contactosRegistradosSet = new Set();
 
+// 🌐 FORZAR IDIOMA ESPAÑOL EN FIREBASE
+auth.languageCode = 'es';
+
 // --- DECLARACIÓN DE VARIABLES GLOBALES DE ESTADO ---
 let streamCamaraLive = null;
 let segundosRestantes = 10;
