@@ -2929,7 +2929,7 @@ window.actualizarBadgesNotificaciones = function () {
 // Crear alias global para sincronizar ambas llamadas
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
 
-// 🚀 ESCUCHAR Y RENDERIZAR BANDEJA DE ENTRADA CON CONTROL DE VACIADO, TEMPORALES Y ELIMINACIÓN
+// 🚀 ESCUCHAR Y RENDERIZAR BANDEJA DE ENTRADA CON NOTIFICACIONES Y SONIDOS GLOBALES
 function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijadosBD = {}) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -2938,6 +2938,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   const ocultoRef = ref(db, `chats_ocultos/${miUid}/${contactoUid}`);
 
   let timerExpiracionEfimera = null;
+  let esPrimeraCargaGlobal = true; // Control para evitar sonados falsos al abrir la app
 
   onValue(mensajesRef, async (snapshot) => {
     const contenedorLista = document.getElementById("lista-chats-principal");
@@ -3010,8 +3011,36 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    // 🛑 1. CASO ELIMINADO EXPLÍCITO: Solo borra la tarjeta si la orden 'chats_ocultos' 
-    // es MÁS RECIENTE que el último vaciado Y no hay mensajes nuevos posteriores.
+    // 🔊 ACTIVAR REPRODUCCIÓN GLOBAL DE SONIDO, VIBRACIÓN Y NOTIFICACIÓN
+    window.mensajesNotificadosGlobal = window.mensajesNotificadosGlobal || new Set();
+
+    if (!esPrimeraCargaGlobal && ultimoMsg && ultimoMsgKey) {
+      const idEmisor = ultimoMsg.emisor || ultimoMsg.emisorUid;
+      const haceCuanto = Date.now() - (ultimoMsg.timestamp || 0);
+
+      // Si el mensaje es del contacto (no mío), reciente y no ha sonado antes
+      if (idEmisor === contactoUid && haceCuanto < 8000 && !window.mensajesNotificadosGlobal.has(ultimoMsgKey)) {
+        window.mensajesNotificadosGlobal.add(ultimoMsgKey);
+
+        // 1. Sonar y Vibrar en la app (pantalla de inicio o fuera del chat activo)
+        if (typeof window.reproducirSonidoRecibido === "function") {
+          window.reproducirSonidoRecibido(contactoUid);
+        }
+
+        // 2. Disparar Notificación Push / Flotante
+        const nombreContacto = datosUsuario ? (datosUsuario.nombre || "MovaChat") : "MovaChat";
+        const textoContacto = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Archivo adjunto" : "Nuevo mensaje");
+        const fotoContacto = datosUsuario ? datosUsuario.fotoUrl : "";
+
+        if (typeof window.notificarNuevoMensaje === "function") {
+          window.notificarNuevoMensaje(nombreContacto, textoContacto, fotoContacto);
+        }
+      }
+    }
+
+    esPrimeraCargaGlobal = false; // Marcar que la carga inicial terminó
+
+    // 🛑 1. CASO ELIMINADO EXPLÍCITO
     const ultimoMsgTime = ultimoMsg ? (ultimoMsg.timestamp || 0) : 0;
     if (timestampOculto > 0 && timestampOculto >= timestampUltimoVaciado && ultimoMsgTime <= timestampOculto) {
       if (tarjetaContacto) tarjetaContacto.remove();
@@ -3020,7 +3049,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       return;
     }
 
-    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS: Si jamás ha tenido mensajes y no se ha vaciado ni ocultado
+    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS
     if (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0) {
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
@@ -3152,7 +3181,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
     } else {
-      // Mantiene la tarjeta visible marcando el estado de vaciado
       if (elemTexto) elemTexto.textContent = "Conversación vaciada";
       if (elemHora) elemHora.textContent = "--:--";
     }
