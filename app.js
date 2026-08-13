@@ -2927,6 +2927,7 @@ window.actualizarBadgesNotificaciones = function () {
     }
   });
 
+  // 🔔 Actualizar insignia de la campanita
   if (elemBadgeCampanita) {
     if (totalNoLeidos > 0) {
       elemBadgeCampanita.textContent = totalNoLeidos > 99 ? "99+" : totalNoLeidos.toString();
@@ -2937,8 +2938,20 @@ window.actualizarBadgesNotificaciones = function () {
     }
   }
 
+  // 🏷️ Actualizar filtro de "No leídos"
   if (elemBadgeFiltroNoLeidos) {
     elemBadgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
+  }
+
+  // 📱 Sincronizar marcador nativo PWA / sistema operativo
+  if ("setAppBadge" in navigator) {
+    if (totalNoLeidos > 0) {
+      navigator.setAppBadge(totalNoLeidos).catch(() => {});
+    } else {
+      if ("clearAppBadge" in navigator) {
+        navigator.clearAppBadge().catch(() => {});
+      }
+    }
   }
 };
 
@@ -6414,13 +6427,18 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
+  // 🟢 Ejecutar el conteo del marcador siempre, sin importar si está en segundo plano
+  if (typeof window.actualizarBadgesNotificaciones === "function") {
+    window.actualizarBadgesNotificaciones();
+  }
+
   if (document.hidden && Notification.permission === "granted") {
     const opciones = {
       body: textoMensaje || "Te ha enviado un mensaje.",
       icon: avatarUrl || "./assets/logo/icon-192.png",
-      badge: "./assets/logo/badge-72.png", // 👈 Debe llevar el "./" al inicio
+      badge: "./assets/logo/badge-72.png",
       vibrate: [100, 50, 100],
-      tag: "movachat-mensaje",
+      tag: "movachat-msg-" + Date.now(), // 👈 Tag dinámico único para acumular el conteo en el sistema
       renotify: true
     };
 
@@ -6430,10 +6448,6 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
       });
     } else {
       new Notification(`Mensaje de ${nombreRemitente}`, opciones);
-    }
-  } else {
-    if (typeof actualizarBadgesNotificaciones === "function") {
-      actualizarBadgesNotificaciones();
     }
   }
 };
