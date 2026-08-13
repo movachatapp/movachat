@@ -2954,10 +2954,9 @@ window.actualizarBadgesNotificaciones = function () {
   }
 };
 
-// Crear alias global para sincronizar ambas llamadas
-window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
+// Map global para evitar escuchadores duplicados por contacto
+window.desuscripcionesUltimoMsg = window.desuscripcionesUltimoMsg || {};
 
-// 🚀 ESCUCHAR Y RENDERIZAR BANDEJA DE ENTRADA CON NOTIFICACIONES Y SONIDOS GLOBALES
 function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijadosBD = {}) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -2965,10 +2964,16 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   const vaciadoRef = ref(db, `vaciados/${miUid}/${contactoUid}`);
   const ocultoRef = ref(db, `chats_ocultos/${miUid}/${contactoUid}`);
 
-  let timerExpiracionEfimera = null;
-  let esPrimeraCargaGlobal = true; // Control para evitar sonados falsos al abrir la app
+  // 🛡️ LIMPIEZA ANTI-DUPLICADOS: Si ya existe un escuchador para este contacto, lo apagamos antes de crear uno nuevo
+  if (window.desuscripcionesUltimoMsg[contactoUid]) {
+    window.desuscripcionesUltimoMsg[contactoUid]();
+    delete window.desuscripcionesUltimoMsg[contactoUid];
+  }
 
-  onValue(mensajesRef, async (snapshot) => {
+  let timerExpiracionEfimera = null;
+  let esPrimeraCargaGlobal = true;
+
+  const unsubscribe = onValue(mensajesRef, async (snapshot) => {
     const contenedorLista = document.getElementById("lista-chats-principal");
     if (!contenedorLista) return;
 
@@ -2976,7 +2981,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     let tarjetaContacto = document.getElementById(`tarjeta-chat-${contactoUid}`);
 
-    // Consultar marcas personales de vaciado y eliminación
     let timestampUltimoVaciado = 0;
     let timestampOculto = 0;
 
@@ -2993,69 +2997,52 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     }
 
     let hayMensajesHistoricos = snapshot.exists();
-    let mensajesValidosKeys = [];
     let ultimoMsg = null;
     let ultimoMsgKey = null;
     let mensajes = {};
+    let mensajesOrdenados = [];
 
     if (hayMensajesHistoricos) {
       mensajes = snapshot.val();
-      const keys = Object.keys(mensajes);
       const ahora = Date.now();
 
-      // ⏳ Filtrar mensajes posteriores al vaciado Y eliminar/omitir los temporales expirados
-      mensajesValidosKeys = keys.filter((k) => {
-        const m = mensajes[k];
-        const esPosteriorVaciado = (m.timestamp || 0) > timestampUltimoVaciado;
-
-        if (m.esEfimero) {
-          const limiteMs = m.duracionEfimeraMs || 10000;
-          const transcurrido = ahora - (m.timestamp || ahora);
-
-          if (transcurrido >= limiteMs) {
-            set(ref(db, `chats/${chatId}/mensajes/${k}`), null);
-            return false;
+      // 🎯 ORDENAR CRONOLÓGICAMENTE POR TIMESTAMP REAL
+      mensajesOrdenados = Object.keys(mensajes)
+        .map(key => ({ key, ...mensajes[key] }))
+        .filter(m => {
+          const esPosteriorVaciado = (m.timestamp || 0) > timestampUltimoVaciado;
+          if (m.esEfimero) {
+            const limiteMs = m.duracionEfimeraMs || 10000;
+            const transcurrido = ahora - (m.timestamp || ahora);
+            if (transcurrido >= limiteMs) {
+              set(ref(db, `chats/${chatId}/mensajes/${m.key}`), null);
+              return false;
+            }
           }
-        }
+          return esPosteriorVaciado;
+        })
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-        return esPosteriorVaciado;
-      });
-
-      if (mensajesValidosKeys.length > 0) {
-        ultimoMsgKey = mensajesValidosKeys[mensajesValidosKeys.length - 1];
-        ultimoMsg = mensajes[ultimoMsgKey];
-
-        if (ultimoMsg && ultimoMsg.esEfimero) {
-          const limiteMs = ultimoMsg.duracionEfimeraMs || 10000;
-          const transcurrido = ahora - (ultimoMsg.timestamp || ahora);
-          const tiempoRestante = limiteMs - transcurrido;
-
-          if (tiempoRestante > 0) {
-            timerExpiracionEfimera = setTimeout(() => {
-              set(ref(db, `chats/${chatId}/mensajes/${ultimoMsgKey}`), null);
-            }, tiempoRestante);
-          }
-        }
+      if (mensajesOrdenados.length > 0) {
+        ultimoMsg = mensajesOrdenados[mensajesOrdenados.length - 1];
+        ultimoMsgKey = ultimoMsg.key;
       }
     }
 
-    // 🔊 ACTIVAR REPRODUCCIÓN GLOBAL DE SONIDO, VIBRACIÓN Y NOTIFICACIÓN (UNIFICADO)
+    // 🔊 NOTIFICACIONES Y REPRODUCCIÓN EN TIEMPO REAL
     window.mensajesNotificadosUnificados = window.mensajesNotificadosUnificados || new Set();
 
     if (!esPrimeraCargaGlobal && ultimoMsg && ultimoMsgKey) {
-      const idEmisor = ultimoMsg.emisor || ultimoMsg.emisorUid;
+      const idEmisor = ultimoMsg.emisor || ultimoMsg.emisorUid || ultimoMsg.remitente || ultimoMsg.remitenteId || ultimoMsg.uid;
       const haceCuanto = Date.now() - (ultimoMsg.timestamp || 0);
 
-      // Si el mensaje es del contacto (no mío), reciente y no ha sonado ni notificado aún
-      if (idEmisor === contactoUid && haceCuanto < 8000 && !window.mensajesNotificadosUnificados.has(ultimoMsgKey)) {
-        window.mensajesNotificadosUnificados.add(ultimoMsgKey); // 🛡️ Bloqueo anti-duplicados
+      if (idEmisor === contactoUid && haceCuanto < 12000 && !window.mensajesNotificadosUnificados.has(ultimoMsgKey)) {
+        window.mensajesNotificadosUnificados.add(ultimoMsgKey);
 
-        // 1. Sonar y Vibrar en la app
         if (typeof window.reproducirSonidoRecibido === "function") {
           window.reproducirSonidoRecibido(contactoUid);
         }
 
-        // 2. Disparar Notificación Push / Flotante
         const nombreContacto = datosUsuario ? (datosUsuario.nombre || "MovaChat") : "MovaChat";
         const textoContacto = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Archivo adjunto" : "Nuevo mensaje");
         const fotoContacto = datosUsuario ? datosUsuario.fotoUrl : "";
@@ -3066,26 +3053,18 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    esPrimeraCargaGlobal = false; // Marcar que la carga inicial terminó
+    esPrimeraCargaGlobal = false;
 
-    // 🛑 1. CASO ELIMINADO EXPLÍCITO
-    const ultimoMsgTime = ultimoMsg ? (ultimoMsg.timestamp || 0) : 0;
-    if (timestampOculto > 0 && timestampOculto >= timestampUltimoVaciado && ultimoMsgTime <= timestampOculto) {
+    // Si ocultó o vació el chat completamente
+    if ((timestampOculto > 0 && timestampOculto >= timestampUltimoVaciado && (ultimoMsg?.timestamp || 0) <= timestampOculto) ||
+        (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0)) {
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
       if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
       return;
     }
 
-    // 🛑 2. CASO CHAT NUEVO SIN REGISTROS
-    if (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0) {
-      if (tarjetaContacto) tarjetaContacto.remove();
-      if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
-      if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
-      return;
-    }
-
-    // 🟢 3. CREAR O MANTENER TARJETA SI FUE VACIADO O TIENE MENSAJES
+    // Crear la tarjeta en la lista si no existe aún
     if (!tarjetaContacto) {
       tarjetaContacto = document.createElement("div");
       tarjetaContacto.className = "tarjeta-chat contacto-item";
@@ -3141,34 +3120,9 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         </div>
       `;
 
-      onValue(ref(db, `usuarios/${contactoUid}`), (uSnap) => {
-        if (!uSnap.exists()) return;
-        const uFresh = uSnap.val();
-        const estContacto = uFresh.estadoConexion || uFresh.estadoPresencia || uFresh.estado || "online";
-
-        let cLed = "#00f2fe";
-        let sLed = "0 0 8px #00f2fe";
-
-        if (estContacto === "ocupado") {
-          cLed = "#ef4444";
-          sLed = "0 0 8px #ef4444";
-        } else if (estContacto === "offline" || estContacto === "invisible") {
-          cLed = "#888888";
-          sLed = "0 0 8px #888888";
-        }
-
-        const nodoLed = tarjetaContacto ? tarjetaContacto.querySelector(".punto-online-chat") : null;
-        if (nodoLed) {
-          nodoLed.style.backgroundColor = cLed;
-          nodoLed.style.boxShadow = sLed;
-        }
-      });
-
       tarjetaContacto.addEventListener("click", (e) => {
         e.stopPropagation();
-
         window.contactoActivoUid = contactoUid;
-        if (typeof contactoSeleccionado !== "undefined") contactoSeleccionado = contactoUid;
 
         const badge = tarjetaContacto.querySelector(".badge-chat-no-leido");
         const elemTexto = tarjetaContacto.querySelector(".chat-texto");
@@ -3177,12 +3131,10 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           badge.textContent = "0";
           badge.classList.add("oculto");
         }
-        if (elemTexto) {
-          elemTexto.classList.remove("texto-resaltado");
-        }
+        if (elemTexto) elemTexto.classList.remove("texto-resaltado");
 
-        if (typeof actualizarCampanitaGlobal === "function") {
-          actualizarCampanitaGlobal();
+        if (typeof window.actualizarBadgesNotificaciones === "function") {
+          window.actualizarBadgesNotificaciones();
         }
 
         document.querySelectorAll(".tarjeta-chat").forEach(el => el.classList.remove("activo"));
@@ -3194,13 +3146,10 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       });
 
       contenedorLista.appendChild(tarjetaContacto);
-
-      if (window.lucide) {
-        window.lucide.createIcons({ targets: [tarjetaContacto] });
-      }
+      if (window.lucide) window.lucide.createIcons({ targets: [tarjetaContacto] });
     }
 
-    // 4. ACTUALIZAR TEXTO DE LA TARJETA
+    // Actualizar datos del último mensaje en la tarjeta
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
@@ -3213,16 +3162,14 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (elemHora) elemHora.textContent = "--:--";
     }
 
-    // Verificar lectura en vivo
+    // 🎯 VERIFICACIÓN DE LECTURA Y CONTEO ACUMULATIVO
     const pantallaChat = document.getElementById("pantalla-chat-privado");
     const estaAbierto = (window.contactoActivoUid === contactoUid) &&
       pantallaChat &&
       (pantallaChat.style.display === "flex" || pantallaChat.classList.contains("pantalla-completa"));
 
     if (estaAbierto) {
-      if (mensajesValidosKeys.length > 0) {
-        set(lecturaRef, ultimoMsgKey);
-      }
+      if (ultimoMsgKey) set(lecturaRef, ultimoMsgKey);
       if (elemBadge) {
         elemBadge.textContent = "0";
         elemBadge.classList.add("oculto");
@@ -3236,16 +3183,17 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       get(lecturaRef).then((lecturaSnap) => {
         const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
 
-        // 🎯 LÓGICA PRECISA: Buscar la posición exacta del último mensaje leído
-        const idxUltimoLeido = ultimoLeidoKey ? mensajesValidosKeys.indexOf(ultimoLeidoKey) : -1;
+        // Buscar el timestamp del último leído
+        const objUltimoLeido = mensajesOrdenados.find(m => m.key === ultimoLeidoKey);
+        const timestampUltimoLeido = objUltimoLeido ? (objUltimoLeido.timestamp || 0) : 0;
+
         let nuevos = 0;
 
-        mensajesValidosKeys.forEach((k, index) => {
-          // Si no hay lectura previa (-1) o si el mensaje es posterior al último leído
-          if (idxUltimoLeido === -1 || index > idxUltimoLeido) {
-            const m = mensajes[k];
-            const idEmisor = m.emisor || m.emisorUid || m.remitente || m.remitenteId || m.uid;
-            if (idEmisor === contactoUid) nuevos++;
+        mensajesOrdenados.forEach((m) => {
+          const idEmisor = m.emisor || m.emisorUid || m.remitente || m.remitenteId || m.uid;
+          // Si el mensaje es del contacto Y fue creado después de la última lectura
+          if (idEmisor === contactoUid && (m.timestamp || 0) > timestampUltimoLeido) {
+            nuevos++;
           }
         });
 
@@ -3263,21 +3211,17 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           if (elemTexto) elemTexto.classList.remove("texto-resaltado");
         }
 
-        // 🚀 Sincronizar badges nativos y campanita en segundo plano
         if (typeof window.actualizarBadgesNotificaciones === "function") {
           window.actualizarBadgesNotificaciones();
         }
       });
     }
 
-    if (typeof actualizarEstadoPantallaInicio === "function") {
-      actualizarEstadoPantallaInicio();
-    }
-
-    if (typeof window.verificarEstadoBloqueo === "function") {
-      window.verificarEstadoBloqueo(contactoUid);
-    }
+    if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
   });
+
+  // Guardar desuscripción en el mapa global
+  window.desuscripcionesUltimoMsg[contactoUid] = unsubscribe;
 }
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
@@ -6430,19 +6374,20 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
-  // 🟢 Actualizar el conteo del marcador visual de la app
+  // 1. Sincronizar badges en pantalla e icono flotante PWA
   if (typeof window.actualizarBadgesNotificaciones === "function") {
     window.actualizarBadgesNotificaciones();
   }
 
-  if (document.hidden && Notification.permission === "granted") {
+  // 2. Disparar notificación nativa de Android/Windows
+  if (Notification.permission === "granted") {
     const opciones = {
       body: textoMensaje || "Te ha enviado un mensaje.",
       icon: avatarUrl || "./assets/logo/icon-192.png",
       badge: "./assets/logo/badge-72.png",
       vibrate: [100, 50, 100],
-      // 🚀 CLAVE FIX: Usamos un tag estático por remitente para reemplazar la notificación y evitar duplicados
-      tag: "movachat-chat-" + nombreRemitente.replace(/\s+/g, '-').toLowerCase(),
+      // 🚀 CLAVE FIX: Usamos timestamp como tag para que CADA MENSAJE abra su propio globo y se acumule en la barra de notificaciones de Android
+      tag: "msg-" + Date.now(),
       renotify: true
     };
 
