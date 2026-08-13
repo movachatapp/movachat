@@ -1,8 +1,8 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada v1.0.0.0.0.4)
+// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada v1.0.0.0.0.0)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.0.0.0.3';
+const CACHE_NAME = 'movachat-v1.0.0.0.0.0';
 
 // Recursos estáticos base
 const ASSETS_TO_CACHE = [
@@ -61,7 +61,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // OTROS RECURSOS (Imágenes, Fuentes, CSS, Audios): Buscar en caché primero
+  // OTROS RECURSOS (Imágenes, Fuentes, CSS): Buscar en caché primero
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -81,7 +81,7 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// 4. RECEPTOR DE NOTIFICACIONES PUSH EN SEGUNDO PLANO
+// 4. RECEPTOR DE NOTIFICACIONES PUSH
 self.addEventListener('push', (event) => {
   let data = { 
     titulo: 'MovaChat 💬', 
@@ -99,11 +99,9 @@ self.addEventListener('push', (event) => {
 
   const opciones = {
     body: data.cuerpo || 'Tienes un nuevo mensaje recibido 📩',
-    icon: data.icono || './assets/logo/icon-192.png',  // 🖼️ Foto/Logo a color en la tarjeta
-    badge: './assets/logo/badge-72.png',                // ⚪ Silueta monocromática para la barra de estado
-    vibrate: [200, 100, 200, 100, 200],                 // Patrón de doble pulso de vibración
-    tag: 'nuevo-mensaje',                                // Evita acumulaciones masivas de notificaciones
-    renotify: true,                                     // Fuerza alerta visual y vibración incluso con mensajes seguidos
+    icon: data.icono || './assets/logo/icon-192.png',
+    badge: './assets/logo/icon-192.png',
+    vibrate: [200, 100, 200],
     data: { url: self.registration.scope }
   };
 
@@ -118,13 +116,11 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Si la ventana de la WebApp ya está abierta, enfocarse en ella
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
           return client.focus();
         }
       }
-      // Si no hay ninguna ventana abierta, lanzar una nueva
       if (clients.openWindow) {
         return clients.openWindow('./');
       }

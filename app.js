@@ -191,23 +191,6 @@ onAuthStateChanged(auth, async (user) => {
           if (authPantalla) authPantalla.style.display = "none";
           console.log("🟢 Acceso concedido:", datosUsuario.nombre || user.email);
 
-          // 🚀 ENRUTAMIENTO INICIAL SEGÚN NAVEGACIÓN Y CHATS
-          if (typeof switchPantalla === "function") {
-            switchPantalla(pantallaChats, pantallaBienvenida, pantallaPerfil, pantallaChatPrivado);
-          } else if (pantallaChats) {
-            pantallaChats.style.display = "flex";
-            if (pantallaBienvenida) pantallaBienvenida.style.display = "none";
-            if (pantallaPerfil) pantallaPerfil.style.display = "none";
-            if (pantallaChatPrivado) pantallaChatPrivado.style.display = "none";
-          }
-
-          // Marcar botón "Inicio" como activo en la barra inferior
-          const botonesMenu = document.querySelectorAll(".menu-flotante .menu-btn");
-          if (botonesMenu.length > 0) {
-            botonesMenu.forEach(b => b.classList.remove("activo"));
-            botonesMenu[0].classList.add("activo");
-          }
-
           if (typeof iniciarControlPresenciaReal === "function") {
             iniciarControlPresenciaReal();
           }
@@ -2137,10 +2120,17 @@ function asignarEventosMenuCabecera() {
       }
 
       else if (accion === "cerrar-sesion") {
-        const modalCerrarSesion = document.getElementById("modal-confirmar-cerrar-sesion");
-        if (modalCerrarSesion) {
-          modalCerrarSesion.classList.remove("oculto");
-          if (window.lucide) window.lucide.createIcons({ targets: [modalCerrarSesion] });
+        if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+          try {
+            const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+            await signOut(auth);
+
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
+            }
+          } catch (error) {
+            console.error("Error al cerrar sesión:", error);
+          }
         }
       }
     });
@@ -2893,7 +2883,7 @@ if (btnCampanita) {
 }
 
 // ========================================================
-// 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA, FILTROS Y GLOBO DEL ICONO PWA
+// 🔔 1. FUNCIÓN UNIFICADA PARA LA CAMPANITA Y FILTROS
 // ========================================================
 window.actualizarBadgesNotificaciones = function () {
   const elemBadgeCampanita = document.getElementById("badge-campanita");
@@ -2931,17 +2921,6 @@ window.actualizarBadgesNotificaciones = function () {
 
   if (elemBadgeFiltroNoLeidos) {
     elemBadgeFiltroNoLeidos.textContent = totalNoLeidos.toString();
-  }
-
-  // 🔴 ACTUALIZAR EL GLOBO NUMÉRICO SOBRE EL ICONO DE LA APP EN EL TELÉFONO (PWA BADGE API)
-  if ('setAppBadge' in navigator) {
-    if (totalNoLeidos > 0) {
-      navigator.setAppBadge(totalNoLeidos).catch((err) => console.log("Error setAppBadge:", err));
-    } else {
-      if ('clearAppBadge' in navigator) {
-        navigator.clearAppBadge().catch((err) => console.log("Error clearAppBadge:", err));
-      }
-    }
   }
 };
 
@@ -3215,35 +3194,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
             elemBadge.classList.remove("oculto");
           }
           if (elemTexto) elemTexto.classList.add("texto-resaltado");
-
-          // 🔊 DISPARAR NOTIFICACIÓN, SONIDO Y VIBRACIÓN EN LA LISTA GENERAL / SEGUNDO PLANO
-          if (ultimoMsg) {
-            const idEmisor = ultimoMsg.emisor || ultimoMsg.emisorUid;
-            const haceCuanto = Date.now() - (ultimoMsg.timestamp || 0);
-
-            // Solo se ejecuta si el mensaje es del contacto y llegó en los últimos 5 segundos
-            if (idEmisor === contactoUid && haceCuanto < 5000) {
-              window.mensajesNotificados = window.mensajesNotificados || new Set();
-
-              if (!window.mensajesNotificados.has(ultimoMsgKey)) {
-                window.mensajesNotificados.add(ultimoMsgKey); // Evita duplicados
-
-                const nombreContacto = datosUsuario ? (datosUsuario.nombre || "Usuario") : "Usuario";
-                const textoNotif = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "Nuevo mensaje");
-                const fotoContacto = datosUsuario ? datosUsuario.fotoUrl : "";
-
-                // 1. Lanza la notificación flotante del sistema / segundo plano
-                if (typeof window.notificarNuevoMensaje === "function") {
-                  window.notificarNuevoMensaje(nombreContacto, textoNotif, fotoContacto);
-                }
-
-                // 2. Ejecuta el sonido de recibido y la vibración
-                if (typeof window.reproducirSonidoRecibido === "function") {
-                  window.reproducirSonidoRecibido(contactoUid);
-                }
-              }
-            }
-          }
         } else {
           if (elemBadge) {
             elemBadge.textContent = "0";
@@ -5405,13 +5355,11 @@ let audioDesbloqueado = false;
 function despertarAudioForzado() {
   if (audioDesbloqueado) return;
 
-  // Incluimos los 3 archivos de audio registrados en el HTML
-  const idsSonidos = ["sonido-recibido", "sonido-enviado", "sonido-grabando"];
+  const audioRecibido = document.getElementById("sonido-recibido");
+  const audioEnviado = document.getElementById("sonido-enviado");
 
-  const activarAudio = (id) => {
-    const elem = document.getElementById(id);
+  const activarAudio = (elem) => {
     if (!elem) return Promise.resolve(false);
-
     elem.volume = 0.01;
     return elem.play()
       .then(() => {
@@ -5421,12 +5369,12 @@ function despertarAudioForzado() {
         return true;
       })
       .catch((e) => {
-        console.log(`Intento de activación de audio diferido (${id}):`, e);
+        console.log("Intento de activación de audio diferido:", e);
         return false;
       });
   };
 
-  Promise.all(idsSonidos.map((id) => activarAudio(id))).then((resultados) => {
+  Promise.all([activarAudio(audioRecibido), activarAudio(audioEnviado)]).then((resultados) => {
     // Si al menos un elemento de audio se activó correctamente
     if (resultados.some((res) => res === true)) {
       audioDesbloqueado = true;
@@ -5440,14 +5388,14 @@ function despertarAudioForzado() {
   });
 }
 
-// Escuchadores de interacción inicial
+// Escuchadores de interacción inicial (Sin 'once: true' para reintentar si el navegador falla la primera vez)
 document.addEventListener("click", despertarAudioForzado);
 document.addEventListener("touchstart", despertarAudioForzado);
 document.addEventListener("pointerdown", despertarAudioForzado);
 
-// 🔊 MOTOR UNIFICADO DE REPRODUCCIÓN Y VIBRACIÓN
-window.reproducirSonido = function (tipo = "recibido", contactoUid = null) {
-  console.log(`🔔 Intentando reproducir sonido [${tipo}]` + (contactoUid ? ` para: ${contactoUid}` : ""));
+// 🔊 FUNCIÓN DE REPRODUCCIÓN Y VIBRACIÓN CON DIAGNÓSTICO EN CONSOLA
+window.reproducirSonidoRecibido = function (contactoUid = null) {
+  console.log("🔔 Intentando reproducir sonido para el contacto:", contactoUid);
 
   // 1. Verificar si las notificaciones generales están desactivadas
   const notifEstado = localStorage.getItem("movachat-notificaciones");
@@ -5456,8 +5404,8 @@ window.reproducirSonido = function (tipo = "recibido", contactoUid = null) {
     return;
   }
 
-  // 2. Verificar si este contacto específico está silenciado (solo aplica para mensajes recibidos)
-  if (tipo === "recibido" && contactoUid) {
+  // 2. Verificar si este contacto específico está silenciado
+  if (contactoUid) {
     const tiempoGuardado = localStorage.getItem(`silenciado_hasta_${contactoUid}`);
     if (tiempoGuardado) {
       if (tiempoGuardado === "indefinido") {
@@ -5472,52 +5420,43 @@ window.reproducirSonido = function (tipo = "recibido", contactoUid = null) {
     }
   }
 
-  // 3. VIBRACIÓN HÁPTICA ADAPTATIVA
+  // 3. VIBRACIÓN HÁPTICA (Se dispara primero)
   if ("vibrate" in navigator) {
     try {
-      if (tipo === "recibido") {
-        navigator.vibrate([200, 100, 200]);
-      } else if (tipo === "enviado") {
-        navigator.vibrate([50]);
-      } else if (tipo === "grabando") {
-        navigator.vibrate([100]);
-      }
+      navigator.vibrate([200, 100, 200]);
+      console.log("📳 Vibración ejecutada.");
     } catch (e) {
       console.warn("⚠️ No se pudo activar la vibración:", e);
     }
   }
 
-  // 4. REPRODUCCIÓN DE AUDIO
-  const idAudio = `sonido-${tipo}`;
-  const elemAudio = document.getElementById(idAudio);
-
-  if (elemAudio) {
-    elemAudio.currentTime = 0;
-    elemAudio.play()
-      .then(() => console.log(`🔊 Sonido '${idAudio}' reproducido con éxito.`))
+  // 4. REPRODUCCIÓN DE AUDIO (Usando la etiqueta HTML)
+  const audioRecibido = document.getElementById("sonido-recibido");
+  if (audioRecibido) {
+    audioRecibido.currentTime = 0;
+    audioRecibido.play()
+      .then(() => console.log("🔊 ¡Sonido reproducido con éxito!"))
       .catch((err) => {
-        console.error(`❌ El navegador bloqueó la reproducción de '${idAudio}':`, err);
+        console.error("❌ Chrome bloqueó la reproducción de audio:", err);
         if (typeof despertarAudioForzado === "function") despertarAudioForzado();
       });
   } else {
-    console.error(`❌ No se encontró el elemento HTML <audio id='${idAudio}'>`);
+    console.error("❌ No se encontró el elemento HTML <audio id='sonido-recibido'>");
   }
 };
 
-// Wrappers globales para mantener compatibilidad
-window.reproducirSonidoRecibido = function (contactoUid = null) {
-  window.reproducirSonido("recibido", contactoUid);
-};
-
+// 🔊 Función para reproducir sonido de mensaje enviado
 window.reproducirSonidoEnviado = function () {
-  window.reproducirSonido("enviado");
+  const audioEnviado = document.getElementById("sonido-enviado");
+  if (audioEnviado) {
+    audioEnviado.currentTime = 0;
+    audioEnviado.play().catch(() => {
+      despertarAudioForzado();
+    });
+  }
 };
 
-window.reproducirSonidoGrabando = function () {
-  window.reproducirSonido("grabando");
-};
-
-// 👁️ FUNCIÓN GLOBAL PARA ALTERNAR VISIBILIDAD DE CONTRASEÑA
+// Función global para alternar visibilidad de contraseña
 window.togglePasswordVisibility = function () {
   const inputPass = document.getElementById("auth-password");
   const iconoOjito = document.getElementById("icono-ojito");
@@ -6315,24 +6254,19 @@ function actualizarChecksEnPantalla(ultimoKeyLeido) {
 // 🔄 Control dinámico de la tarjeta de bienvenida / lista vacía
 function actualizarEstadoPantallaInicio() {
   const contenedorVacio = document.getElementById("pantalla-lista-vacia");
-  const pantallaBienvenida = document.getElementById("pantalla-bienvenida");
-  const listaChats = document.querySelector("#lista-chats-principal") || document.querySelector(".lista-chats");
+  const listaChats = document.querySelector(".lista-chats");
 
-  if (!listaChats) return;
+  if (!contenedorVacio || !listaChats) return;
 
-  // Contamos tarjetas reales de conversación (omitimos la de "Mi Estado")
-  const tarjetasReales = Array.from(listaChats.querySelectorAll(".tarjeta-chat")).filter(
-    (t) => t.id !== "tarjeta-mi-estado-propio" && !t.classList.contains("tarjeta-estado-propio")
-  );
+  // Contamos cuántas tarjetas de chat reales hay cargadas
+  const tarjetasReales = listaChats.querySelectorAll(".tarjeta-chat");
 
   if (tarjetasReales.length === 0) {
-    // 📭 SIN CHATS: Mostramos la bienvenida para invitar a agregar personas
-    if (contenedorVacio) contenedorVacio.classList.remove("oculto");
-    if (pantallaBienvenida) pantallaBienvenida.style.display = "flex";
+    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida orientada a buscar amigos
+    contenedorVacio.classList.remove("oculto");
   } else {
-    // 💬 CON CHATS: Ocultamos bienvenida y mostramos la bandeja de chats limpia
-    if (contenedorVacio) contenedorVacio.classList.add("oculto");
-    if (pantallaBienvenida) pantallaBienvenida.style.display = "none";
+    // 💬 CON CHATS: Ocultamos la tarjeta por completo para darle prioridad a la lista
+    contenedorVacio.classList.add("oculto");
   }
 }
 
@@ -6393,16 +6327,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
-// 🔔 NOTIFICACIONES PUSH NATIVAS (Con icono y badge separados)
+// 🔔 5. NOTIFICACIONES PUSH NATIVAS (Versión unificada)
 window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUrl) {
   const estaSilenciado = localStorage.getItem("movachat-notificaciones") === "desactivado";
   if (estaSilenciado) return;
 
+  // Si la app está en segundo plano o minimizada
   if (document.hidden && Notification.permission === "granted") {
     const opciones = {
       body: textoMensaje || "Te ha enviado un mensaje.",
-      icon: avatarUrl || "assets/logo/icon-192.png", // 🖼️ Foto a color en la tarjeta desplegable
-      badge: "assets/logo/badge-72.png",             // ⚪ Silueta transparente para la barra de estado
+      icon: avatarUrl || "assets/logo/icon-192.png",
+      badge: "assets/logo/icon-192.png",
       vibrate: [100, 50, 100],
       tag: "movachat-mensaje",
       renotify: true
@@ -6416,6 +6351,7 @@ window.notificarNuevoMensaje = function (nombreRemitente, textoMensaje, avatarUr
       new Notification(`Mensaje de ${nombreRemitente}`, opciones);
     }
   } else {
+    // Si la app está abierta en pantalla, actualizamos la campanita y badges
     if (typeof actualizarBadgesNotificaciones === "function") {
       actualizarBadgesNotificaciones();
     }
@@ -6560,36 +6496,3 @@ if (inputMensaje) {
     }
   });
 })();
-
-// 🚪 LÓGICA DE CONFIRMACIÓN PARA CERRAR SESIÓN (MODAL GLASSMORPHISM)
-document.addEventListener("DOMContentLoaded", () => {
-  const modalCerrarSesion = document.getElementById("modal-confirmar-cerrar-sesion");
-  const btnCancelar = document.getElementById("btn-cancelar-cerrar-sesion");
-  const btnAceptar = document.getElementById("btn-aceptar-cerrar-sesion");
-
-  if (btnCancelar && modalCerrarSesion) {
-    btnCancelar.onclick = () => modalCerrarSesion.classList.add("oculto");
-  }
-
-  if (modalCerrarSesion) {
-    modalCerrarSesion.onclick = (e) => {
-      if (e.target === modalCerrarSesion) modalCerrarSesion.classList.add("oculto");
-    };
-  }
-
-  if (btnAceptar && modalCerrarSesion) {
-    btnAceptar.onclick = async () => {
-      modalCerrarSesion.classList.add("oculto");
-      try {
-        const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-        await signOut(auth);
-
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Sesión cerrada correctamente 👋", "🚪", "#ff4b2b");
-        }
-      } catch (error) {
-        console.error("Error al cerrar sesión:", error);
-      }
-    };
-  }
-});
