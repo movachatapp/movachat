@@ -22,14 +22,6 @@ import {
   remove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-// 🚀 IMPORTS DE FIREBASE STORAGE (NUEVO)
-import {
-  getStorage,
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
   authDomain: "movachat-3e8ea.firebaseapp.com",
@@ -54,7 +46,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
-const storage = getStorage(app); // 🚀 INICIALIZACIÓN DE STORAGE
 
 const contactosRegistradosSet = new Set();
 
@@ -1094,10 +1085,6 @@ function frenarCronometroAudio() {
   if (timerGrabacionAudio) clearInterval(timerGrabacionAudio);
 }
 
-// ========================================================
-// 4. SISTEMA DE AUDIOS Y NOTAS DE VOZ (CONECTADO A FIREBASE STORAGE)
-// ========================================================
-
 async function iniciarGrabacionVoz(e) {
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
   if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0) || (cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))) {
@@ -1125,59 +1112,15 @@ async function iniciarGrabacionVoz(e) {
       if (event.data.size > 0) fragmentosAudio.push(event.data);
     };
 
-    // ☁️ AL DETENER LA GRABACIÓN: SUBIR A FIREBASE STORAGE Y GUARDAR EN DATABASE
-    mediaRecorderAudio.onstop = async () => {
+    mediaRecorderAudio.onstop = () => {
       if (streamAudioLive) streamAudioLive.getTracks().forEach(track => track.stop());
 
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
         const blobAudio = new Blob(fragmentosAudio, { type: mimeAudio });
-        const ext = mimeAudio.includes('mp4') ? 'mp4' : (mimeAudio.includes('ogg') ? 'ogg' : 'webm');
-        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${ext}`, { type: mimeAudio });
+        const urlAudioReal = URL.createObjectURL(blobAudio);
 
-        const miUid = auth.currentUser ? auth.currentUser.uid : null;
-        const contactoUid = window.contactoActivoUid;
-
-        if (!miUid || !contactoUid) return;
-
-        const chatId = typeof obtenerChatId === "function"
-          ? obtenerChatId(miUid, contactoUid)
-          : [miUid, contactoUid].sort().join("_");
-
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Subiendo nota de voz a la nube... 🎤", "⏳", "#00f2fe");
-        }
-
-        try {
-          // 1. Subir a la carpeta 'audios' en Firebase Storage
-          const urlAudioNube = await subirArchivoAStorage(archivoAudio, `audios/${chatId}`);
-
-          // 2. Preparar el objeto del mensaje
-          const objetoNotaVoz = {
-            emisor: miUid,
-            receptor: contactoUid,
-            texto: "",
-            hora: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-            timestamp: Date.now(),
-            tipoAdjunto: 'audio',
-            duracion: contadorAudio ? contadorAudio.textContent : "0:01",
-            urlAdjunto: urlAudioNube
-          };
-
-          // 3. Registrar mensaje en Realtime Database
-          const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
-          const nuevoMensajeRef = push(listaMensajesRef);
-          await set(nuevoMensajeRef, objetoNotaVoz);
-
-          // 🔊 Reproducir sonido de envío
-          if (typeof reproducirSonidoEnviado === "function") {
-            reproducirSonidoEnviado();
-          }
-
-        } catch (errorAudio) {
-          console.error("❌ Error al subir la nota de voz a Storage:", errorAudio);
-          if (typeof mostrarAvisoPremium === "function") {
-            mostrarAvisoPremium("No se pudo enviar la nota de voz ❌", "⚠️", "#ff4b2b");
-          }
+        if (typeof inyectarNotaDeVozBurbuja === "function") {
+          inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlAudioReal);
         }
       }
     };
@@ -1344,7 +1287,7 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 let estaEnviandoMensaje = false;
 
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + FIREBASE STORAGE + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS)
 // ========================================================
 async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
@@ -1371,7 +1314,9 @@ async function enviarMensajeNuevo() {
 
   // 🛡️ 1. VERIFICACIÓN DE BLOQUEO EN FIREBASE (AMBAS DIRECCIONES)
   try {
+    // ¿El receptor te tiene bloqueado a ti?
     const snapBloqueoReceptor = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
+    // ¿Tú tienes bloqueado al receptor?
     const snapBloqueoPropio = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
 
     const meTieneBloqueado = snapBloqueoReceptor.exists() && snapBloqueoReceptor.val() === true;
@@ -1386,6 +1331,7 @@ async function enviarMensajeNuevo() {
         mostrarAvisoPremium(mensajeAviso, "🚫", "#ff4b2b");
       }
 
+      // Desactivar candado y salir
       estaEnviandoMensaje = false;
       return;
     }
@@ -1400,7 +1346,7 @@ async function enviarMensajeNuevo() {
   const ahora = new Date();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-  // 🔴 CASO 1: EDICIÓN DE MENSAJE EN FIREBASE
+  // 🔴 CASO: EDICIÓN DE MENSAJE EN FIREBASE
   if (window.burbujaEnEdicion && window.mensajeEnEdicionId) {
     const mensajeRef = ref(db, `chats/${chatId}/mensajes/${window.mensajeEnEdicionId}`);
     try {
@@ -1419,11 +1365,13 @@ async function enviarMensajeNuevo() {
       }
     }
 
+    // Resetear variables de control de edición
     window.burbujaEnEdicion = null;
     window.mensajeEnEdicionId = null;
     if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
 
+    // Liberar candado
     estaEnviandoMensaje = false;
     return;
   }
@@ -1440,53 +1388,7 @@ async function enviarMensajeNuevo() {
     console.error("Error verificando temporales:", err);
   }
 
-  // ☁️ PROCESAMIENTO Y SUBIDA DE ADJUNTOS A FIREBASE STORAGE
-  let urlAdjuntoSubido = null;
-  let tipoMedia = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
-  let nombreDocAdjunto = null;
-
-  if (tieneAdjunto) {
-    try {
-      let archivoAProcesar = null;
-
-      // Detectar input de origen según el tipo de adjunto
-      if ((tipoMedia === 'foto' || tipoMedia === 'video') && typeof inputRealGaleria !== 'undefined' && inputRealGaleria.files.length > 0) {
-        archivoAProcesar = inputRealGaleria.files[0];
-      } else if (tipoMedia === 'documento' && typeof inputRealDocumento !== 'undefined' && inputRealDocumento.files.length > 0) {
-        archivoAProcesar = inputRealDocumento.files[0];
-        nombreDocAdjunto = archivoAProcesar.name;
-      }
-
-      // Si existe archivo físico, realizar subida a Firebase Storage
-      if (archivoAProcesar) {
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Subiendo archivo a la nube... ☁️", "⏳", "#00f2fe");
-        }
-
-        urlAdjuntoSubido = await subirArchivoAStorage(archivoAProcesar, `chats/${chatId}`);
-      }
-    } catch (errStorage) {
-      console.error("❌ Error al subir el adjunto a Storage:", errStorage);
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Error al subir el archivo adjunto.", "❌", "#ff4b2b");
-      }
-      estaEnviandoMensaje = false;
-      return;
-    }
-
-    // Limpieza de caja visual e inputs de archivo
-    if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
-    if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
-    if (typeof inputRealGaleria !== 'undefined' && inputRealGaleria) inputRealGaleria.value = "";
-    if (typeof inputRealDocumento !== 'undefined' && inputRealDocumento) inputRealDocumento.value = "";
-    
-    const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
-    if (iconoPrevio) iconoPrevio.remove();
-    if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
-    if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
-  }
-
-  // 🟢 CASO 2: ESTRUCTURA DEL NUEVO MENSAJE
+  // 🟢 CASO: NUEVO MENSAJE
   let objetoMensaje = {
     emisor: miUid,
     receptor: contactoUid,
@@ -1495,33 +1397,53 @@ async function enviarMensajeNuevo() {
     timestamp: Date.now(),
     esEfimero: duracionEfimeraMs > 0,
     duracionEfimeraMs: duracionEfimeraMs,
-
-    // ↪️ METADATOS DE REENVÍO
+    // ↪️ METADATOS DE REENVÍO (Lee la variable global)
     esReenviado: window.mensajeReenviadoActivo ? true : false,
     autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
-
-    // 📁 METADATOS DEL ARCHIVO MULTIMEDIA
-    tipoAdjunto: tipoMedia,
-    urlAdjunto: urlAdjuntoSubido,
-    nombreDoc: nombreDocAdjunto
+    tipoAdjunto: null,
+    urlAdjunto: null,
+    nombreDoc: null
   };
 
-  // 🧹 Limpiar vista previa de reenvío
+  // 🧹 Limpiar la barra visual de reenvío y la variable tras armar el objeto
   window.mensajeReenviadoActivo = null;
   const vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
   if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
 
-  // Limpiar input de texto y estado de escritura
+  if (tieneAdjunto) {
+    objetoMensaje.tipoAdjunto = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
+
+    if (objetoMensaje.tipoAdjunto === 'foto') {
+      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "";
+    } else if (objetoMensaje.tipoAdjunto === 'documento') {
+      objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : "Documento_Mova.pdf";
+      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "";
+    } else if (objetoMensaje.tipoAdjunto === 'video') {
+      const urlVideoCapturado = imgMiniaturaAdjunto && imgMiniaturaAdjunto.src && imgMiniaturaAdjunto.src.startsWith("blob:")
+        ? imgMiniaturaAdjunto.src
+        : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+      objetoMensaje.urlAdjunto = urlVideoCapturado;
+    }
+
+    // Limpiar caja de vista previa
+    if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
+    if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
+    const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
+    if (iconoPrevio) iconoPrevio.remove();
+    if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
+    if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
+  }
+
   if (inputChat) {
     inputChat.value = "";
-    inputChat.readOnly = false;
+    inputChat.readOnly = false; // 🔓 DESBLOQUEAR CAJA PARA MENSAJES FUTUROS
   }
 
   if (miUid && contactoUid) {
     set(ref(db, `escribiendo/${chatId}/${miUid}`), false);
   }
 
-  // 🚀 GUARDA EN REALTIME DATABASE
+  // 🚀 SUBIR A FIREBASE
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
@@ -1537,7 +1459,7 @@ async function enviarMensajeNuevo() {
       mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
     }
   } finally {
-    // Liberar candado
+    // Liberar el candado tras 300ms para permitir el siguiente mensaje
     setTimeout(() => {
       estaEnviandoMensaje = false;
     }, 300);
@@ -1754,80 +1676,60 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // 🗑️ OPCIÓN 4A: ELIMINAR PARA MÍ (Guardado en Firebase para que no reaparezca)
-    else if (accion === "eliminar-para-mi") {
-      const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
-      const miUid = usuarioActual ? usuarioActual.uid : null;
-      
-      // 🛡️ Asegurar que obtenemos el ID del mensaje sí o sí
-      const idParaBorrar = typeof msgId !== "undefined" && msgId 
-        ? msgId 
-        : (nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null);
+    // 🗑️ OPCIÓN 4: ELIMINAR (De la pantalla y de Firebase)
+    else if (accion === "eliminar") {
+      // 1. 🙈 Ocultar el menú contextual inmediatamente
+      const menuFlotante = typeof menuCtx !== "undefined" ? menuCtx : document.getElementById("menu-contextual-mensaje");
+      if (menuFlotante) {
+        menuFlotante.classList.add("oculto");
+        menuFlotante.style.display = "none";
+      }
+
+      // 2. Capturar el ID del mensaje
+      const idParaBorrar = msgId
+        || (nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null)
+        || (menuFlotante ? menuFlotante.dataset.msgId : null);
+
+      const elementoBurbuja = nodoMensaje || (idParaBorrar ? document.querySelector(`[data-msg-id="${idParaBorrar}"]`) : null);
 
       if (!idParaBorrar) {
+        console.error("No se pudo obtener el ID del mensaje.");
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium("No se encontró el ID del mensaje.", "⚠️", "#ff4b2b");
         }
         return;
       }
 
-      if (miUid && idParaBorrar) {
-        // ☁️ Guardar en Firebase que este usuario ocultó este mensaje
-        set(ref(db, `mensajes_borrados/${miUid}/${idParaBorrar}`), true)
-          .then(() => {
-            if (nodoMensaje) {
-              nodoMensaje.style.transition = "all 0.25s ease";
-              nodoMensaje.style.opacity = "0";
-              nodoMensaje.style.transform = "scale(0.85)";
-              setTimeout(() => nodoMensaje.remove(), 250);
-            }
+      // 3. 🎨 Animación fluida de salida en pantalla
+      if (elementoBurbuja) {
+        elementoBurbuja.style.transition = "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
+        elementoBurbuja.style.opacity = "0";
+        elementoBurbuja.style.transform = "scale(0.85) translateY(10px)";
 
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Mensaje eliminado para ti 👁️‍🗨️", "🗑️", "#00f2fe");
-            }
-          })
-          .catch((err) => {
-            console.error("Error al borrar para mí en Firebase:", err);
-          });
-      }
-    }
-
-    // 💣 OPCIÓN 4B: ELIMINAR PARA TODOS (Borra de la nube si pasaron menos de 15 min)
-    else if (accion === "eliminar-para-todos") {
-      const timestampMsg = parseInt(nodoMensaje ? nodoMensaje.getAttribute("data-timestamp") : "0", 10);
-      const tiempoTranscurrido = Date.now() - timestampMsg;
-      const limite15Min = 15 * 60 * 1000; // 15 minutos
-
-      if (!esMio) {
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Solo puedes eliminar para todos tus propios mensajes ⚠️", "❌", "#ff4b2b");
-        }
-        return;
+        setTimeout(() => {
+          if (elementoBurbuja && elementoBurbuja.parentNode) {
+            elementoBurbuja.remove();
+          }
+        }, 250);
       }
 
-      if (timestampMsg > 0 && tiempoTranscurrido > limite15Min) {
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Han pasado más de 15 min. Solo puedes 'Eliminar para ti' ⏳", "⚠️", "#ff4b2b");
-        }
-        return;
-      }
-
-      // Borrar de Firebase Realtime Database
+      // 4. ☁️ Borrar en Firebase Realtime Database
       const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
       const miUid = usuarioActual ? usuarioActual.uid : null;
       const contactoUid = window.contactoActivoUid;
 
-      if (miUid && contactoUid && msgId) {
+      if (miUid && contactoUid) {
         const chatId = typeof obtenerChatId === "function"
           ? obtenerChatId(miUid, contactoUid)
           : [miUid, contactoUid].sort().join("_");
 
-        const mensajeRef = ref(db, `chats/${chatId}/mensajes/${msgId}`);
+        const mensajeRef = ref(db, `chats/${chatId}/mensajes/${idParaBorrar}`);
 
+        // Uso de set(..., null) para garantizar compatibilidad total con tus importaciones existentes
         set(mensajeRef, null)
           .then(() => {
             if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Mensaje eliminado para todos 💣", "🗑️", "#ff4b2b");
+              mostrarAvisoPremium("Mensaje eliminado.", "🗑️", "#ff4b2b");
             }
           })
           .catch((err) => {
@@ -2797,7 +2699,9 @@ async function ejecutarCompartirMova() {
 
 // Escuchador delegado global (captura cualquier botón con clase .btn-compartir o texto 'Compartir MovaChat')
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".btn-compartir, #btn-compartir-mova");
+  const btn = e.target.closest(".btn-compartir") ||
+    e.target.closest("#btn-compartir-mova") ||
+    (e.target.textContent && e.target.textContent.includes("Compartir MovaChat") ? e.target.closest("button, div") : null);
 
   if (btn) {
     e.preventDefault();
@@ -2841,13 +2745,14 @@ function abrirModalQRPro() {
 
 // Escuchador delegado global (detecta si presionan por clase, por ID o por texto 'QR Pro')
 document.addEventListener("click", (e) => {
-  const btnQr = e.target.closest(".btn-qr, #btn-qr-mova");
+  const btnQr = e.target.closest(".btn-qr") ||
+    e.target.closest("#btn-qr-mova") ||
+    (e.target.textContent && e.target.textContent.includes("QR Pro") ? e.target.closest("button, div") : null);
 
   if (btnQr) {
     e.preventDefault();
     e.stopPropagation();
     abrirModalQRPro();
-    return;
   }
 
   // Cerrar el modal al tocar la 'X' o la capa del fondo
@@ -3053,25 +2958,12 @@ window.actualizarBadgesNotificaciones = function () {
 // Map global para evitar escuchadores duplicados por contacto
 window.desuscripcionesUltimoMsg = window.desuscripcionesUltimoMsg || {};
 
-// 🔍 LÓGICA PARA OBTENER EL ÚLTIMO MENSAJE VISIBLE EN LA LISTA DE CHATS
-function obtenerUltimoMensajeTexto(ultimoMsg) {
-  if (!ultimoMsg) return "Sin mensajes";
-
-  if (ultimoMsg.tipoAdjunto === 'foto') return "📷 Foto";
-  if (ultimoMsg.tipoAdjunto === 'video') return "🎥 Video circular";
-  if (ultimoMsg.tipoAdjunto === 'audio') return "🎤 Nota de voz";
-  if (ultimoMsg.tipoAdjunto === 'documento') return "📄 Documento";
-
-  return ultimoMsg.texto || "Mensaje";
-}
-
 function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijadosBD = {}) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
   const lecturaRef = ref(db, `lecturas/${miUid}/${contactoUid}`);
   const vaciadoRef = ref(db, `vaciados/${miUid}/${contactoUid}`);
   const ocultoRef = ref(db, `chats_ocultos/${miUid}/${contactoUid}`);
-  const borradosRef = ref(db, `mensajes_borrados/${miUid}`); // 👈 Referencia a mensajes borrados "Para mí"
 
   // 🛡️ LIMPIEZA ANTI-DUPLICADOS: Si ya existe un escuchador para este contacto, lo apagamos antes de crear uno nuevo
   if (window.desuscripcionesUltimoMsg[contactoUid]) {
@@ -3092,19 +2984,15 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     let timestampUltimoVaciado = 0;
     let timestampOculto = 0;
-    let listaBorradosMios = {};
 
     try {
-      // 🚀 Consulta combinada incluyendo 'mensajes_borrados'
-      const [snapVaciado, snapOculto, snapBorrados] = await Promise.all([
+      const [snapVaciado, snapOculto] = await Promise.all([
         get(vaciadoRef),
-        get(ocultoRef),
-        get(borradosRef)
+        get(ocultoRef)
       ]);
 
       if (snapVaciado.exists()) timestampUltimoVaciado = Number(snapVaciado.val()) || 0;
       if (snapOculto.exists()) timestampOculto = Number(snapOculto.val()) || 0;
-      if (snapBorrados.exists()) listaBorradosMios = snapBorrados.val() || {};
     } catch (err) {
       console.error("Error al consultar estados de vaciado/eliminación:", err);
     }
@@ -3119,14 +3007,10 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       mensajes = snapshot.val();
       const ahora = Date.now();
 
-      // 🎯 ORDENAR CRONOLÓGICAMENTE Y FILTRAR BORRADOS PARA MÍ
+      // 🎯 ORDENAR CRONOLÓGICAMENTE POR TIMESTAMP REAL
       mensajesOrdenados = Object.keys(mensajes)
         .map(key => ({ key, ...mensajes[key] }))
         .filter(m => {
-          // 🛡️ Filtro 1: Saltarse mensajes eliminados "Para mí"
-          if (listaBorradosMios[m.key] === true) return false;
-
-          // 🛡️ Filtro 2: Saltarse mensajes anteriores al vaciado
           const esPosteriorVaciado = (m.timestamp || 0) > timestampUltimoVaciado;
           if (m.esEfimero) {
             const limiteMs = m.duracionEfimeraMs || 10000;
@@ -3266,20 +3150,16 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (window.lucide) window.lucide.createIcons({ targets: [tarjetaContacto] });
     }
 
-    // 🔍 Actualizar datos del último mensaje usando la función helper
+    // Actualizar datos del último mensaje en la tarjeta
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
 
     if (ultimoMsg) {
-      if (elemTexto) {
-        elemTexto.textContent = typeof obtenerUltimoMensajeTexto === "function" 
-          ? obtenerUltimoMensajeTexto(ultimoMsg) 
-          : (ultimoMsg.texto || "Mensaje");
-      }
+      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
     } else {
-      if (elemTexto) elemTexto.textContent = "Sin mensajes";
+      if (elemTexto) elemTexto.textContent = "Conversación vaciada";
       if (elemHora) elemHora.textContent = "--:--";
     }
 
@@ -3304,22 +3184,15 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       get(lecturaRef).then((lecturaSnap) => {
         const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
 
-        // 🛡️ SOLUCIÓN: Buscar el timestamp en el objeto original 'mensajes' (incluso si se borró "Para mí")
-        let timestampUltimoLeido = 0;
-        if (ultimoLeidoKey && mensajes) {
-          if (mensajes[ultimoLeidoKey]) {
-            timestampUltimoLeido = mensajes[ultimoLeidoKey].timestamp || 0;
-          } else {
-            const objUltimoLeido = mensajesOrdenados.find(m => m.key === ultimoLeidoKey);
-            timestampUltimoLeido = objUltimoLeido ? (objUltimoLeido.timestamp || 0) : 0;
-          }
-        }
+        // Buscar el timestamp del último leído
+        const objUltimoLeido = mensajesOrdenados.find(m => m.key === ultimoLeidoKey);
+        const timestampUltimoLeido = objUltimoLeido ? (objUltimoLeido.timestamp || 0) : 0;
 
         let nuevos = 0;
 
         mensajesOrdenados.forEach((m) => {
           const idEmisor = m.emisor || m.emisorUid || m.remitente || m.remitenteId || m.uid;
-          // Si el mensaje es del contacto Y fue creado después de la última lectura real
+          // Si el mensaje es del contacto Y fue creado después de la última lectura
           if (idEmisor === contactoUid && (m.timestamp || 0) > timestampUltimoLeido) {
             nuevos++;
           }
@@ -6139,6 +6012,7 @@ function escucharMensajesChat(chatId) {
     listenerPresenciaContactoActivo = onValue(presenciaContactoRef, (snapPresencia) => {
       estaEnAppReceptorLive = snapPresencia.exists() && snapPresencia.val() === true;
 
+      // Si el contacto se desconecta, refrescar visualmente los mensajes no leídos a 1 check
       document.querySelectorAll(".indicador-checks-mova").forEach((contenedor) => {
         const esLeido = contenedor.classList.contains("leido");
         if (!esLeido) {
@@ -6165,16 +6039,13 @@ function escucharMensajesChat(chatId) {
     const elemHistorial = document.querySelector(".historial-mensajes");
     if (!elemHistorial) return;
 
-    // 🔥 AQUI ESTÁ LA NUEVA PROMESA PARA MENSAJES BORRADOS
     Promise.all([
       miUid && contactoUid ? get(ref(db, `vaciados/${miUid}/${contactoUid}`)) : Promise.resolve(null),
-      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null),
-      miUid ? get(ref(db, `mensajes_borrados/${miUid}`)) : Promise.resolve(null)
-    ]).then(([snapVaciado, snapBloqueo, snapBorrados]) => {
+      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null)
+    ]).then(([snapVaciado, snapBloqueo]) => {
 
       const timestampUltimoVaciado = (snapVaciado && snapVaciado.exists()) ? snapVaciado.val() : 0;
       const estaBloqueadoElContacto = (snapBloqueo && snapBloqueo.exists()) ? (snapBloqueo.val() === true) : false;
-      const listaBorradosMios = (snapBorrados && snapBorrados.exists()) ? snapBorrados.val() : {};
 
       elemHistorial.innerHTML = "";
 
@@ -6182,6 +6053,7 @@ function escucharMensajesChat(chatId) {
         const mensajes = snapshot.val();
         const keysMensajes = Object.keys(mensajes);
 
+        // Marcar como leído ÚNICAMENTE si el chat privado está visible en pantalla
         const pantallaChat = document.getElementById("pantalla-chat-privado");
         const chatEstaAbierto = (window.contactoActivoUid === contactoUid) &&
           pantallaChat &&
@@ -6197,9 +6069,6 @@ function escucharMensajesChat(chatId) {
         keysMensajes.forEach((msgId) => {
           const msg = mensajes[msgId];
           if (!msg) return;
-
-          // 🔥 AQUI ESTÁ EL FILTRO PARA SALTARSE LOS MENSAJES QUE BORRASTE PARA TI
-          if (listaBorradosMios[msgId] === true) return;
 
           const msgTimestamp = msg.timestamp || 0;
           if (msgTimestamp <= timestampUltimoVaciado) return;
@@ -6224,16 +6093,18 @@ function escucharMensajesChat(chatId) {
             }
           }
 
+          // 🟢 DEFINICIÓN DE TIEMPO PARA MENSAJES EN VIVO
           const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
           const esMensajeNuevoEnVivo = haceCuantoEnviado < 5000;
           const esElUltimoMensaje = (msgId === keysMensajes[keysMensajes.length - 1]);
 
+          // 🛡️ ESCUDO ANTI-DUPLICADOS UNIFICADO
           window.mensajesNotificadosUnificados = window.mensajesNotificadosUnificados || new Set();
           const yaSono = window.mensajesNotificadosUnificados.has(msgId);
 
           if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto && esElUltimoMensaje && !yaSono) {
 
-            window.mensajesNotificadosUnificados.add(msgId);
+            window.mensajesNotificadosUnificados.add(msgId); // 👈 Marcar en la memoria unificada
 
             const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
             const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
@@ -6243,6 +6114,7 @@ function escucharMensajesChat(chatId) {
               notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
             }
 
+            // 🔊 DISPARAR REPRODUCCIÓN Y VIBRACIÓN
             if (typeof window.reproducirSonidoRecibido === "function") {
               window.reproducirSonidoRecibido(idEmisorReal);
             }
@@ -6259,11 +6131,13 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
+          // 🟢 EVALUACIÓN INDEPENDIENTE POR CADA MENSAJE
           let htmlChecks = "";
           if (esMio) {
             let claseChecks = "enviado";
             let iconoLucide = "check";
 
+            // Verificar si este mensaje específico es igual o anterior al último leído
             const esLeido = ultimoLeidoKeyReceptor && (keysMensajes.indexOf(msgId) <= keysMensajes.indexOf(ultimoLeidoKeyReceptor));
 
             if (esLeido) {
@@ -6774,34 +6648,3 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 });
-
-// ☁️ FUNCIÓN GLOBAL PARA SUBIR ARCHIVOS A FIREBASE STORAGE
-async function subirArchivoAStorage(file, carpeta = "chat_adjuntos") {
-  if (!file) return null;
-
-  // Generar un nombre único para evitar colisiones
-  const extension = file.name ? file.name.split('.').pop() : 'bin';
-  const nombreUnico = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${extension}`;
-  const rutaAlmacenamiento = storageRef(storage, `${carpeta}/${nombreUnico}`);
-
-  const uploadTask = uploadBytesResumable(rutaAlmacenamiento, file);
-
-  return new Promise((resolve, reject) => {
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        // Progreso opcional (se puede conectar a una barra visual si se desea)
-        const progreso = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        console.log(`Subiendo archivo: ${Math.round(progreso)}%`);
-      },
-      (error) => {
-        console.error("❌ Error en Firebase Storage:", error);
-        reject(error);
-      },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        resolve(downloadURL);
-      }
-    );
-  });
-}
