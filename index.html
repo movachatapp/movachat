@@ -82,6 +82,14 @@
           </button>
         </div>
 
+        <!-- 🔑 Enlace de Olvidé mi Contraseña -->
+        <div style="text-align: right; margin-top: -6px; margin-bottom: 18px;">
+          <a id="btn-olvide-password" href="#"
+            style="font-size: 0.82rem; color: var(--color-primario, #00f2fe); text-decoration: none; font-weight: 500; transition: opacity 0.2s;">
+            ¿Olvidaste tu contraseña?
+          </a>
+        </div>
+
         <!-- Botón Principal -->
         <button type="submit" id="btn-auth-submit" class="btn-principal">
           Iniciar Sesión
@@ -816,14 +824,43 @@
   <!-- 🚪 MODAL PERSONALIZADO CERRAR SESIÓN (GLASSMORPHISM MOVACHAT) -->
   <div id="modal-confirmar-cerrar-sesion" class="modal-overlay oculto">
     <div class="modal-cristal modal-mova-caja" style="max-width: 350px; text-align: center;">
-      <div class="modal-mova-icono" style="font-size: 2.2rem; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 75, 43, 0.6));">🚪</div>
-      <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin-bottom: 8px; font-weight: 600;">Cerrar sesión</h3>
-      <p class="modal-mova-texto" style="font-size: 0.88rem; color: rgba(255, 255, 255, 0.7); line-height: 1.45; margin-bottom: 22px;">
+      <div class="modal-mova-icono"
+        style="font-size: 2.2rem; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(255, 75, 43, 0.6));">🚪</div>
+      <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin-bottom: 8px; font-weight: 600;">
+        Cerrar sesión</h3>
+      <p class="modal-mova-texto"
+        style="font-size: 0.88rem; color: rgba(255, 255, 255, 0.7); line-height: 1.45; margin-bottom: 22px;">
         ¿Estás seguro de que deseas salir de MovaChat? Tendrás que iniciar sesión de nuevo.
       </p>
       <div class="modal-mova-botones" style="display: flex; gap: 12px;">
-        <button id="btn-cancelar-logout-modal" class="btn-secundario" style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
-        <button id="btn-aceptar-logout-modal" class="btn-primario" style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);">Salir</button>
+        <button id="btn-cancelar-logout-modal" class="btn-secundario"
+          style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
+        <button id="btn-aceptar-logout-modal" class="btn-primario"
+          style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #ff416c, #ff4b2b); box-shadow: 0 4px 15px rgba(255, 75, 43, 0.4);">Salir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🔑 MODAL RECUPERAR CONTRASEÑA -->
+  <div id="modal-recuperar-pass" class="modal-overlay oculto">
+    <div class="modal-cristal modal-mova-caja" style="max-width: 360px; text-align: center;">
+      <div class="modal-mova-icono"
+        style="font-size: 2.2rem; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(0, 242, 254, 0.6));">🔑</div>
+      <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin-bottom: 8px; font-weight: 600;">
+        Recuperar Contraseña</h3>
+      <p class="modal-mova-texto"
+        style="font-size: 0.85rem; color: rgba(255, 255, 255, 0.7); line-height: 1.45; margin-bottom: 18px;">
+        Ingresa tu correo registrado y te enviaremos un enlace seguro para restablecer tu clave.
+      </p>
+
+      <input type="email" id="input-correo-recuperar" placeholder="tu@correo.com"
+        style="width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.9rem; margin-bottom: 20px; outline: none; box-sizing: border-box;">
+
+      <div class="modal-mova-botones" style="display: flex; gap: 12px;">
+        <button id="btn-cancelar-recuperar" class="btn-secundario"
+          style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
+        <button id="btn-enviar-recuperar" class="btn-primario"
+          style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #00c6ff, #0072ff); box-shadow: 0 4px 15px rgba(0, 114, 255, 0.4);">Enviar</button>
       </div>
     </div>
   </div>

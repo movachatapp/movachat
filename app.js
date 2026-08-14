@@ -6583,3 +6583,68 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 });
+
+// 🔑 LÓGICA DE RECUPERACIÓN DE CONTRASEÑA EN LOGIN
+document.addEventListener("DOMContentLoaded", () => {
+  const btnOlvidePass = document.getElementById("btn-olvide-password");
+  const modalRecuperar = document.getElementById("modal-recuperar-pass");
+  const btnCancelarRecuperar = document.getElementById("btn-cancelar-recuperar");
+  const btnEnviarRecuperar = document.getElementById("btn-enviar-recuperar");
+  const inputCorreoRecuperar = document.getElementById("input-correo-recuperar");
+
+  // A) Abrir modal
+  if (btnOlvidePass && modalRecuperar) {
+    btnOlvidePass.onclick = (e) => {
+      e.preventDefault();
+      // Si ya había escrito su correo en el login, se auto-completa aquí
+      const correoLogin = document.getElementById("auth-email")?.value || "";
+      if (inputCorreoRecuperar) inputCorreoRecuperar.value = correoLogin;
+      
+      modalRecuperar.classList.remove("oculto");
+    };
+  }
+
+  // B) Cerrar modal al cancelar o tocar fondo
+  if (btnCancelarRecuperar && modalRecuperar) {
+    btnCancelarRecuperar.onclick = () => modalRecuperar.classList.add("oculto");
+  }
+  if (modalRecuperar) {
+    modalRecuperar.onclick = (e) => {
+      if (e.target === modalRecuperar) modalRecuperar.classList.add("oculto");
+    };
+  }
+
+  // C) Enviar correo de restablecimiento desde Firebase
+  if (btnEnviarRecuperar && modalRecuperar) {
+    btnEnviarRecuperar.onclick = async () => {
+      const email = inputCorreoRecuperar?.value?.trim();
+
+      if (!email) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Por favor ingresa tu correo ⚠️", "✉️", "#ff4b2b");
+        }
+        return;
+      }
+
+      try {
+        const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        await sendPasswordResetEmail(auth, email);
+
+        modalRecuperar.classList.add("oculto");
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(`Enlace enviado a <b>${email}</b> 🔑`, "✉️", "#00f2fe");
+        }
+      } catch (error) {
+        console.error("Error al enviar recuperación:", error);
+        let msg = "No se pudo enviar el correo ❌";
+        if (error.code === "auth/user-not-found") msg = "Este correo no está registrado ⚠️";
+        if (error.code === "auth/invalid-email") msg = "El correo no es válido ⚠️";
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(msg, "❌", "#ff4b2b");
+        }
+      }
+    };
+  }
+});
