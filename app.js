@@ -22,14 +22,6 @@ import {
   remove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-// 🚀 IMPORTS DE FIREBASE STORAGE (NUEVO)
-import {
-  getStorage,
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
   authDomain: "movachat-3e8ea.firebaseapp.com",
@@ -39,6 +31,14 @@ const firebaseConfig = {
   messagingSenderId: "127806471801",
   appId: "1:127806471801:web:1924b7881925bff5d41ea8"
 };
+
+// ⚡ CONEXIÓN A SUPABASE STORAGE
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+const SUPABASE_URL = "https://tnzsdtmesqfcunqtoqyh.supabase.co"; 
+const SUPABASE_ANON_KEY = "sb_publishable_wLeldDB6ZazOpVq21_cg1A_P1ndcD-N"; 
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // 🔄 Cargar preferencia de tema visual al iniciar la app
 (function cargarTemaGuardado() {
@@ -54,8 +54,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
-const storage = getStorage(app); // 🚀 INICIALIZACIÓN DE STORAGE
-
 const contactosRegistradosSet = new Set();
 
 // 🌐 FORZAR IDIOMA ESPAÑOL EN FIREBASE
@@ -6775,33 +6773,245 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// ☁️ FUNCIÓN GLOBAL PARA SUBIR ARCHIVOS A FIREBASE STORAGE
-async function subirArchivoAStorage(file, carpeta = "chat_adjuntos") {
+// ==========================================
+// ☁️ FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE)
+// ==========================================
+
+// 📤 Subir archivo al bucket público de Supabase
+async function subirArchivoAStorage(file, carpeta = "chats") {
   if (!file) return null;
 
-  // Generar un nombre único para evitar colisiones
-  const extension = file.name ? file.name.split('.').pop() : 'bin';
-  const nombreUnico = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${extension}`;
-  const rutaAlmacenamiento = storageRef(storage, `${carpeta}/${nombreUnico}`);
+  try {
+    const extension = file.name ? file.name.split('.').pop() : "webp";
+    const nombreArchivo = `${carpeta}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${extension}`;
 
-  const uploadTask = uploadBytesResumable(rutaAlmacenamiento, file);
+    const { data, error } = await supabase
+      .storage
+      .from('movachat-adjuntos')
+      .upload(nombreArchivo, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
 
+    if (error) {
+      console.error("❌ Error al subir a Supabase:", error.message);
+      return null;
+    }
+
+    const { data: publicUrlData } = supabase
+      .storage
+      .from('movachat-adjuntos')
+      .getPublicUrl(nombreArchivo);
+
+    return publicUrlData.publicUrl;
+
+  } catch (err) {
+    console.error("❌ Error inesperado en la subida a Supabase:", err);
+    return null;
+  }
+}
+
+// 🗑️ Borrar archivo de Supabase para ahorrar espacio
+async function eliminarArchivoDeStorage(urlPublica) {
+  if (!urlPublica || !urlPublica.includes("supabase.co")) return;
+
+  try {
+    const partes = urlPublica.split('/movachat-adjuntos/');
+    if (partes.length < 2) return;
+    const rutaInterna = partes[1];
+
+    const { error } = await supabase
+      .storage
+      .from('movachat-adjuntos')
+      .remove([rutaInterna]);
+
+    if (error) {
+      console.error("❌ Error al eliminar de Supabase Storage:", error.message);
+    } else {
+      console.log("🗑️ Archivo eliminado de Supabase exitosamente.");
+    }
+  } catch (err) {
+    console.warn("⚠️ No se pudo ejecutar la eliminación en Supabase:", err);
+  }
+}
+
+// ========================================================
+// 📸 GESTOR DE FOTO DE PERFIL CON COMPRESIÓN WEBP AUTOMÁTICA
+// ========================================================
+
+// 1. Crear input transparente dinámico para seleccionar la foto de perfil
+const inputSeleccionarFotoPerfil = document.createElement("input");
+inputSeleccionarFotoPerfil.type = "file";
+inputSeleccionarFotoPerfil.accept = "image/*";
+inputSeleccionarFotoPerfil.style.display = "none";
+document.body.appendChild(inputSeleccionarFotoPerfil);
+
+// 🔍 FUNCIÓN: Compresión física en el navegador (WebP, 250x250px, < 40KB)
+function comprimirFotoPerfilWebP(archivo) {
   return new Promise((resolve, reject) => {
-    uploadTask.on(
-      "state_changed",
-      (snapshot) => {
-        // Progreso opcional (se puede conectar a una barra visual si se desea)
-        const progreso = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        console.log(`Subiendo archivo: ${Math.round(progreso)}%`);
-      },
-      (error) => {
-        console.error("❌ Error en Firebase Storage:", error);
-        reject(error);
-      },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        resolve(downloadURL);
-      }
-    );
+    const reader = new FileReader();
+    reader.readAsDataURL(archivo);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const DIMENSION_MAXIMA = 250; // Dimensiones exactas del estándar
+        
+        canvas.width = DIMENSION_MAXIMA;
+        canvas.height = DIMENSION_MAXIMA;
+        const ctx = canvas.getContext("2d");
+
+        // Recorte centrado cuadrado (Crop-center)
+        let srcX = 0, srcY = 0, srcWidth = img.width, srcHeight = img.height;
+        if (img.width > img.height) {
+          srcWidth = img.height;
+          srcX = (img.width - img.height) / 2;
+        } else {
+          srcHeight = img.width;
+          srcY = (img.height - img.width) / 2;
+        }
+
+        ctx.drawImage(img, srcX, srcY, srcWidth, srcHeight, 0, 0, DIMENSION_MAXIMA, DIMENSION_MAXIMA);
+
+        // Convertir a blob WebP con calidad del 75%
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const archivoComprimido = new File([blob], `avatar_${Date.now()}.webp`, { type: "image/webp" });
+            console.log(`⚡ Compresión exitosa: ${(blob.size / 1024).toFixed(2)} KB (Estándar WebP < 40 KB)`);
+            resolve(archivoComprimido);
+          } else {
+            reject(new Error("Error al procesar el lienzo de compresión."));
+          }
+        }, "image/webp", 0.75);
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
   });
 }
+
+// 2. ACTIVAR EL BOTÓN 2 (CÁMARA / SUBIR FOTO - Detección Universal)
+document.addEventListener("click", (e) => {
+  // Detecta si tocaste la cámara por su icono Lucide, su clase o por estar sobre la foto
+  const esBotonCamara = e.target.closest("[data-lucide='camera']") || 
+                        e.target.closest(".lucide-camera") ||
+                        e.target.closest(".camara-perfil-btn") || 
+                        e.target.closest(".btn-camara-avatar") || 
+                        e.target.closest("[data-accion='cambiar-foto']");
+
+  if (esBotonCamara) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Dispara la apertura del explorador de archivos / cámara
+    inputSeleccionarFotoPerfil.click();
+  }
+});
+
+// 3. PROCESAR, BORRAR ANTERIOR Y SUBIR FOTO NUEVA A SUPABASE Y FIREBASE
+inputSeleccionarFotoPerfil.addEventListener("change", async (e) => {
+  if (!e.target.files || !e.target.files[0]) return;
+
+  const archivoOriginal = e.target.files[0];
+  const user = auth.currentUser;
+
+  if (!user) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Debes iniciar sesión para cambiar la foto.", "⚠️", "#ff4b2b");
+    }
+    return;
+  }
+
+  if (typeof mostrarAvisoPremium === "function") {
+    mostrarAvisoPremium("Comprimiendo imagen a WebP ultra-ligero... ⚡", "✂️", "#00f2fe");
+  }
+
+  try {
+    // 🔍 PASO A: Obtener la URL de la foto anterior desde Firebase antes de cambiarla
+    const userSnap = await get(ref(db, `usuarios/${user.uid}`));
+    let urlFotoAnterior = null;
+
+    if (userSnap.exists()) {
+      const datos = userSnap.val();
+      urlFotoAnterior = datos.fotoUrl || datos.fotoPerfil || null;
+    }
+
+    // ✂️ PASO B: Compresión WebP local en el navegador (< 40 KB, 250x250)
+    const fotoComprimida = await comprimirFotoPerfilWebP(archivoOriginal);
+
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Subiendo foto de perfil a la nube... ☁️", "⏳", "#00f2fe");
+    }
+
+    // ☁️ PASO C: Subir la nueva foto a Supabase Storage
+    const urlPublicaNube = await subirArchivoAStorage(fotoComprimida, `avatares/${user.uid}`);
+
+    if (!urlPublicaNube) {
+      throw new Error("No se obtuvo la URL del archivo subido.");
+    }
+
+    // 🗑️ PASO D: Si existía una foto anterior en Supabase, la eliminamos de la nube
+    if (urlFotoAnterior && urlFotoAnterior.includes("supabase.co")) {
+      console.log("🧹 Limpiando foto anterior de Supabase Storage:", urlFotoAnterior);
+      await eliminarArchivoDeStorage(urlFotoAnterior);
+    }
+
+    // 💾 PASO E: Actualizar en Firebase Realtime Database con la nueva URL
+    await update(ref(db, `usuarios/${user.uid}`), {
+      fotoUrl: urlPublicaNube,
+      fotoPerfil: urlPublicaNube
+    });
+
+    // 🖼️ PASO F: Actualizar imagen física en la pantalla de inmediato
+    const elemFotoPerfil = document.querySelector(".avatar-perfil-img");
+    if (elemFotoPerfil) {
+      elemFotoPerfil.src = urlPublicaNube;
+    }
+
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("¡Foto actualizada y nube limpiada! ✨", "📸", "#00f2fe");
+    }
+
+  } catch (err) {
+    console.error("❌ Error al procesar o subir la foto de perfil:", err);
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("No se pudo actualizar la foto de perfil.", "❌", "#ff4b2b");
+    }
+  } finally {
+    inputSeleccionarFotoPerfil.value = "";
+  }
+});
+
+// 4. ACTIVAR EL PUNTO 1 (VER FOTO COMPLETA EN FLOTANTE)
+document.addEventListener("click", (e) => {
+  const elemFotoPerfil = e.target.closest(".avatar-perfil-img");
+  
+  if (elemFotoPerfil) {
+    e.stopPropagation();
+
+    // Si el usuario presionó la cámara o sus bordes, no abrir visor
+    if (e.target.closest(".camara-perfil-btn, .btn-camara-avatar")) return;
+
+    const urlImagen = elemFotoPerfil.src;
+    const visorEstados = document.getElementById("visor-historias-mova");
+    const imgEstadoRender = document.getElementById("img-estado-render");
+    const textoEstadoRender = document.getElementById("texto-estado-render");
+
+    if (visorEstados && imgEstadoRender && urlImagen) {
+      imgEstadoRender.src = urlImagen;
+      if (textoEstadoRender) textoEstadoRender.textContent = "Foto de tu Perfil";
+
+      const lineaProgreso = document.getElementById("linea-progreso-estado");
+      if (lineaProgreso && lineaProgreso.parentNode) {
+        lineaProgreso.parentNode.style.visibility = "hidden";
+      }
+
+      visorEstados.classList.remove("oculto");
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Visualizando foto de perfil 🌌", "📸", "#00f2fe");
+      }
+    }
+  }
+});
