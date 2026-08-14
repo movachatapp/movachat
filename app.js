@@ -3062,8 +3062,9 @@ window.actualizarBadgesNotificaciones = function () {
   }
 };
 
-// Map global para evitar escuchadores duplicados por contacto
+// Mapas globales para evitar escuchadores duplicados por contacto
 window.desuscripcionesUltimoMsg = window.desuscripcionesUltimoMsg || {};
+window.desuscripcionesEstadoContacto = window.desuscripcionesEstadoContacto || {};
 
 // 🔍 LÓGICA PARA OBTENER EL ÚLTIMO MENSAJE VISIBLE EN LA LISTA DE CHATS
 function obtenerUltimoMensajeTexto(ultimoMsg) {
@@ -3083,17 +3084,53 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   const lecturaRef = ref(db, `lecturas/${miUid}/${contactoUid}`);
   const vaciadoRef = ref(db, `vaciados/${miUid}/${contactoUid}`);
   const ocultoRef = ref(db, `chats_ocultos/${miUid}/${contactoUid}`);
-  const borradosRef = ref(db, `mensajes_borrados/${miUid}`); // 👈 Referencia a mensajes borrados "Para mí"
+  const borradosRef = ref(db, `mensajes_borrados/${miUid}`);
+  const usuarioContactoRef = ref(db, `usuarios/${contactoUid}`);
 
-  // 🛡️ LIMPIEZA ANTI-DUPLICADOS: Si ya existe un escuchador para este contacto, lo apagamos antes de crear uno nuevo
+  // 🛡️ LIMPIEZA ANTI-DUPLICADOS DE ESCUCHADORES
   if (window.desuscripcionesUltimoMsg[contactoUid]) {
     window.desuscripcionesUltimoMsg[contactoUid]();
     delete window.desuscripcionesUltimoMsg[contactoUid];
   }
+  if (window.desuscripcionesEstadoContacto[contactoUid]) {
+    window.desuscripcionesEstadoContacto[contactoUid]();
+    delete window.desuscripcionesEstadoContacto[contactoUid];
+  }
+
+  // 📡 1. ESCUCHADOR EN TIEMPO REAL DEL PERFIL Y ESTADO DEL CONTACTO
+  const unsubscribeUsuario = onValue(usuarioContactoRef, (snapUser) => {
+    if (!snapUser.exists()) return;
+    const datosFresh = snapUser.val();
+
+    const tarjeta = document.getElementById(`tarjeta-chat-${contactoUid}`);
+    if (tarjeta) {
+      const avatarCaja = tarjeta.querySelector(".chat-avatar-caja");
+      const fotoImg = avatarCaja ? avatarCaja.querySelector("img") : null;
+      const nombreElem = tarjeta.querySelector(".chat-nombre");
+
+      // Actualizar foto y nombre en tiempo real si el contacto los cambia
+      if (datosFresh.nombre && nombreElem) nombreElem.textContent = datosFresh.nombre;
+      if (datosFresh.fotoUrl && fotoImg) fotoImg.src = datosFresh.fotoUrl;
+
+      // 🪐 Verificar si tiene un estado activo y vigente (< 24 horas)
+      if (datosFresh.estadoUrl && typeof esEstadoVigente === "function" && esEstadoVigente(datosFresh.estadoTimestamp)) {
+        tarjeta.dataset.estadoUrl = datosFresh.estadoUrl;
+        tarjeta.dataset.estadoTexto = datosFresh.estadoTexto || "";
+        if (avatarCaja) avatarCaja.classList.add("con-estado-activo");
+      } else {
+        delete tarjeta.dataset.estadoUrl;
+        delete tarjeta.dataset.estadoTexto;
+        if (avatarCaja) avatarCaja.classList.remove("con-estado-activo");
+      }
+    }
+  });
+
+  window.desuscripcionesEstadoContacto[contactoUid] = unsubscribeUsuario;
 
   let timerExpiracionEfimera = null;
   let esPrimeraCargaGlobal = true;
 
+  // 💬 2. ESCUCHADOR DE MENSAJES DEL CHAT
   const unsubscribe = onValue(mensajesRef, async (snapshot) => {
     const contenedorLista = document.getElementById("lista-chats-principal");
     if (!contenedorLista) return;
@@ -3107,7 +3144,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     let listaBorradosMios = {};
 
     try {
-      // 🚀 Consulta combinada incluyendo 'mensajes_borrados'
       const [snapVaciado, snapOculto, snapBorrados] = await Promise.all([
         get(vaciadoRef),
         get(ocultoRef),
@@ -3131,14 +3167,10 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       mensajes = snapshot.val();
       const ahora = Date.now();
 
-      // 🎯 ORDENAR CRONOLÓGICAMENTE Y FILTRAR BORRADOS PARA MÍ
       mensajesOrdenados = Object.keys(mensajes)
         .map(key => ({ key, ...mensajes[key] }))
         .filter(m => {
-          // 🛡️ Filtro 1: Saltarse mensajes eliminados "Para mí"
           if (listaBorradosMios[m.key] === true) return false;
-
-          // 🛡️ Filtro 2: Saltarse mensajes anteriores al vaciado
           const esPosteriorVaciado = (m.timestamp || 0) > timestampUltimoVaciado;
           if (m.esEfimero) {
             const limiteMs = m.duracionEfimeraMs || 10000;
@@ -3158,7 +3190,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    // 🔊 NOTIFICACIONES Y REPRODUCCIÓN EN TIEMPO REAL
+    // Notificaciones y sonidos
     window.mensajesNotificadosUnificados = window.mensajesNotificadosUnificados || new Set();
 
     if (!esPrimeraCargaGlobal && ultimoMsg && ultimoMsgKey) {
@@ -3184,7 +3216,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     esPrimeraCargaGlobal = false;
 
-    // Si ocultó o vació el chat completamente
     if ((timestampOculto > 0 && timestampOculto >= timestampUltimoVaciado && (ultimoMsg?.timestamp || 0) <= timestampOculto) ||
       (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0)) {
       if (tarjetaContacto) tarjetaContacto.remove();
@@ -3230,16 +3261,14 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         tarjetaContacto.classList.add("chat-silenciado-zona");
       }
 
-      // Extraer foto/url de estado del usuario si existen
-      const tieneEstadoActivo = datosUsuario && datosUsuario.estadoUrl;
-      if (tieneEstadoActivo) {
+      // Validar si el contacto tiene un estado activo desde el inicio
+      if (datosUsuario && datosUsuario.estadoUrl && typeof esEstadoVigente === "function" && esEstadoVigente(datosUsuario.estadoTimestamp)) {
         tarjetaContacto.dataset.estadoUrl = datosUsuario.estadoUrl;
         tarjetaContacto.dataset.estadoTexto = datosUsuario.estadoTexto || "";
-        tarjetaContacto.querySelector(".chat-avatar-caja")?.classList.add("con-estado-activo");
       }
 
       tarjetaContacto.innerHTML = `
-        <div class="chat-avatar-caja">
+        <div class="chat-avatar-caja ${tarjetaContacto.dataset.estadoUrl ? 'con-estado-activo' : ''}">
           ${foto}
           <span class="punto-online-chat" style="background-color: ${colorLed}; box-shadow: ${sombraLed};"></span>
         </div>
@@ -3286,7 +3315,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (window.lucide) window.lucide.createIcons({ targets: [tarjetaContacto] });
     }
 
-    // 🔍 Actualizar datos del último mensaje usando la función helper
+    // Actualizar datos del último mensaje
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
@@ -3303,7 +3332,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (elemHora) elemHora.textContent = "--:--";
     }
 
-    // 🎯 VERIFICACIÓN DE LECTURA Y CONTEO ACUMULATIVO
     const pantallaChat = document.getElementById("pantalla-chat-privado");
     const estaAbierto = (window.contactoActivoUid === contactoUid) &&
       pantallaChat &&
@@ -3324,7 +3352,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       get(lecturaRef).then((lecturaSnap) => {
         const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
 
-        // 🛡️ SOLUCIÓN: Buscar el timestamp en el objeto original 'mensajes' (incluso si se borró "Para mí")
         let timestampUltimoLeido = 0;
         if (ultimoLeidoKey && mensajes) {
           if (mensajes[ultimoLeidoKey]) {
@@ -3339,7 +3366,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
         mensajesOrdenados.forEach((m) => {
           const idEmisor = m.emisor || m.emisorUid || m.remitente || m.remitenteId || m.uid;
-          // Si el mensaje es del contacto Y fue creado después de la última lectura real
           if (idEmisor === contactoUid && (m.timestamp || 0) > timestampUltimoLeido) {
             nuevos++;
           }
@@ -3368,7 +3394,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
   });
 
-  // Guardar desuscripción en el mapa global
   window.desuscripcionesUltimoMsg[contactoUid] = unsubscribe;
 }
 
