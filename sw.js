@@ -1,5 +1,5 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada con Precaché Completo)
+// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada)
 // ========================================================
 
 const CACHE_NAME = 'movachat-v1.0.0.2';

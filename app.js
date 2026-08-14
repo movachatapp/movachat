@@ -2699,14 +2699,21 @@ async function ejecutarCompartirMova() {
 
 // Escuchador delegado global (captura cualquier botón con clase .btn-compartir o texto 'Compartir MovaChat')
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".btn-compartir") ||
-    e.target.closest("#btn-compartir-mova") ||
-    (e.target.textContent && e.target.textContent.includes("Compartir MovaChat") ? e.target.closest("button, div") : null);
+  // 1. Buscar explícitamente por clase o ID
+  let btn = e.target.closest(".btn-compartir") || e.target.closest("#btn-compartir-mova");
+  
+  // 2. Si no tiene ID/Clase, buscamos por texto PERO estrictamente dentro de un botón real
+  if (!btn) {
+    const botonCercano = e.target.closest("button"); 
+    if (botonCercano && botonCercano.textContent.includes("Compartir MovaChat")) {
+      btn = botonCercano;
+    }
+  }
 
   if (btn) {
     e.preventDefault();
     e.stopPropagation();
-    ejecutarCompartirMova();
+    ejecutarCompartirMova(); // Esta es tu función original, que ahora se llamará correctamente
   }
 });
 
@@ -2745,9 +2752,16 @@ function abrirModalQRPro() {
 
 // Escuchador delegado global (detecta si presionan por clase, por ID o por texto 'QR Pro')
 document.addEventListener("click", (e) => {
-  const btnQr = e.target.closest(".btn-qr") ||
-    e.target.closest("#btn-qr-mova") ||
-    (e.target.textContent && e.target.textContent.includes("QR Pro") ? e.target.closest("button, div") : null);
+  // 1. Buscar explícitamente por clase o ID
+  let btnQr = e.target.closest(".btn-qr") || e.target.closest("#btn-qr-mova");
+
+  // 2. Si no tiene ID/Clase, buscamos por texto PERO estrictamente dentro de un botón real
+  if (!btnQr) {
+    const botonCercano = e.target.closest("button");
+    if (botonCercano && botonCercano.textContent.includes("QR Pro")) {
+      btnQr = botonCercano;
+    }
+  }
 
   if (btnQr) {
     e.preventDefault();
@@ -6286,6 +6300,7 @@ function actualizarEstadoPantallaInicio() {
   const listaChats = document.querySelector(".lista-chats");
   const pantallaBienvenida = document.getElementById("pantalla-bienvenida");
   const pantallaChats = document.getElementById("pantalla-chats");
+  const pantallaPerfil = document.getElementById("pantalla-perfil"); // 🚀 NUEVO: Capturamos la pantalla de perfil
 
   if (!listaChats) return;
 
@@ -6302,8 +6317,11 @@ function actualizarEstadoPantallaInicio() {
     const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
     const estaEnChatPrivado = pantallaChatPrivado && (pantallaChatPrivado.style.display === "flex" || pantallaChatPrivado.classList.contains("pantalla-completa"));
 
-    // Si no está metido dentro de un chat privado, muestra directamente la lista de chats
-    if (!estaEnChatPrivado) {
+    // 🚀 NUEVO: Detectar si el usuario está actualmente viendo su Perfil
+    const estaEnPerfil = pantallaPerfil && (pantallaPerfil.style.display === "flex" || pantallaPerfil.classList.contains("activa"));
+
+    // Si no está en un chat privado Y TAMPOCO está en el perfil, entonces sí mostramos el Inicio
+    if (!estaEnChatPrivado && !estaEnPerfil) {
       if (pantallaBienvenida) pantallaBienvenida.style.display = "none";
       if (pantallaChats) {
         pantallaChats.style.display = "flex";
