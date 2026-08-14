@@ -1984,10 +1984,8 @@ if (inputBuscadorModal) {
 })();
 
 function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
-  // 1. APAGADO EN SEGUNDO PLANO (Corta timers y medios activos)
-  if (typeof cerrarEstadoMova === "function") {
-    cerrarEstadoMova();
-  }
+  // 1. Apagado de medios en segundo plano
+  if (typeof cerrarEstadoMova === "function") cerrarEstadoMova();
 
   if (typeof streamCamaraLive !== "undefined" && streamCamaraLive) {
     streamCamaraLive.getTracks().forEach(track => track.stop());
@@ -1999,12 +1997,10 @@ function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
   }
 
   document.querySelectorAll("audio, video").forEach(medio => {
-    if (!medio.paused) {
-      medio.pause();
-    }
+    if (!medio.paused) medio.pause();
   });
 
-  // 2. 🛡️ OCULTAR DE FORMA COMPLETA Y STRICTA LAS DEMÁS PANTALLAS
+  // 2. Control de visibilidad estricto sin solapamientos
   const listaTodasPantallas = [pantallaBienvenida, pantallaChats, pantallaPerfil, pantallaChatPrivado];
   
   listaTodasPantallas.forEach((pantalla) => {
@@ -2021,21 +2017,18 @@ function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
     }
   });
 
-  // 3. 🧹 RESETEAR SCROLL Y POSICIÓN PARA EVITAR DESPLAZAMIENTOS FANTASMA
+  // 3. Resetear scroll
   window.scrollTo(0, 0);
   const contenedorApp = document.querySelector(".contenedor-chat") || document.body;
   if (contenedorApp) contenedorApp.scrollTop = 0;
 
-  // 4. CONTROL DE BOTÓN FLOTANTE (+) DE CONTACTOS
-  const btnFlotante = document.getElementById("btn-abrir-contactos") || document.querySelector(".btn-flotante-contacto");
-  if (btnFlotante) {
-    if (mostrar === pantallaChats) {
-      btnFlotante.classList.remove("oculto");
-      btnFlotante.style.display = "flex";
-    } else {
-      btnFlotante.classList.add("oculto");
-      btnFlotante.style.display = "none";
-    }
+  // 4. Asegurar visibilidad correcta de barras globales
+  if (mostrar === pantallaChats || mostrar === pantallaPerfil) {
+    if (encabezadoGlobal) encabezadoGlobal.style.display = "flex";
+    if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "flex";
+  } else if (mostrar === pantallaChatPrivado) {
+    if (encabezadoGlobal) encabezadoGlobal.style.display = "none";
+    if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
   }
 }
 
@@ -4568,11 +4561,11 @@ if (btnCtxVaciarChat) {
   };
 }
 
-// 🗑️ OPCIÓN 2: ELIMINAR CHAT (Quita la tarjeta de la pantalla principal)
+// 🗑️ OPCIÓN 2: ELIMINAR CHAT
 if (btnCtxEliminar) {
   btnCtxEliminar.onclick = async (e) => {
     e.preventDefault();
-    e.stopPropagation();
+    e.stopPropagation(); // Previene que el clic traspase a otros elementos
     cerrarMenuContextualMova();
 
     if (!tarjetaChatSeleccionada) return;
@@ -4586,16 +4579,17 @@ if (btnCtxEliminar) {
 
     try {
       const ahora = Date.now();
-      // Guardar marcas de vaciado y ocultamiento en Firebase
       await set(ref(db, `vaciados/${miUid}/${contactoUid}`), ahora);
       await set(ref(db, `chats_ocultos/${miUid}/${contactoUid}`), ahora);
 
-      // Eliminar tarjeta con animación de salida
       tarjetaChatSeleccionada.classList.add("tarjeta-eliminar-anim");
       setTimeout(() => {
         if (tarjetaChatSeleccionada) tarjetaChatSeleccionada.remove();
         if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
         if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
+        
+        // Refrescar el estado de la pantalla actual sin desajustar el layout
+        switchPantalla(pantallaChats, pantallaBienvenida, pantallaPerfil, pantallaChatPrivado);
       }, 300);
 
       if (typeof mostrarAvisoPremium === "function") {
