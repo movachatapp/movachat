@@ -22,6 +22,14 @@ import {
   remove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
+// 🚀 IMPORTS DE FIREBASE STORAGE (NUEVO)
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytesResumable,
+  getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
 const firebaseConfig = {
   apiKey: "AIzaSyDjHsOXPFFFXKKKyAtDMtQz5jyi7jvnnnQ",
   authDomain: "movachat-3e8ea.firebaseapp.com",
@@ -46,6 +54,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
+const storage = getStorage(app); // 🚀 INICIALIZACIÓN DE STORAGE
 
 const contactosRegistradosSet = new Set();
 
@@ -1085,6 +1094,10 @@ function frenarCronometroAudio() {
   if (timerGrabacionAudio) clearInterval(timerGrabacionAudio);
 }
 
+// ========================================================
+// 4. SISTEMA DE AUDIOS Y NOTAS DE VOZ (CONECTADO A FIREBASE STORAGE)
+// ========================================================
+
 async function iniciarGrabacionVoz(e) {
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
   if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0) || (cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))) {
@@ -1112,15 +1125,59 @@ async function iniciarGrabacionVoz(e) {
       if (event.data.size > 0) fragmentosAudio.push(event.data);
     };
 
-    mediaRecorderAudio.onstop = () => {
+    // ☁️ AL DETENER LA GRABACIÓN: SUBIR A FIREBASE STORAGE Y GUARDAR EN DATABASE
+    mediaRecorderAudio.onstop = async () => {
       if (streamAudioLive) streamAudioLive.getTracks().forEach(track => track.stop());
 
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
         const blobAudio = new Blob(fragmentosAudio, { type: mimeAudio });
-        const urlAudioReal = URL.createObjectURL(blobAudio);
+        const ext = mimeAudio.includes('mp4') ? 'mp4' : (mimeAudio.includes('ogg') ? 'ogg' : 'webm');
+        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${ext}`, { type: mimeAudio });
 
-        if (typeof inyectarNotaDeVozBurbuja === "function") {
-          inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlAudioReal);
+        const miUid = auth.currentUser ? auth.currentUser.uid : null;
+        const contactoUid = window.contactoActivoUid;
+
+        if (!miUid || !contactoUid) return;
+
+        const chatId = typeof obtenerChatId === "function"
+          ? obtenerChatId(miUid, contactoUid)
+          : [miUid, contactoUid].sort().join("_");
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Subiendo nota de voz a la nube... 🎤", "⏳", "#00f2fe");
+        }
+
+        try {
+          // 1. Subir a la carpeta 'audios' en Firebase Storage
+          const urlAudioNube = await subirArchivoAStorage(archivoAudio, `audios/${chatId}`);
+
+          // 2. Preparar el objeto del mensaje
+          const objetoNotaVoz = {
+            emisor: miUid,
+            receptor: contactoUid,
+            texto: "",
+            hora: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+            timestamp: Date.now(),
+            tipoAdjunto: 'audio',
+            duracion: contadorAudio ? contadorAudio.textContent : "0:01",
+            urlAdjunto: urlAudioNube
+          };
+
+          // 3. Registrar mensaje en Realtime Database
+          const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
+          const nuevoMensajeRef = push(listaMensajesRef);
+          await set(nuevoMensajeRef, objetoNotaVoz);
+
+          // 🔊 Reproducir sonido de envío
+          if (typeof reproducirSonidoEnviado === "function") {
+            reproducirSonidoEnviado();
+          }
+
+        } catch (errorAudio) {
+          console.error("❌ Error al subir la nota de voz a Storage:", errorAudio);
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("No se pudo enviar la nota de voz ❌", "⚠️", "#ff4b2b");
+          }
         }
       }
     };
@@ -1287,7 +1344,7 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 let estaEnviandoMensaje = false;
 
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + FIREBASE STORAGE + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS)
 // ========================================================
 async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
@@ -1314,9 +1371,7 @@ async function enviarMensajeNuevo() {
 
   // 🛡️ 1. VERIFICACIÓN DE BLOQUEO EN FIREBASE (AMBAS DIRECCIONES)
   try {
-    // ¿El receptor te tiene bloqueado a ti?
     const snapBloqueoReceptor = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
-    // ¿Tú tienes bloqueado al receptor?
     const snapBloqueoPropio = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
 
     const meTieneBloqueado = snapBloqueoReceptor.exists() && snapBloqueoReceptor.val() === true;
@@ -1331,7 +1386,6 @@ async function enviarMensajeNuevo() {
         mostrarAvisoPremium(mensajeAviso, "🚫", "#ff4b2b");
       }
 
-      // Desactivar candado y salir
       estaEnviandoMensaje = false;
       return;
     }
@@ -1346,7 +1400,7 @@ async function enviarMensajeNuevo() {
   const ahora = new Date();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-  // 🔴 CASO: EDICIÓN DE MENSAJE EN FIREBASE
+  // 🔴 CASO 1: EDICIÓN DE MENSAJE EN FIREBASE
   if (window.burbujaEnEdicion && window.mensajeEnEdicionId) {
     const mensajeRef = ref(db, `chats/${chatId}/mensajes/${window.mensajeEnEdicionId}`);
     try {
@@ -1365,13 +1419,11 @@ async function enviarMensajeNuevo() {
       }
     }
 
-    // Resetear variables de control de edición
     window.burbujaEnEdicion = null;
     window.mensajeEnEdicionId = null;
     if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
 
-    // Liberar candado
     estaEnviandoMensaje = false;
     return;
   }
@@ -1388,7 +1440,53 @@ async function enviarMensajeNuevo() {
     console.error("Error verificando temporales:", err);
   }
 
-  // 🟢 CASO: NUEVO MENSAJE
+  // ☁️ PROCESAMIENTO Y SUBIDA DE ADJUNTOS A FIREBASE STORAGE
+  let urlAdjuntoSubido = null;
+  let tipoMedia = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
+  let nombreDocAdjunto = null;
+
+  if (tieneAdjunto) {
+    try {
+      let archivoAProcesar = null;
+
+      // Detectar input de origen según el tipo de adjunto
+      if ((tipoMedia === 'foto' || tipoMedia === 'video') && typeof inputRealGaleria !== 'undefined' && inputRealGaleria.files.length > 0) {
+        archivoAProcesar = inputRealGaleria.files[0];
+      } else if (tipoMedia === 'documento' && typeof inputRealDocumento !== 'undefined' && inputRealDocumento.files.length > 0) {
+        archivoAProcesar = inputRealDocumento.files[0];
+        nombreDocAdjunto = archivoAProcesar.name;
+      }
+
+      // Si existe archivo físico, realizar subida a Firebase Storage
+      if (archivoAProcesar) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Subiendo archivo a la nube... ☁️", "⏳", "#00f2fe");
+        }
+
+        urlAdjuntoSubido = await subirArchivoAStorage(archivoAProcesar, `chats/${chatId}`);
+      }
+    } catch (errStorage) {
+      console.error("❌ Error al subir el adjunto a Storage:", errStorage);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Error al subir el archivo adjunto.", "❌", "#ff4b2b");
+      }
+      estaEnviandoMensaje = false;
+      return;
+    }
+
+    // Limpieza de caja visual e inputs de archivo
+    if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
+    if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
+    if (typeof inputRealGaleria !== 'undefined' && inputRealGaleria) inputRealGaleria.value = "";
+    if (typeof inputRealDocumento !== 'undefined' && inputRealDocumento) inputRealDocumento.value = "";
+    
+    const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
+    if (iconoPrevio) iconoPrevio.remove();
+    if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
+    if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
+  }
+
+  // 🟢 CASO 2: ESTRUCTURA DEL NUEVO MENSAJE
   let objetoMensaje = {
     emisor: miUid,
     receptor: contactoUid,
@@ -1397,53 +1495,33 @@ async function enviarMensajeNuevo() {
     timestamp: Date.now(),
     esEfimero: duracionEfimeraMs > 0,
     duracionEfimeraMs: duracionEfimeraMs,
-    // ↪️ METADATOS DE REENVÍO (Lee la variable global)
+
+    // ↪️ METADATOS DE REENVÍO
     esReenviado: window.mensajeReenviadoActivo ? true : false,
     autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
-    tipoAdjunto: null,
-    urlAdjunto: null,
-    nombreDoc: null
+
+    // 📁 METADATOS DEL ARCHIVO MULTIMEDIA
+    tipoAdjunto: tipoMedia,
+    urlAdjunto: urlAdjuntoSubido,
+    nombreDoc: nombreDocAdjunto
   };
 
-  // 🧹 Limpiar la barra visual de reenvío y la variable tras armar el objeto
+  // 🧹 Limpiar vista previa de reenvío
   window.mensajeReenviadoActivo = null;
   const vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
   if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
 
-  if (tieneAdjunto) {
-    objetoMensaje.tipoAdjunto = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
-
-    if (objetoMensaje.tipoAdjunto === 'foto') {
-      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "";
-    } else if (objetoMensaje.tipoAdjunto === 'documento') {
-      objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : "Documento_Mova.pdf";
-      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "";
-    } else if (objetoMensaje.tipoAdjunto === 'video') {
-      const urlVideoCapturado = imgMiniaturaAdjunto && imgMiniaturaAdjunto.src && imgMiniaturaAdjunto.src.startsWith("blob:")
-        ? imgMiniaturaAdjunto.src
-        : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
-      objetoMensaje.urlAdjunto = urlVideoCapturado;
-    }
-
-    // Limpiar caja de vista previa
-    if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
-    if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
-    const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
-    if (iconoPrevio) iconoPrevio.remove();
-    if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
-    if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
-  }
-
+  // Limpiar input de texto y estado de escritura
   if (inputChat) {
     inputChat.value = "";
-    inputChat.readOnly = false; // 🔓 DESBLOQUEAR CAJA PARA MENSAJES FUTUROS
+    inputChat.readOnly = false;
   }
 
   if (miUid && contactoUid) {
     set(ref(db, `escribiendo/${chatId}/${miUid}`), false);
   }
 
-  // 🚀 SUBIR A FIREBASE
+  // 🚀 GUARDA EN REALTIME DATABASE
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
@@ -1459,7 +1537,7 @@ async function enviarMensajeNuevo() {
       mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
     }
   } finally {
-    // Liberar el candado tras 300ms para permitir el siguiente mensaje
+    // Liberar candado
     setTimeout(() => {
       estaEnviandoMensaje = false;
     }, 300);
@@ -1676,60 +1754,55 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // 🗑️ OPCIÓN 4: ELIMINAR (De la pantalla y de Firebase)
-    else if (accion === "eliminar") {
-      // 1. 🙈 Ocultar el menú contextual inmediatamente
-      const menuFlotante = typeof menuCtx !== "undefined" ? menuCtx : document.getElementById("menu-contextual-mensaje");
-      if (menuFlotante) {
-        menuFlotante.classList.add("oculto");
-        menuFlotante.style.display = "none";
+    // 🗑️ OPCIÓN 4A: ELIMINAR PARA MÍ (Solo oculta en mi pantalla)
+    else if (accion === "eliminar-para-mi") {
+      if (nodoMensaje) {
+        nodoMensaje.style.transition = "all 0.25s ease";
+        nodoMensaje.style.opacity = "0";
+        nodoMensaje.style.transform = "scale(0.85)";
+        setTimeout(() => nodoMensaje.remove(), 250);
       }
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Mensaje ocultado para ti 👁️‍🗨️", "🗑️", "#00f2fe");
+      }
+    }
 
-      // 2. Capturar el ID del mensaje
-      const idParaBorrar = msgId
-        || (nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null)
-        || (menuFlotante ? menuFlotante.dataset.msgId : null);
+    // 💣 OPCIÓN 4B: ELIMINAR PARA TODOS (Borra de la nube si pasaron menos de 15 min)
+    else if (accion === "eliminar-para-todos") {
+      const timestampMsg = parseInt(nodoMensaje ? nodoMensaje.getAttribute("data-timestamp") : "0", 10);
+      const tiempoTranscurrido = Date.now() - timestampMsg;
+      const limite15Min = 15 * 60 * 1000; // 15 minutos
 
-      const elementoBurbuja = nodoMensaje || (idParaBorrar ? document.querySelector(`[data-msg-id="${idParaBorrar}"]`) : null);
-
-      if (!idParaBorrar) {
-        console.error("No se pudo obtener el ID del mensaje.");
+      if (!esMio) {
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("No se encontró el ID del mensaje.", "⚠️", "#ff4b2b");
+          mostrarAvisoPremium("Solo puedes eliminar para todos tus propios mensajes ⚠️", "❌", "#ff4b2b");
         }
         return;
       }
 
-      // 3. 🎨 Animación fluida de salida en pantalla
-      if (elementoBurbuja) {
-        elementoBurbuja.style.transition = "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
-        elementoBurbuja.style.opacity = "0";
-        elementoBurbuja.style.transform = "scale(0.85) translateY(10px)";
-
-        setTimeout(() => {
-          if (elementoBurbuja && elementoBurbuja.parentNode) {
-            elementoBurbuja.remove();
-          }
-        }, 250);
+      if (timestampMsg > 0 && tiempoTranscurrido > limite15Min) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Han pasado más de 15 min. Solo puedes 'Eliminar para ti' ⏳", "⚠️", "#ff4b2b");
+        }
+        return;
       }
 
-      // 4. ☁️ Borrar en Firebase Realtime Database
+      // Borrar de Firebase Realtime Database
       const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
       const miUid = usuarioActual ? usuarioActual.uid : null;
       const contactoUid = window.contactoActivoUid;
 
-      if (miUid && contactoUid) {
+      if (miUid && contactoUid && msgId) {
         const chatId = typeof obtenerChatId === "function"
           ? obtenerChatId(miUid, contactoUid)
           : [miUid, contactoUid].sort().join("_");
 
-        const mensajeRef = ref(db, `chats/${chatId}/mensajes/${idParaBorrar}`);
+        const mensajeRef = ref(db, `chats/${chatId}/mensajes/${msgId}`);
 
-        // Uso de set(..., null) para garantizar compatibilidad total con tus importaciones existentes
         set(mensajeRef, null)
           .then(() => {
             if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Mensaje eliminado.", "🗑️", "#ff4b2b");
+              mostrarAvisoPremium("Mensaje eliminado para todos 💣", "🗑️", "#ff4b2b");
             }
           })
           .catch((err) => {
@@ -6648,3 +6721,34 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 });
+
+// ☁️ FUNCIÓN GLOBAL PARA SUBIR ARCHIVOS A FIREBASE STORAGE
+async function subirArchivoAStorage(file, carpeta = "chat_adjuntos") {
+  if (!file) return null;
+
+  // Generar un nombre único para evitar colisiones
+  const extension = file.name ? file.name.split('.').pop() : 'bin';
+  const nombreUnico = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${extension}`;
+  const rutaAlmacenamiento = storageRef(storage, `${carpeta}/${nombreUnico}`);
+
+  const uploadTask = uploadBytesResumable(rutaAlmacenamiento, file);
+
+  return new Promise((resolve, reject) => {
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        // Progreso opcional (se puede conectar a una barra visual si se desea)
+        const progreso = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        console.log(`Subiendo archivo: ${Math.round(progreso)}%`);
+      },
+      (error) => {
+        console.error("❌ Error en Firebase Storage:", error);
+        reject(error);
+      },
+      async () => {
+        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+        resolve(downloadURL);
+      }
+    );
+  });
+}
