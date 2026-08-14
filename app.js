@@ -2278,11 +2278,11 @@ document.addEventListener("click", () => {
 
 if (btnVolver) {
   btnVolver.addEventListener("click", () => {
-    // ⚠️ Limpiar contacto activo
+    // 1. Limpiar contacto activo
     window.contactoActivoUid = null;
     if (typeof contactoActivoUid !== "undefined") contactoActivoUid = null;
 
-    // 🧹 APAGADO TOTAL DE ESCUCHADORES EN SEGUNDO PLANO
+    // 2. Apagado total de escuchadores en segundo plano
     if (typeof listenerChatActivo === "function") { listenerChatActivo(); listenerChatActivo = null; }
     if (typeof listenerConfigActivo === "function") { listenerConfigActivo(); listenerConfigActivo = null; }
     if (typeof listenerEscribiendoActivo === "function") { listenerEscribiendoActivo(); listenerEscribiendoActivo = null; }
@@ -2292,9 +2292,12 @@ if (btnVolver) {
     const menuTarjetas = document.getElementById("menu-tarjetas-chat");
     if (menuTarjetas) menuTarjetas.classList.add("oculto");
 
-    // 🚀 BÚSQUEDA ROBUSTA DEL BOTÓN FLOTANTE (+)
-    const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto") || document.getElementById("btn-abrir-contactos");
+    // 3. Quitar clase de pantalla completa del chat privado
+    if (pantallaChatPrivado) {
+      pantallaChatPrivado.classList.remove("pantalla-completa");
+    }
 
+    // 4. Restaurar Encabezado y Menú Flotante Global
     if (typeof mostrarEncabezadoPrincipal === "function") {
       mostrarEncabezadoPrincipal();
     } else if (encabezadoGlobal) {
@@ -2303,20 +2306,13 @@ if (btnVolver) {
 
     if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "flex";
 
-    // 🟢 FORZAR VISIBILIDAD DEL BOTÓN (+):
-    if (btnFlotanteContacto) {
-      btnFlotanteContacto.style.display = "flex";
-      btnFlotanteContacto.classList.remove("oculto");
-    }
+    // 5. 🚀 CAMBIO CONTROLADO DE PANTALLA
+    switchPantalla(pantallaChats, pantallaBienvenida, pantallaPerfil, pantallaChatPrivado);
 
-    const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
-    if (pantallaChatPrivado) {
-      pantallaChatPrivado.classList.remove("pantalla-completa");
-      pantallaChatPrivado.style.display = "none";
+    // 6. Refrescar estado visual de la lista y badges
+    if (typeof actualizarEstadoPantallaInicio === "function") {
+      actualizarEstadoPantallaInicio();
     }
-
-    const pantallaChats = document.getElementById("pantalla-chats");
-    if (pantallaChats) pantallaChats.style.display = "flex";
   });
 }
 
@@ -6565,23 +6561,20 @@ function actualizarEstadoPantallaInicio() {
   const tarjetasReales = listaChats.querySelectorAll(".tarjeta-chat");
 
   if (tarjetasReales.length === 0) {
-    // 📭 SIN CHATS: Mostramos la tarjeta de bienvenida / buscar amigos
     if (contenedorVacio) contenedorVacio.classList.remove("oculto");
   } else {
-    // 💬 CON CHATS: Ocultamos la bienvenida y garantizamos que la lista se muestre limpia
     if (contenedorVacio) contenedorVacio.classList.add("oculto");
 
     const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
     const estaEnChatPrivado = pantallaChatPrivado && (pantallaChatPrivado.style.display === "flex" || pantallaChatPrivado.classList.contains("pantalla-completa"));
 
-    // Si no está metido dentro de un chat privado, muestra directamente la lista de chats
-    if (!estaEnChatPrivado) {
+    // Si NO está en un chat privado activo, encender la pantalla principal de chats
+    if (!estaEnChatPrivado && pantallaChats) {
       if (pantallaBienvenida) pantallaBienvenida.style.display = "none";
-      if (pantallaChats) {
-        pantallaChats.style.display = "flex";
-        pantallaChats.style.flexDirection = "column";
-        pantallaChats.style.alignItems = "stretch";
-      }
+      pantallaChats.style.display = "flex";
+      pantallaChats.style.flexDirection = "column";
+      pantallaChats.style.alignItems = "stretch";
+      pantallaChats.classList.remove("oculto");
     }
   }
 }
