@@ -3865,3 +3865,45 @@ body.modo-ahorro #badge-campanita,
 body.modo-ahorro .puntos-escribiendo span {
   animation: none !important;
 }
+
+/* ========================================================
+   🔮 REGLA UNIVERSAL TEMA CLARO PARA MODALES Y MENÚS
+   ======================================================== */
+body.tema-claro .modal-cristal,
+body.tema-claro .modal-mova-caja,
+body.tema-claro .modal-caja-alerta,
+body.tema-claro .menu-contextual,
+body.tema-claro .previsualizacion-adjunto,
+body.tema-claro .toast-movachat,
+body.tema-claro .modal-silenciar-caja {
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.15) !important;
+}
+
+body.tema-claro .modal-header h3,
+body.tema-claro .modal-mova-titulo,
+body.tema-claro .modal-alerta-titulo,
+body.tema-claro .modal-label {
+  color: #0f172a !important;
+}
+
+body.tema-claro .modal-mova-texto,
+body.tema-claro .modal-alerta-texto {
+  color: #475569 !important;
+}
+
+body.tema-claro .input-estado {
+  background: rgba(241, 245, 249, 0.8) !important;
+  color: #0f172a !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+}
+
+body.tema-claro .btn-cerrar-icono {
+  color: #64748b !important;
+}
+
+body.tema-claro .btn-cerrar-icono:hover {
+  color: #0f172a !important;
+}

@@ -2797,9 +2797,7 @@ async function ejecutarCompartirMova() {
 
 // Escuchador delegado global (captura cualquier botón con clase .btn-compartir o texto 'Compartir MovaChat')
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".btn-compartir") ||
-    e.target.closest("#btn-compartir-mova") ||
-    (e.target.textContent && e.target.textContent.includes("Compartir MovaChat") ? e.target.closest("button, div") : null);
+  const btn = e.target.closest(".btn-compartir, #btn-compartir-mova");
 
   if (btn) {
     e.preventDefault();
@@ -2843,14 +2841,13 @@ function abrirModalQRPro() {
 
 // Escuchador delegado global (detecta si presionan por clase, por ID o por texto 'QR Pro')
 document.addEventListener("click", (e) => {
-  const btnQr = e.target.closest(".btn-qr") ||
-    e.target.closest("#btn-qr-mova") ||
-    (e.target.textContent && e.target.textContent.includes("QR Pro") ? e.target.closest("button, div") : null);
+  const btnQr = e.target.closest(".btn-qr, #btn-qr-mova");
 
   if (btnQr) {
     e.preventDefault();
     e.stopPropagation();
     abrirModalQRPro();
+    return;
   }
 
   // Cerrar el modal al tocar la 'X' o la capa del fondo
