@@ -2004,23 +2004,34 @@ function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
     }
   });
 
-  // 2. OCULTAR Y MOSTRAR PANTALLAS (CSS)
-  ocultar1.style.display = "none";
-  ocultar2.style.display = "none";
-  ocultar3.style.display = "none";
+  // 2. 🛡️ OCULTAR DE FORMA COMPLETA Y STRICTA LAS DEMÁS PANTALLAS
+  const listaTodasPantallas = [pantallaBienvenida, pantallaChats, pantallaPerfil, pantallaChatPrivado];
+  
+  listaTodasPantallas.forEach((pantalla) => {
+    if (pantalla) {
+      if (pantalla === mostrar) {
+        pantalla.style.display = "flex";
+        pantalla.style.flexDirection = "column";
+        pantalla.style.alignItems = "stretch";
+        pantalla.classList.remove("oculto");
+      } else {
+        pantalla.style.display = "none";
+        pantalla.classList.add("oculto");
+      }
+    }
+  });
 
-  mostrar.style.display = "flex";
-  if (mostrar === pantallaChats || mostrar === pantallaPerfil) {
-    mostrar.style.flexDirection = "column";
-    mostrar.style.alignItems = "stretch";
-  }
+  // 3. 🧹 RESETEAR SCROLL Y POSICIÓN PARA EVITAR DESPLAZAMIENTOS FANTASMA
+  window.scrollTo(0, 0);
+  const contenedorApp = document.querySelector(".contenedor-chat") || document.body;
+  if (contenedorApp) contenedorApp.scrollTop = 0;
 
-  // 3. CONTROL DE BOTÓN FLOTANTE (+) - FIX DE VISIBILIDAD DIRECTA
+  // 4. CONTROL DE BOTÓN FLOTANTE (+) DE CONTACTOS
   const btnFlotante = document.getElementById("btn-abrir-contactos") || document.querySelector(".btn-flotante-contacto");
   if (btnFlotante) {
     if (mostrar === pantallaChats) {
       btnFlotante.classList.remove("oculto");
-      btnFlotante.style.display = "flex"; // 👈 ¡ESTA LÍNEA RESTAURA EL BOTÓN SIEMPRE!
+      btnFlotante.style.display = "flex";
     } else {
       btnFlotante.classList.add("oculto");
       btnFlotante.style.display = "none";
