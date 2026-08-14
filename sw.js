@@ -1,8 +1,8 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada con Precaché Completo)
+// 📱 SERVICE WORKER MOVACHAT (Versión Corregida & Optimizada)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.0.2';
+const CACHE_NAME = 'movachat-v1.0.0.4';
 
 // Recursos estáticos a descargar e instalar inmediatamente
 const ASSETS_TO_CACHE = [
@@ -19,15 +19,14 @@ const ASSETS_TO_CACHE = [
   './assets/sounds/recibido.mp3'
 ];
 
-// 1. Instalar el Service Worker y forzar la descarga e instalación inmediata de audios e iconos
+// 1. Instalar el Service Worker y precachar
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Activar el nuevo SW inmediatamente
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      console.log('📦 Precachando iconos, sonidos y recursos estáticos de MovaChat...');
-      // addAll asegura que todos los sonidos e iconos se descarguen al instalar la app
-      await cache.addAll(ASSETS_TO_CACHE);
-    })
+      console.log('📦 Precachando recursos de MovaChat...');
+      return cache.addAll(ASSETS_TO_CACHE);
+    }).catch(err => console.error('Error al precachar:', err))
   );
 });
 
@@ -55,17 +54,29 @@ self.addEventListener('fetch', (event) => {
 
   const url = event.request.url;
 
-  // Archivos JS/HTML siempre frescos desde la red
-  if (url.endsWith('.js') || url.includes('.html') || url === self.location.origin + '/') {
+  // 🎯 Archivos JS/HTML siempre frescos desde la red (Soporta ?v=2, ?t=123, etc.)
+  if (url.includes('.js') || url.includes('.html') || url === self.location.origin + '/') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
+      fetch(event.request)
+        .then((response) => {
+          // Si responde correctamente, guardamos una copia en caché
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => {
+          // Si no hay internet/red, busca en caché ignorando parámetros (?v=2)
+          return caches.match(event.request, { ignoreSearch: true });
+        })
     );
     return;
   }
 
   // Audios, imágenes, CSS e iconos: Caché primero, luego red
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
@@ -79,11 +90,14 @@ self.addEventListener('fetch', (event) => {
         });
         return networkResponse;
       });
+    }).catch(() => {
+      // Evita errores no capturados si falla el fetch
+      return new Response('Error de conexión', { status: 503, statusText: 'Service Unavailable' });
     })
   );
 });
 
-// 4. RECEPTOR DE NOTIFICACIONES PUSH (Segundo Plano / Pantalla Bloqueada)
+// 4. RECEPTOR DE NOTIFICACIONES PUSH
 self.addEventListener('push', (event) => {
   let data = { 
     titulo: 'MovaChat 💬', 
@@ -104,9 +118,7 @@ self.addEventListener('push', (event) => {
     body: data.cuerpo || 'Tienes un nuevo mensaje recibido 📩',
     icon: data.icono || './assets/logo/icon-192.png',
     badge: './assets/logo/badge-72.png',
-    // Patrón de vibración: 200ms vibración, 100ms pausa, 200ms vibración
     vibrate: [200, 100, 200],
-    // Agrupa notificaciones para no saturar si llegan varios mensajes seguidos
     tag: data.tag || 'movachat-chat',
     renotify: true,
     data: { 
@@ -126,13 +138,11 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Si la ventana ya está abierta, la enfoca
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
           return client.focus();
         }
       }
-      // Si está cerrada/bloqueada, abre la PWA
       if (clients.openWindow) {
         return clients.openWindow('./');
       }
