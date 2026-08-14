@@ -35,8 +35,8 @@ const firebaseConfig = {
 // ⚡ CONEXIÓN A SUPABASE STORAGE
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
-const SUPABASE_URL = "https://tnzsdtmesqfcunqtoqyh.supabase.co"; 
-const SUPABASE_ANON_KEY = "sb_publishable_wLeldDB6ZazOpVq21_cg1A_P1ndcD-N"; 
+const SUPABASE_URL = "https://tnzsdtmesqfcunqtoqyh.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_wLeldDB6ZazOpVq21_cg1A_P1ndcD-N";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -65,6 +65,10 @@ let segundosRestantes = 10;
 let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
+// --- MANEJO DE ESTADOS E HISTORIAS ---
+let imagenEstadoGuardada = null;
+let fraseEstadoGuardada = "";
+let timestampEstadoGuardado = null;
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -247,6 +251,8 @@ onAuthStateChanged(auth, async (user) => {
           // C) Cargar texto de estado guardado en Firebase
           const fraseEstado = datosUsuario.estadoTexto || "Disponible. Toca para añadir estado...";
           if (elemTextoEstado) elemTextoEstado.textContent = fraseEstado;
+          // 🚀 Cargar y validar "Mi Estado" propio desde Firebase
+          cargarEstadoPropioFirebase(datosUsuario);
 
           // D) Ajustar color LED según estado
           if (elemLedPerfil) {
@@ -381,7 +387,7 @@ onAuthStateChanged(auth, async (user) => {
     }
   } else {
     if (authPantalla) authPantalla.style.display = "flex";
-    
+
     // 🛡️ Limpiar formulario al quedar sin sesión activa
     const formAuth = document.getElementById("form-auth");
     if (formAuth) formAuth.reset();
@@ -1477,7 +1483,7 @@ async function enviarMensajeNuevo() {
     if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
     if (typeof inputRealGaleria !== 'undefined' && inputRealGaleria) inputRealGaleria.value = "";
     if (typeof inputRealDocumento !== 'undefined' && inputRealDocumento) inputRealDocumento.value = "";
-    
+
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
     if (iconoPrevio) iconoPrevio.remove();
     if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
@@ -1756,10 +1762,10 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
     else if (accion === "eliminar-para-mi") {
       const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
       const miUid = usuarioActual ? usuarioActual.uid : null;
-      
+
       // 🛡️ Asegurar que obtenemos el ID del mensaje sí o sí
-      const idParaBorrar = typeof msgId !== "undefined" && msgId 
-        ? msgId 
+      const idParaBorrar = typeof msgId !== "undefined" && msgId
+        ? msgId
         : (nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null);
 
       if (!idParaBorrar) {
@@ -2009,13 +2015,15 @@ function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
     mostrar.style.alignItems = "stretch";
   }
 
-  // 3. CONTROL DE BOTÓN FLOTANTE
-  const btnFlotante = document.getElementById("btn-abrir-contactos");
+  // 3. CONTROL DE BOTÓN FLOTANTE (+) - FIX DE VISIBILIDAD DIRECTA
+  const btnFlotante = document.getElementById("btn-abrir-contactos") || document.querySelector(".btn-flotante-contacto");
   if (btnFlotante) {
     if (mostrar === pantallaChats) {
       btnFlotante.classList.remove("oculto");
+      btnFlotante.style.display = "flex"; // 👈 ¡ESTA LÍNEA RESTAURA EL BOTÓN SIEMPRE!
     } else {
       btnFlotante.classList.add("oculto");
+      btnFlotante.style.display = "none";
     }
   }
 }
@@ -2226,7 +2234,7 @@ function asignarEventosMenuCabecera() {
         if (usuarioActual && usuarioActual.email) {
           try {
             const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-            
+
             // Disparar correo de restablecimiento seguro desde Firebase
             await sendPasswordResetEmail(auth, usuarioActual.email);
 
@@ -2273,7 +2281,8 @@ if (btnVolver) {
     const menuTarjetas = document.getElementById("menu-tarjetas-chat");
     if (menuTarjetas) menuTarjetas.classList.add("oculto");
 
-    const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
+    // 🚀 BÚSQUEDA ROBUSTA DEL BOTÓN FLOTANTE (+)
+    const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto") || document.getElementById("btn-abrir-contactos");
 
     if (typeof mostrarEncabezadoPrincipal === "function") {
       mostrarEncabezadoPrincipal();
@@ -2282,7 +2291,12 @@ if (btnVolver) {
     }
 
     if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "flex";
-    if (btnFlotanteContacto) btnFlotanteContacto.style.display = "flex";
+
+    // 🟢 FORZAR VISIBILIDAD DEL BOTÓN (+):
+    if (btnFlotanteContacto) {
+      btnFlotanteContacto.style.display = "flex";
+      btnFlotanteContacto.classList.remove("oculto");
+    }
 
     const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
     if (pantallaChatPrivado) {
@@ -3039,10 +3053,10 @@ window.actualizarBadgesNotificaciones = function () {
   // 📱 Sincronizar marcador nativo PWA / Icono en pantalla de inicio del teléfono
   if ("setAppBadge" in navigator) {
     if (totalNoLeidos > 0) {
-      navigator.setAppBadge(totalNoLeidos).catch(() => {});
+      navigator.setAppBadge(totalNoLeidos).catch(() => { });
     } else {
       if ("clearAppBadge" in navigator) {
-        navigator.clearAppBadge().catch(() => {});
+        navigator.clearAppBadge().catch(() => { });
       }
     }
   }
@@ -3172,7 +3186,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     // Si ocultó o vació el chat completamente
     if ((timestampOculto > 0 && timestampOculto >= timestampUltimoVaciado && (ultimoMsg?.timestamp || 0) <= timestampOculto) ||
-        (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0)) {
+      (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0)) {
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
       if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
@@ -3214,6 +3228,14 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       const estaSilenciado = localStorage.getItem(`silenciado_${contactoUid}`) === "true";
       if (estaSilenciado) {
         tarjetaContacto.classList.add("chat-silenciado-zona");
+      }
+
+      // Extraer foto/url de estado del usuario si existen
+      const tieneEstadoActivo = datosUsuario && datosUsuario.estadoUrl;
+      if (tieneEstadoActivo) {
+        tarjetaContacto.dataset.estadoUrl = datosUsuario.estadoUrl;
+        tarjetaContacto.dataset.estadoTexto = datosUsuario.estadoTexto || "";
+        tarjetaContacto.querySelector(".chat-avatar-caja")?.classList.add("con-estado-activo");
       }
 
       tarjetaContacto.innerHTML = `
@@ -3271,8 +3293,8 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     if (ultimoMsg) {
       if (elemTexto) {
-        elemTexto.textContent = typeof obtenerUltimoMensajeTexto === "function" 
-          ? obtenerUltimoMensajeTexto(ultimoMsg) 
+        elemTexto.textContent = typeof obtenerUltimoMensajeTexto === "function"
+          ? obtenerUltimoMensajeTexto(ultimoMsg)
           : (ultimoMsg.texto || "Mensaje");
       }
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
@@ -3383,7 +3405,7 @@ if (typeof solicitarPermisoNotificaciones === "function") {
 }
 
 // ========================================================
-// 10. ESTADO PROPIO, REDES BENTO Y CONTACTOS
+// 10. ESTADO PROPIO (PUBLICACIÓN, PERSISTENCIA Y EXPIRACIÓN 24H)
 // ========================================================
 const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
 const avatarMiEstadoClick = document.getElementById("avatar-mi-estado-click");
@@ -3391,52 +3413,142 @@ const textoSubtituloMiEstado = document.getElementById("texto-subtitulo-mi-estad
 const tiempoMiEstado = document.getElementById("tiempo-mi-estado");
 const inputSubirEstadoReal = document.getElementById("input-subir-estado");
 
-let imagenEstadoGuardada = null;
-let fraseEstadoGuardada = "";
+// ⏱️ Función auxiliar para formatear el tiempo ("Hace 5 min", "Hace 2 h")
+function formatearTiempoTranscurrido(timestamp) {
+  if (!timestamp) return "Hace un momento";
+  const msTranscurridos = Date.now() - timestamp;
+  const minutos = Math.floor(msTranscurridos / (1000 * 60));
+  const horas = Math.floor(msTranscurridos / (1000 * 60 * 60));
 
+  if (minutos < 1) return "Hace un momento";
+  if (minutos < 60) return `Hace ${minutos} min`;
+  if (horas < 24) return `Hace ${horas} h`;
+  return "Expirado";
+}
+
+// 🧹 Verificar si el estado guardado tiene menos de 24 horas (86,400,000 ms)
+function esEstadoVigente(timestamp) {
+  if (!timestamp) return false;
+  const LIMITE_24H = 24 * 60 * 60 * 1000;
+  return (Date.now() - timestamp) < LIMITE_24H;
+}
+
+// 👁️ Clic en la tarjeta "Mi Estado"
 if (tarjetaMiEstado) {
   tarjetaMiEstado.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (imagenEstadoGuardada) {
-      const textoFinal = fraseEstadoGuardada || "¡Compartiendo mi día en MovaChat! 🌌🔥";
-      if (typeof abrirEstadoAmigo === "function") abrirEstadoAmigo(imagenEstadoGuardada, textoFinal);
-    } else {
-      if (inputSubirEstadoReal) inputSubirEstadoReal.click();
+
+    // Si tenemos un estado cargado y aún no ha expirado
+    if (imagenEstadoGuardada && esEstadoVigente(timestampEstadoGuardado)) {
+      const textoFinal = fraseEstadoGuardada || "Compartiendo mi estado en MovaChat 🌌";
+      if (typeof abrirEstadoAmigo === "function") {
+        abrirEstadoAmigo(imagenEstadoGuardada, textoFinal);
+      }
+    } else if (inputSubirEstadoReal) {
+      // Si expiró o no hay estado, abre la galería para subir uno nuevo
+      inputSubirEstadoReal.click();
     }
   });
 }
 
+// 📤 Subir e Integrar nuevo Estado en Supabase + Firebase
 if (inputSubirEstadoReal) {
-  inputSubirEstadoReal.addEventListener("change", (e) => {
-    if (!imagenEstadoGuardada && e.target.files && e.target.files[0]) {
-      const lector = new FileReader();
-      lector.onload = function (evento) {
-        imagenEstadoGuardada = evento.target.result;
-        if (modalEstado) modalEstado.classList.remove("oculto");
-        if (inputNuevoEstado) inputNuevoEstado.focus();
+  inputSubirEstadoReal.addEventListener("change", async (e) => {
+    const archivo = e.target.files && e.target.files[0];
+    const user = auth.currentUser;
 
-        const interceptarGuardado = () => {
-          if (inputNuevoEstado) fraseEstadoGuardada = inputNuevoEstado.value.trim();
-          if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
-          if (textoSubtituloMiEstado) {
-            textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
-            textoSubtituloMiEstado.classList.add("texto-cyan");
-          }
-          if (tiempoMiEstado) tiempoMiEstado.textContent = "Hace un momento";
+    if (!archivo || !user) return;
 
-          const miniBotonMas = avatarMiEstadoClick ? avatarMiEstadoClick.querySelector(".punto-online-chat") : null;
-          if (miniBotonMas) {
-            miniBotonMas.textContent = "";
-            miniBotonMas.style.boxShadow = "0 0 10px #00f2fe";
-          }
-          mostrarAvisoPremium("¡Tu nueva historia ha sido publicada con éxito! 🪐", "🛸", "#00f2fe");
-          if (btnGuardarEstado) btnGuardarEstado.removeEventListener("click", interceptarGuardado);
-        };
-        if (btnGuardarEstado) btnGuardarEstado.addEventListener("click", interceptarGuardado);
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Subiendo tu estado a la nube... ☁️", "⏳", "#00f2fe");
+    }
+
+    try {
+      // 1. Subir foto al bucket 'movachat-adjuntos/estados' con compresión WebP
+      const urlEstadoNube = await subirArchivoAStorage(archivo, `estados/${user.uid}`);
+
+      if (!urlEstadoNube) {
+        throw new Error("No se pudo obtener la URL de Supabase.");
+      }
+
+      const horaActual = Date.now();
+      const fraseTexto = "Compartiendo mi día en MovaChat 🌌";
+
+      // 2. Guardar referencia en Firebase Realtime Database
+      const datosEstado = {
+        estadoUrl: urlEstadoNube,
+        estadoTexto: fraseTexto,
+        estadoTimestamp: horaActual
       };
-      lector.readAsDataURL(e.target.files[0]);
+
+      await update(ref(db, `usuarios/${user.uid}`), datosEstado);
+
+      // 3. Actualizar variables globales en memoria local
+      imagenEstadoGuardada = urlEstadoNube;
+      fraseEstadoGuardada = fraseTexto;
+      timestampEstadoGuardado = horaActual;
+
+      // 4. Actualizar interfaz visual de la tarjeta "Mi Estado"
+      if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
+      if (textoSubtituloMiEstado) {
+        textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
+        textoSubtituloMiEstado.style.color = "#00f2fe";
+      }
+      if (tiempoMiEstado) tiempoMiEstado.textContent = "Hace un momento";
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("¡Tu historia ha sido publicada con éxito! 🪐", "🛸", "#00f2fe");
+      }
+
+    } catch (err) {
+      console.error("❌ Error al publicar estado:", err);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Ocurrió un error al subir el estado.", "❌", "#ff4b2b");
+      }
+    } finally {
+      inputSubirEstadoReal.value = "";
     }
   });
+}
+
+// 🔄 Cargar persistencia de "Mi Estado" en pantalla al iniciar sesión
+function cargarEstadoPropioFirebase(datosUsuario) {
+  if (!datosUsuario || !datosUsuario.estadoUrl || !datosUsuario.estadoTimestamp) {
+    // No hay estado publicado
+    imagenEstadoGuardada = null;
+    if (avatarMiEstadoClick) avatarMiEstadoClick.classList.remove("con-estado-activo");
+    if (textoSubtituloMiEstado) {
+      textoSubtituloMiEstado.textContent = "Añade una actualización";
+      textoSubtituloMiEstado.style.color = "";
+    }
+    if (tiempoMiEstado) tiempoMiEstado.textContent = "Toca para subir";
+    return;
+  }
+
+  // Verificar si el estado de Firebase tiene menos de 24 horas
+  if (esEstadoVigente(datosUsuario.estadoTimestamp)) {
+    imagenEstadoGuardada = datosUsuario.estadoUrl;
+    fraseEstadoGuardada = datosUsuario.estadoTexto || "Compartiendo mi día en MovaChat 🌌";
+    timestampEstadoGuardado = datosUsuario.estadoTimestamp;
+
+    if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
+    if (textoSubtituloMiEstado) {
+      textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
+      textoSubtituloMiEstado.style.color = "#00f2fe";
+    }
+    if (tiempoMiEstado) {
+      tiempoMiEstado.textContent = formatearTiempoTranscurrido(datosUsuario.estadoTimestamp);
+    }
+  } else {
+    // Si ya pasaron 24 horas, limpiar estado
+    imagenEstadoGuardada = null;
+    if (avatarMiEstadoClick) avatarMiEstadoClick.classList.remove("con-estado-activo");
+    if (textoSubtituloMiEstado) {
+      textoSubtituloMiEstado.textContent = "Añade una actualización";
+      textoSubtituloMiEstado.style.color = "";
+    }
+    if (tiempoMiEstado) tiempoMiEstado.textContent = "Toca para subir";
+  }
 }
 
 // ========================================================
@@ -5539,7 +5651,7 @@ window.despertarAudioForzado = function () {
       audio.play().then(() => {
         audio.pause();
         audio.currentTime = 0;
-      }).catch(() => {});
+      }).catch(() => { });
     }
   });
 };
@@ -6723,7 +6835,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Si ya había escrito su correo en el login, se auto-completa aquí
       const correoLogin = document.getElementById("auth-email")?.value || "";
       if (inputCorreoRecuperar) inputCorreoRecuperar.value = correoLogin;
-      
+
       modalRecuperar.classList.remove("oculto");
     };
   }
@@ -6774,21 +6886,122 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ==========================================
-// ☁️ FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE)
+// ☁️ FUNCIONES DE ALMACENAMIENTO Y LÍMITES (SUPABASE STORAGE)
 // ==========================================
 
-// 📤 Subir archivo al bucket público de Supabase
+// ⚙️ CONFIGURACIÓN DE LÍMITES POR USUARIO
+const LIMITES_USUARIO = {
+  MAX_TAMANO_MB: 10,             // Tamaño máximo por archivo (10 MB)
+  MAX_ARCHIVOS_DIARIOS: 20       // Límite de subidas por día
+};
+
+// 🛡️ 1. Verificar límites de uso por usuario
+async function verificarLimiteUsuario(uid, pesoArchivoMB) {
+  if (!uid) return { permitido: false, mensaje: "Usuario no autenticado." };
+
+  // Validar peso individual del archivo
+  if (pesoArchivoMB > LIMITES_USUARIO.MAX_TAMANO_MB) {
+    return {
+      permitido: false,
+      mensaje: `El archivo supera el límite de ${LIMITES_USUARIO.MAX_TAMANO_MB} MB.`
+    };
+  }
+
+  // Contador diario guardado en el navegador (localStorage)
+  const hoy = new Date().toISOString().split('T')[0];
+  const claveUso = `uso_subidas_${uid}_${hoy}`;
+  const subidasHoy = parseInt(localStorage.getItem(claveUso) || "0", 10);
+
+  if (subidasHoy >= LIMITES_USUARIO.MAX_ARCHIVOS_DIARIOS) {
+    return {
+      permitido: false,
+      mensaje: `Has alcanzado el límite diario de ${LIMITES_USUARIO.MAX_ARCHIVOS_DIARIOS} subidas.`
+    };
+  }
+
+  // Registrar la nueva subida
+  localStorage.setItem(claveUso, (subidasHoy + 1).toString());
+  return { permitido: true };
+}
+
+// ✂️ 2. Compresión optimizada WebP para imágenes del chat
+function comprimirImagenChatWebP(archivo) {
+  return new Promise((resolve) => {
+    // Si no es una imagen (ej. audio, PDF, etc.), la deja intacta
+    if (!archivo.type.startsWith("image/")) return resolve(archivo);
+
+    const reader = new FileReader();
+    reader.readAsDataURL(archivo);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ANCHO_MAX = 1200; // Resolución HD súper ligera para el chat
+
+        let ancho = img.width;
+        let alto = img.height;
+
+        if (ancho > ANCHO_MAX) {
+          alto = Math.round((alto * ANCHO_MAX) / ancho);
+          ancho = ANCHO_MAX;
+        }
+
+        canvas.width = ancho;
+        canvas.height = alto;
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, ancho, alto);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const archivoComprimido = new File(
+              [blob],
+              `chat_${Date.now()}.webp`,
+              { type: "image/webp" }
+            );
+            resolve(archivoComprimido);
+          } else {
+            resolve(archivo); // Respaldo si falla la conversión
+          }
+        }, "image/webp", 0.80); // Calidad al 80% (ideal para no perder detalle)
+      };
+      img.onerror = () => resolve(archivo);
+    };
+    reader.onerror = () => resolve(archivo);
+  });
+}
+
+// 📤 3. Subir archivo al bucket público de Supabase (Con límites y compresión integrados)
 async function subirArchivoAStorage(file, carpeta = "chats") {
   if (!file) return null;
 
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  const pesoMB = file.size / (1024 * 1024);
+
+  // A) Validar Reglas de Límite por Usuario
+  const validacion = await verificarLimiteUsuario(miUid, pesoMB);
+  if (!validacion.permitido) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(validacion.mensaje, "⚠️", "#ff4b2b");
+    }
+    return null;
+  }
+
+  // B) Aplicar compresión automática si el archivo es una imagen
+  let archivoAProcesar = file;
+  if (file.type.startsWith("image/")) {
+    archivoAProcesar = await comprimirImagenChatWebP(file);
+  }
+
   try {
-    const extension = file.name ? file.name.split('.').pop() : "webp";
+    const extension = archivoAProcesar.name ? archivoAProcesar.name.split('.').pop() : "webp";
     const nombreArchivo = `${carpeta}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${extension}`;
 
     const { data, error } = await supabase
       .storage
       .from('movachat-adjuntos')
-      .upload(nombreArchivo, file, {
+      .upload(nombreArchivo, archivoAProcesar, {
         cacheControl: '3600',
         upsert: false
       });
@@ -6857,7 +7070,7 @@ function comprimirFotoPerfilWebP(archivo) {
       img.onload = () => {
         const canvas = document.createElement("canvas");
         const DIMENSION_MAXIMA = 250; // Dimensiones exactas del estándar
-        
+
         canvas.width = DIMENSION_MAXIMA;
         canvas.height = DIMENSION_MAXIMA;
         const ctx = canvas.getContext("2d");
@@ -6894,16 +7107,16 @@ function comprimirFotoPerfilWebP(archivo) {
 // 2. ACTIVAR EL BOTÓN 2 (CÁMARA / SUBIR FOTO - Detección Universal)
 document.addEventListener("click", (e) => {
   // Detecta si tocaste la cámara por su icono Lucide, su clase o por estar sobre la foto
-  const esBotonCamara = e.target.closest("[data-lucide='camera']") || 
-                        e.target.closest(".lucide-camera") ||
-                        e.target.closest(".camara-perfil-btn") || 
-                        e.target.closest(".btn-camara-avatar") || 
-                        e.target.closest("[data-accion='cambiar-foto']");
+  const esBotonCamara = e.target.closest("[data-lucide='camera']") ||
+    e.target.closest(".lucide-camera") ||
+    e.target.closest(".camara-perfil-btn") ||
+    e.target.closest(".btn-camara-avatar") ||
+    e.target.closest("[data-accion='cambiar-foto']");
 
   if (esBotonCamara) {
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Dispara la apertura del explorador de archivos / cámara
     inputSeleccionarFotoPerfil.click();
   }
@@ -6986,7 +7199,7 @@ inputSeleccionarFotoPerfil.addEventListener("change", async (e) => {
 // 4. ACTIVAR EL PUNTO 1 (VER FOTO COMPLETA EN FLOTANTE)
 document.addEventListener("click", (e) => {
   const elemFotoPerfil = e.target.closest(".avatar-perfil-img");
-  
+
   if (elemFotoPerfil) {
     e.stopPropagation();
 
@@ -7013,5 +7226,146 @@ document.addEventListener("click", (e) => {
         mostrarAvisoPremium("Visualizando foto de perfil 🌌", "📸", "#00f2fe");
       }
     }
+  }
+});
+
+// ========================================================
+// 👤 VISTA Y PRIVACIDAD DEL PERFIL DE OTROS CONTACTOS
+// ========================================================
+
+// 1. Inyectar dinámicamente el modal de Perfil del Contacto si no existe
+(function inyectarModalPerfilContacto() {
+  if (document.getElementById("modal-perfil-contacto-publico")) return;
+
+  const modalHTML = `
+    <div id="modal-perfil-contacto-publico" class="modal-overlay oculto" style="z-index: 99999;">
+      <div class="tarjeta-modal-bento glassmorphism" style="max-width: 360px; width: 90%; text-align: center; padding: 24px; position: relative;">
+        <button id="btn-cerrar-perfil-contacto" class="btn-cerrar-modal" style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: #fff; cursor: pointer;">
+          <i data-lucide="x"></i>
+        </button>
+        
+        <!-- Foto y Nombre Público -->
+        <div style="position: relative; width: 100px; height: 100px; margin: 0 auto 15px auto;">
+          <img id="contacto-vista-foto" src="" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid #00f2fe; box-shadow: 0 0 15px rgba(0,242,254,0.3);">
+          <span id="contacto-vista-led" class="punto-online" style="position: absolute; bottom: 5px; right: 5px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #0a0a12;"></span>
+        </div>
+
+        <h3 id="contacto-vista-nombre" style="margin: 0; color: #fff; font-size: 1.2rem;">--</h3>
+        <p id="contacto-vista-username" style="margin: 4px 0 12px 0; color: #00f2fe; font-size: 0.85rem; opacity: 0.9;">@--</p>
+        
+        <!-- Estado / Frase -->
+        <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 12px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.08);">
+          <p id="contacto-vista-estado" style="margin: 0; font-size: 0.85rem; color: #ddd; font-style: italic;">"--"</p>
+        </div>
+
+        <!-- Redes Sociales Vinculadas (Públicas) -->
+        <div style="margin-top: 15px;">
+          <p style="font-size: 0.75rem; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Redes Vinculadas</p>
+          <div id="contenedor-redes-contacto" style="display: flex; justify-content: center; gap: 12px;">
+            <!-- Se inyectan dinámicamente -->
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML("beforeend", modalHTML);
+})();
+
+// 2. Función para cargar y aplicar Reglas de Privacidad al ver un Contacto
+async function abrirPerfilPublicoContacto(contactoUid) {
+  if (!contactoUid) return;
+
+  const modal = document.getElementById("modal-perfil-contacto-publico");
+  const elemFoto = document.getElementById("contacto-vista-foto");
+  const elemLed = document.getElementById("contacto-vista-led");
+  const elemNombre = document.getElementById("contacto-vista-nombre");
+  const elemUsername = document.getElementById("contacto-vista-username");
+  const elemEstado = document.getElementById("contacto-vista-estado");
+  const contenedorRedes = document.getElementById("contenedor-redes-contacto");
+
+  try {
+    // Consultar datos reales del contacto en Firebase
+    const snap = await get(ref(db, `usuarios/${contactoUid}`));
+
+    if (snap.exists()) {
+      const u = snap.val();
+
+      // 🛡️ REGLAS DE PRIVACIDAD (Datos Públicos vs Privados)
+      elemNombre.textContent = u.nombre || "Usuario Mova";
+      elemUsername.textContent = u.username ? `@${u.username}` : "@usuario";
+      elemEstado.textContent = u.estadoTexto || u.estado || "Sin estado disponible";
+      elemFoto.src = u.fotoUrl || u.fotoPerfil || `https://api.dicebear.com/7.x/bottts/svg?seed=${contactoUid}`;
+
+      // Configurar LED de estado del contacto
+      const estadoConexion = u.estadoConexion || "online";
+      if (estadoConexion === "ocupado") {
+        elemLed.style.backgroundColor = "#ef4444";
+        elemLed.style.boxShadow = "0 0 8px #ef4444";
+      } else if (estadoConexion === "offline" || estadoConexion === "invisible") {
+        elemLed.style.backgroundColor = "#888888";
+        elemLed.style.boxShadow = "none";
+      } else {
+        elemLed.style.backgroundColor = "#00f2fe";
+        elemLed.style.boxShadow = "0 0 8px #00f2fe";
+      }
+
+      // Renderizar solo redes sociales públicas que el contacto haya vinculado
+      if (contenedorRedes) {
+        contenedorRedes.innerHTML = "";
+        const redes = u.redes || {};
+        let hayRedes = false;
+
+        if (redes.instagram) {
+          hayRedes = true;
+          contenedorRedes.innerHTML += `<a href="https://instagram.com/${redes.instagram}" target="_blank" style="color: #e1306c; font-size: 1.2rem;"><i data-lucide="instagram"></i></a>`;
+        }
+        if (redes.tiktok) {
+          hayRedes = true;
+          contenedorRedes.innerHTML += `<a href="https://tiktok.com/@${redes.tiktok}" target="_blank" style="color: #00f2fe; font-size: 1.2rem;"><i data-lucide="video"></i></a>`;
+        }
+        if (redes.facebook) {
+          hayRedes = true;
+          contenedorRedes.innerHTML += `<a href="https://facebook.com/${redes.facebook}" target="_blank" style="color: #1877f2; font-size: 1.2rem;"><i data-lucide="facebook"></i></a>`;
+        }
+
+        if (!hayRedes) {
+          contenedorRedes.innerHTML = `<span style="font-size: 0.75rem; color: #666;">Sin redes vinculadas</span>`;
+        }
+      }
+
+      // Mostrar Modal
+      if (modal) {
+        modal.classList.remove("oculto");
+        if (window.lucide) window.lucide.createIcons({ targets: [modal] });
+      }
+    }
+  } catch (err) {
+    console.error("Error al cargar perfil público del contacto:", err);
+  }
+}
+
+// 3. REEMPLAZAR EL EVENTO DE CLIC EN LA CABECERA DEL CHAT PRIVADO
+// Al tocar el nombre o área de datos en el chat privado, abre el perfil DE ESE CONTACTO (no el tuyo)
+const textoDatosCabeceraPrivada = document.querySelector(".amigo-perfil-cabecera .amigo-datos");
+
+if (textoDatosCabeceraPrivada) {
+  // Reemplazamos cualquier escuchador anterior
+  textoDatosCabeceraPrivada.onclick = (e) => {
+    e.stopPropagation();
+    const contactoUid = window.contactoActivoUid;
+    if (contactoUid) {
+      abrirPerfilPublicoContacto(contactoUid);
+    }
+  };
+}
+
+// Evento para cerrar el modal de perfil del contacto
+document.addEventListener("click", (e) => {
+  const btnCerrar = e.target.closest("#btn-cerrar-perfil-contacto");
+  const modal = document.getElementById("modal-perfil-contacto-publico");
+
+  if (btnCerrar || (modal && e.target === modal)) {
+    if (modal) modal.classList.add("oculto");
   }
 });
