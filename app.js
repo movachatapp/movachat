@@ -1754,16 +1754,41 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // 🗑️ OPCIÓN 4A: ELIMINAR PARA MÍ (Solo oculta en mi pantalla)
+    // 🗑️ OPCIÓN 4A: ELIMINAR PARA MÍ (Guardado en Firebase para que no reaparezca)
     else if (accion === "eliminar-para-mi") {
-      if (nodoMensaje) {
-        nodoMensaje.style.transition = "all 0.25s ease";
-        nodoMensaje.style.opacity = "0";
-        nodoMensaje.style.transform = "scale(0.85)";
-        setTimeout(() => nodoMensaje.remove(), 250);
+      const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+      const miUid = usuarioActual ? usuarioActual.uid : null;
+      
+      // 🛡️ Asegurar que obtenemos el ID del mensaje sí o sí
+      const idParaBorrar = typeof msgId !== "undefined" && msgId 
+        ? msgId 
+        : (nodoMensaje ? nodoMensaje.getAttribute("data-msg-id") : null);
+
+      if (!idParaBorrar) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se encontró el ID del mensaje.", "⚠️", "#ff4b2b");
+        }
+        return;
       }
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Mensaje ocultado para ti 👁️‍🗨️", "🗑️", "#00f2fe");
+
+      if (miUid && idParaBorrar) {
+        // ☁️ Guardar en Firebase que este usuario ocultó este mensaje
+        set(ref(db, `mensajes_borrados/${miUid}/${idParaBorrar}`), true)
+          .then(() => {
+            if (nodoMensaje) {
+              nodoMensaje.style.transition = "all 0.25s ease";
+              nodoMensaje.style.opacity = "0";
+              nodoMensaje.style.transform = "scale(0.85)";
+              setTimeout(() => nodoMensaje.remove(), 250);
+            }
+
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("Mensaje eliminado para ti 👁️‍🗨️", "🗑️", "#00f2fe");
+            }
+          })
+          .catch((err) => {
+            console.error("Error al borrar para mí en Firebase:", err);
+          });
       }
     }
 
@@ -3031,12 +3056,25 @@ window.actualizarBadgesNotificaciones = function () {
 // Map global para evitar escuchadores duplicados por contacto
 window.desuscripcionesUltimoMsg = window.desuscripcionesUltimoMsg || {};
 
+// 🔍 LÓGICA PARA OBTENER EL ÚLTIMO MENSAJE VISIBLE EN LA LISTA DE CHATS
+function obtenerUltimoMensajeTexto(ultimoMsg) {
+  if (!ultimoMsg) return "Sin mensajes";
+
+  if (ultimoMsg.tipoAdjunto === 'foto') return "📷 Foto";
+  if (ultimoMsg.tipoAdjunto === 'video') return "🎥 Video circular";
+  if (ultimoMsg.tipoAdjunto === 'audio') return "🎤 Nota de voz";
+  if (ultimoMsg.tipoAdjunto === 'documento') return "📄 Documento";
+
+  return ultimoMsg.texto || "Mensaje";
+}
+
 function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijadosBD = {}) {
   const chatId = obtenerChatId(miUid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
   const lecturaRef = ref(db, `lecturas/${miUid}/${contactoUid}`);
   const vaciadoRef = ref(db, `vaciados/${miUid}/${contactoUid}`);
   const ocultoRef = ref(db, `chats_ocultos/${miUid}/${contactoUid}`);
+  const borradosRef = ref(db, `mensajes_borrados/${miUid}`); // 👈 Referencia a mensajes borrados "Para mí"
 
   // 🛡️ LIMPIEZA ANTI-DUPLICADOS: Si ya existe un escuchador para este contacto, lo apagamos antes de crear uno nuevo
   if (window.desuscripcionesUltimoMsg[contactoUid]) {
@@ -3057,15 +3095,19 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     let timestampUltimoVaciado = 0;
     let timestampOculto = 0;
+    let listaBorradosMios = {};
 
     try {
-      const [snapVaciado, snapOculto] = await Promise.all([
+      // 🚀 Consulta combinada incluyendo 'mensajes_borrados'
+      const [snapVaciado, snapOculto, snapBorrados] = await Promise.all([
         get(vaciadoRef),
-        get(ocultoRef)
+        get(ocultoRef),
+        get(borradosRef)
       ]);
 
       if (snapVaciado.exists()) timestampUltimoVaciado = Number(snapVaciado.val()) || 0;
       if (snapOculto.exists()) timestampOculto = Number(snapOculto.val()) || 0;
+      if (snapBorrados.exists()) listaBorradosMios = snapBorrados.val() || {};
     } catch (err) {
       console.error("Error al consultar estados de vaciado/eliminación:", err);
     }
@@ -3080,10 +3122,14 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       mensajes = snapshot.val();
       const ahora = Date.now();
 
-      // 🎯 ORDENAR CRONOLÓGICAMENTE POR TIMESTAMP REAL
+      // 🎯 ORDENAR CRONOLÓGICAMENTE Y FILTRAR BORRADOS PARA MÍ
       mensajesOrdenados = Object.keys(mensajes)
         .map(key => ({ key, ...mensajes[key] }))
         .filter(m => {
+          // 🛡️ Filtro 1: Saltarse mensajes eliminados "Para mí"
+          if (listaBorradosMios[m.key] === true) return false;
+
+          // 🛡️ Filtro 2: Saltarse mensajes anteriores al vaciado
           const esPosteriorVaciado = (m.timestamp || 0) > timestampUltimoVaciado;
           if (m.esEfimero) {
             const limiteMs = m.duracionEfimeraMs || 10000;
@@ -3223,16 +3269,20 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (window.lucide) window.lucide.createIcons({ targets: [tarjetaContacto] });
     }
 
-    // Actualizar datos del último mensaje en la tarjeta
+    // 🔍 Actualizar datos del último mensaje usando la función helper
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
 
     if (ultimoMsg) {
-      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
+      if (elemTexto) {
+        elemTexto.textContent = typeof obtenerUltimoMensajeTexto === "function" 
+          ? obtenerUltimoMensajeTexto(ultimoMsg) 
+          : (ultimoMsg.texto || "Mensaje");
+      }
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
     } else {
-      if (elemTexto) elemTexto.textContent = "Conversación vaciada";
+      if (elemTexto) elemTexto.textContent = "Sin mensajes";
       if (elemHora) elemHora.textContent = "--:--";
     }
 
@@ -3257,15 +3307,22 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       get(lecturaRef).then((lecturaSnap) => {
         const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
 
-        // Buscar el timestamp del último leído
-        const objUltimoLeido = mensajesOrdenados.find(m => m.key === ultimoLeidoKey);
-        const timestampUltimoLeido = objUltimoLeido ? (objUltimoLeido.timestamp || 0) : 0;
+        // 🛡️ SOLUCIÓN: Buscar el timestamp en el objeto original 'mensajes' (incluso si se borró "Para mí")
+        let timestampUltimoLeido = 0;
+        if (ultimoLeidoKey && mensajes) {
+          if (mensajes[ultimoLeidoKey]) {
+            timestampUltimoLeido = mensajes[ultimoLeidoKey].timestamp || 0;
+          } else {
+            const objUltimoLeido = mensajesOrdenados.find(m => m.key === ultimoLeidoKey);
+            timestampUltimoLeido = objUltimoLeido ? (objUltimoLeido.timestamp || 0) : 0;
+          }
+        }
 
         let nuevos = 0;
 
         mensajesOrdenados.forEach((m) => {
           const idEmisor = m.emisor || m.emisorUid || m.remitente || m.remitenteId || m.uid;
-          // Si el mensaje es del contacto Y fue creado después de la última lectura
+          // Si el mensaje es del contacto Y fue creado después de la última lectura real
           if (idEmisor === contactoUid && (m.timestamp || 0) > timestampUltimoLeido) {
             nuevos++;
           }
@@ -6085,7 +6142,6 @@ function escucharMensajesChat(chatId) {
     listenerPresenciaContactoActivo = onValue(presenciaContactoRef, (snapPresencia) => {
       estaEnAppReceptorLive = snapPresencia.exists() && snapPresencia.val() === true;
 
-      // Si el contacto se desconecta, refrescar visualmente los mensajes no leídos a 1 check
       document.querySelectorAll(".indicador-checks-mova").forEach((contenedor) => {
         const esLeido = contenedor.classList.contains("leido");
         if (!esLeido) {
@@ -6112,13 +6168,16 @@ function escucharMensajesChat(chatId) {
     const elemHistorial = document.querySelector(".historial-mensajes");
     if (!elemHistorial) return;
 
+    // 🔥 AQUI ESTÁ LA NUEVA PROMESA PARA MENSAJES BORRADOS
     Promise.all([
       miUid && contactoUid ? get(ref(db, `vaciados/${miUid}/${contactoUid}`)) : Promise.resolve(null),
-      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null)
-    ]).then(([snapVaciado, snapBloqueo]) => {
+      miUid && contactoUid ? get(ref(db, `bloqueos/${miUid}/${contactoUid}`)) : Promise.resolve(null),
+      miUid ? get(ref(db, `mensajes_borrados/${miUid}`)) : Promise.resolve(null)
+    ]).then(([snapVaciado, snapBloqueo, snapBorrados]) => {
 
       const timestampUltimoVaciado = (snapVaciado && snapVaciado.exists()) ? snapVaciado.val() : 0;
       const estaBloqueadoElContacto = (snapBloqueo && snapBloqueo.exists()) ? (snapBloqueo.val() === true) : false;
+      const listaBorradosMios = (snapBorrados && snapBorrados.exists()) ? snapBorrados.val() : {};
 
       elemHistorial.innerHTML = "";
 
@@ -6126,7 +6185,6 @@ function escucharMensajesChat(chatId) {
         const mensajes = snapshot.val();
         const keysMensajes = Object.keys(mensajes);
 
-        // Marcar como leído ÚNICAMENTE si el chat privado está visible en pantalla
         const pantallaChat = document.getElementById("pantalla-chat-privado");
         const chatEstaAbierto = (window.contactoActivoUid === contactoUid) &&
           pantallaChat &&
@@ -6142,6 +6200,9 @@ function escucharMensajesChat(chatId) {
         keysMensajes.forEach((msgId) => {
           const msg = mensajes[msgId];
           if (!msg) return;
+
+          // 🔥 AQUI ESTÁ EL FILTRO PARA SALTARSE LOS MENSAJES QUE BORRASTE PARA TI
+          if (listaBorradosMios[msgId] === true) return;
 
           const msgTimestamp = msg.timestamp || 0;
           if (msgTimestamp <= timestampUltimoVaciado) return;
@@ -6166,18 +6227,16 @@ function escucharMensajesChat(chatId) {
             }
           }
 
-          // 🟢 DEFINICIÓN DE TIEMPO PARA MENSAJES EN VIVO
           const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
           const esMensajeNuevoEnVivo = haceCuantoEnviado < 5000;
           const esElUltimoMensaje = (msgId === keysMensajes[keysMensajes.length - 1]);
 
-          // 🛡️ ESCUDO ANTI-DUPLICADOS UNIFICADO
           window.mensajesNotificadosUnificados = window.mensajesNotificadosUnificados || new Set();
           const yaSono = window.mensajesNotificadosUnificados.has(msgId);
 
           if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto && esElUltimoMensaje && !yaSono) {
 
-            window.mensajesNotificadosUnificados.add(msgId); // 👈 Marcar en la memoria unificada
+            window.mensajesNotificadosUnificados.add(msgId);
 
             const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
             const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
@@ -6187,7 +6246,6 @@ function escucharMensajesChat(chatId) {
               notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
             }
 
-            // 🔊 DISPARAR REPRODUCCIÓN Y VIBRACIÓN
             if (typeof window.reproducirSonidoRecibido === "function") {
               window.reproducirSonidoRecibido(idEmisorReal);
             }
@@ -6204,13 +6262,11 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
-          // 🟢 EVALUACIÓN INDEPENDIENTE POR CADA MENSAJE
           let htmlChecks = "";
           if (esMio) {
             let claseChecks = "enviado";
             let iconoLucide = "check";
 
-            // Verificar si este mensaje específico es igual o anterior al último leído
             const esLeido = ultimoLeidoKeyReceptor && (keysMensajes.indexOf(msgId) <= keysMensajes.indexOf(ultimoLeidoKeyReceptor));
 
             if (esLeido) {
