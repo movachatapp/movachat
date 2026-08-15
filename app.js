@@ -282,7 +282,7 @@ if (btnCamarita && inputFotoPerfil) {
   btnCamarita.addEventListener("click", (e) => {
     // Evita que el clic abra la foto en HD por accidente
     e.stopPropagation();
-    
+
     // Simula un clic en el input oculto para abrir la galería del celular/PC
     inputFotoPerfil.click();
   });
@@ -291,7 +291,7 @@ if (btnCamarita && inputFotoPerfil) {
 // 3. Lógica para la Foto de Perfil (Abrir Modal HD)
 if (imgAvatarPerfil) {
   imgAvatarPerfil.style.cursor = "pointer";
-  
+
   imgAvatarPerfil.addEventListener("click", (e) => {
     e.stopPropagation();
 
@@ -3129,7 +3129,9 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// --- 3. EDITAR ESTADO DE PERFIL Y LED (AMARRADO TOTALMENTE A FIREBASE) ---
+// ========================================================
+// 3. EDITAR ESTADO DE PERFIL Y LED (SIN CONFLICHO DE HISTORIAS)
+// ========================================================
 const btnEditarEstado = document.getElementById("btn-editar-estado");
 const modalEstado = document.getElementById("modal-estado");
 const btnCerrarModal = document.getElementById("btn-cerrar-modal");
@@ -3140,13 +3142,31 @@ const ledPerfil = document.querySelector(".btn-estado-sutil .punto-online");
 const botonesLed = document.querySelectorAll(".selector-led .btn-led");
 
 let colorLedSeleccionado = "#00f2fe";
-let tipoEstadoSeleccionado = "online"; // 'online', 'ocupado' o 'offline'
-let nombreEstadoSeleccionado = "Disponible"; // 'Disponible', 'Ocupado' o 'Invisible'
+let tipoEstadoSeleccionado = "online";
+let nombreEstadoSeleccionado = "Disponible";
 
+// Variable de control de contexto del modal
+let modoModalEstado = "perfil"; // 'perfil' o 'historia'
+
+// A) Abrir modal desde PERFIL
 if (btnEditarEstado && modalEstado) {
   btnEditarEstado.addEventListener("click", () => {
+    modoModalEstado = "perfil";
+
+    // Mostrar selectores de LED
+    const selectorLed = modalEstado.querySelector(".selector-led");
+    const labelsModal = modalEstado.querySelectorAll(".modal-label");
+    if (selectorLed) selectorLed.style.display = "flex";
+    if (labelsModal[1]) labelsModal[1].style.display = "block";
+
+    // Pre-llenar la caja con la frase actual si no es un texto genérico
+    if (inputNuevoEstado) {
+      const textoActual = textoEstadoPerfil ? textoEstadoPerfil.textContent.trim() : "";
+      inputNuevoEstado.value = (textoActual.includes("Disponible") || textoActual.includes("Ocupado") || textoActual.includes("Invisible")) ? "" : textoActual;
+      inputNuevoEstado.focus();
+    }
+
     modalEstado.classList.remove("oculto");
-    if (inputNuevoEstado) inputNuevoEstado.focus();
   });
 }
 
@@ -3156,16 +3176,14 @@ if (btnCerrarModal && modalEstado) {
   });
 }
 
-// 🎨 Escuchar los botones del modal para saber qué estado eligió el usuario
+// Seleccionar color de LED
 botonesLed.forEach(boton => {
   boton.addEventListener("click", () => {
     botonesLed.forEach(b => b.classList.remove("activo"));
     boton.classList.add("activo");
 
-    // Leer el color configurado en el botón
     colorLedSeleccionado = boton.style.getPropertyValue("--led-color").trim() || "#00f2fe";
 
-    // Asignar el tipo y el nombre según el color elegido
     if (colorLedSeleccionado === "#ef4444" || colorLedSeleccionado === "#ff4b2b") {
       tipoEstadoSeleccionado = "ocupado";
       nombreEstadoSeleccionado = "Ocupado";
@@ -3179,55 +3197,63 @@ botonesLed.forEach(boton => {
   });
 });
 
-// 💾 Guardar en el perfil local y enviar a Firebase en tiempo real
+// B) Guardar Cambios UNIFICADO (Diferencia Perfil de Historias)
 if (btnGuardarEstado && modalEstado) {
-  btnGuardarEstado.addEventListener("click", async () => {
+  btnGuardarEstado.onclick = async () => {
+    const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
     const fraseIngresada = inputNuevoEstado ? inputNuevoEstado.value.trim() : "";
 
-    // Si escribió una frase personalizada la usa, si no, usa el nombre del estado
-    const textoFinal = fraseIngresada !== "" ? fraseIngresada : nombreEstadoSeleccionado;
+    if (modoModalEstado === "historia") {
+      // --- GUARDAR COMENTARIO DE HISTORIA ("Mi Estado") ---
+      fraseEstadoGuardada = fraseIngresada;
 
-    // 1. Actualizar pantalla propia
-    if (textoEstadoPerfil) {
-      textoEstadoPerfil.textContent = textoFinal;
-    }
-    if (ledPerfil) {
-      ledPerfil.style.backgroundColor = colorLedSeleccionado;
-      ledPerfil.style.boxShadow = `0 0 10px ${colorLedSeleccionado}`;
-    }
+      if (usuarioActual) {
+        await update(ref(db, `usuarios/${usuarioActual.uid}`), {
+          estadoHistoriaTexto: fraseEstadoGuardada
+        });
+      }
 
-    // 2. Guardar en memoria local
-    localStorage.setItem("movachat-estado-texto", textoFinal);
-    localStorage.setItem("movachat-estado-tipo", tipoEstadoSeleccionado);
+      if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
+      if (textoSubtituloMiEstado) {
+        textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
+        textoSubtituloMiEstado.classList.add("texto-cyan");
+      }
+      if (tiempoMiEstado) tiempoMiEstado.textContent = "Hace un momento";
 
-    // 3. ENVIAR A FIREBASE EN TIEMPO REAL A TODOS LOS CONTACTOS
-    const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
-    if (usuarioActual && typeof db !== "undefined") {
-      const datosActualizar = {
-        estadoTexto: textoFinal,
-        estado: textoFinal,
-        estadoConexion: tipoEstadoSeleccionado,
-        estadoPresencia: tipoEstadoSeleccionado
-      };
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("¡Tu historia ya está publicada en la nube! 🚀", "🛸", "#00f2fe");
+      }
 
-      try {
-        await update(ref(db, `usuarios/${usuarioActual.uid}`), datosActualizar);
-      } catch (err) {
-        console.error("Error al actualizar estado en Firebase:", err);
+    } else {
+      // --- GUARDAR PERFIL GENERAL (Frase + LED) ---
+      const textoFinal = fraseIngresada !== "" ? fraseIngresada : `${nombreEstadoSeleccionado}. Toca para añadir estado...`;
+
+      if (textoEstadoPerfil) textoEstadoPerfil.textContent = textoFinal;
+      if (ledPerfil) {
+        ledPerfil.style.backgroundColor = colorLedSeleccionado;
+        ledPerfil.style.boxShadow = `0 0 10px ${colorLedSeleccionado}`;
+      }
+
+      if (usuarioActual) {
+        await update(ref(db, `usuarios/${usuarioActual.uid}`), {
+          estadoTexto: textoFinal,
+          estado: textoFinal,
+          estadoConexion: tipoEstadoSeleccionado,
+          estadoPresencia: tipoEstadoSeleccionado
+        });
+      }
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium(`Perfil actualizado: ${nombreEstadoSeleccionado} ✨`, "👤", "#00f2fe");
       }
     }
 
-    // 4. Cerrar el modal y notificar
     modalEstado.classList.add("oculto");
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Perfil actualizado: ${nombreEstadoSeleccionado} ✨`);
-    }
 
-    // 5. Refrescar leds de la cabecera
     if (typeof actualizarDobleLedCabecera === "function") {
       actualizarDobleLedCabecera("perfil");
     }
-  });
+  };
 }
 
 // --- 4. CAMPANITA Y AJUSTES DE NOTIFICACIONES (UNIFICADO Y REPARADO) ---
@@ -3488,6 +3514,16 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
       tarjetaContacto.addEventListener("click", (e) => {
         e.stopPropagation();
+
+        // 📸 Si hizo clic en la foto de avatar Y la tarjeta tiene una historia activa, abre el Visor de Historias
+        if (e.target.closest(".chat-avatar-caja") && tarjetaContacto.dataset.estadoUrl) {
+          if (typeof abrirEstadoAmigo === "function") {
+            abrirEstadoAmigo(tarjetaContacto.dataset.estadoUrl, tarjetaContacto.dataset.estadoTexto || "");
+          }
+          return;
+        }
+
+        // 💬 De lo contrario, abre el chat privado normalmente
         window.contactoActivoUid = contactoUid;
 
         const badge = tarjetaContacto.querySelector(".badge-chat-no-leido");
@@ -3689,14 +3725,14 @@ async function verificarExpiracion24Horas() {
     const userSnap = await get(ref(db, `usuarios/${usuarioActual.uid}`));
     if (userSnap.exists()) {
       const datos = userSnap.val();
-      
+
       if (datos.estadoHistoriaUrl && datos.estadoHistoriaFecha) {
         const tiempoTranscurrido = Date.now() - datos.estadoHistoriaFecha;
 
         if (tiempoTranscurrido >= TIEMPO_EXPIRACION_24H) {
           console.log("⏰ Historia expirada (+24h). Limpiando Supabase y Firebase...");
           await borrarMiEstadoCompleto(usuarioActual.uid, datos.estadoHistoriaUrl);
-          
+
           if (typeof mostrarAvisoPremium === "function") {
             mostrarAvisoPremium("Tu historia anterior superó las 24 horas y fue eliminada de la nube ⌛", "🧹", "#00f2fe");
           }
@@ -3732,7 +3768,7 @@ onAuthStateChanged(auth, (user) => {
 if (tarjetaMiEstado) {
   tarjetaMiEstado.addEventListener("click", (e) => {
     e.stopPropagation();
-    
+
     if (imagenEstadoGuardada) {
       const textoFinal = fraseEstadoGuardada || "¡Compartiendo mi día en MovaChat! 🌌🔥";
       if (typeof abrirEstadoAmigo === "function") {
@@ -3784,9 +3820,20 @@ if (inputSubirEstadoReal) {
           estadoHistoriaFecha: fechaEstadoGuardada
         });
 
-        // E) Abrir modal para añadir comentario opcional
+        // E) Abrir modal para añadir comentario opcional a la Historia
+        modoModalEstado = "historia";
+
+        // Ocultar sección de LEDs en el modal para no confundir al subir historias
+        const selectorLed = modalEstado ? modalEstado.querySelector(".selector-led") : null;
+        const labelsModal = modalEstado ? modalEstado.querySelectorAll(".modal-label") : [];
+        if (selectorLed) selectorLed.style.display = "none";
+        if (labelsModal[1]) labelsModal[1].style.display = "none";
+
         if (modalEstado) modalEstado.classList.remove("oculto");
-        if (inputNuevoEstado) inputNuevoEstado.focus();
+        if (inputNuevoEstado) {
+          inputNuevoEstado.value = "";
+          inputNuevoEstado.focus();
+        }
 
         const interceptarGuardado = async () => {
           if (inputNuevoEstado) fraseEstadoGuardada = inputNuevoEstado.value.trim();
@@ -3795,6 +3842,7 @@ if (inputSubirEstadoReal) {
             estadoHistoriaTexto: fraseEstadoGuardada
           });
 
+          // Actualización de interfaz
           if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
           if (textoSubtituloMiEstado) {
             textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
@@ -3808,6 +3856,9 @@ if (inputSubirEstadoReal) {
             miniBotonMas.style.boxShadow = "0 0 10px #00f2fe";
           }
 
+          // Cierre automático del modal al guardar
+          if (modalEstado) modalEstado.classList.add("oculto");
+
           if (typeof mostrarAvisoPremium === "function") {
             mostrarAvisoPremium("¡Tu historia ya está publicada en la nube (24h)! 🚀", "🛸", "#00f2fe");
           }
@@ -3815,7 +3866,11 @@ if (inputSubirEstadoReal) {
           if (btnGuardarEstado) btnGuardarEstado.removeEventListener("click", interceptarGuardado);
         };
 
-        if (btnGuardarEstado) btnGuardarEstado.addEventListener("click", interceptarGuardado);
+        // Asignación limpia del evento de clic
+        if (btnGuardarEstado) {
+          btnGuardarEstado.removeEventListener("click", interceptarGuardado);
+          btnGuardarEstado.addEventListener("click", interceptarGuardado, { once: true });
+        }
       }
     } catch (err) {
       console.error("❌ Error al publicar historia:", err);
@@ -3833,7 +3888,6 @@ function inyectarBotonBorrarManualVisor() {
   const visor = document.getElementById("visor-historias-mova");
   if (!visor) return;
 
-  // Evitar duplicar el botón
   if (document.getElementById("btn-borrar-mi-estado-visor")) return;
 
   const btnBorrar = document.createElement("button");
@@ -3861,20 +3915,28 @@ function inyectarBotonBorrarManualVisor() {
   btnBorrar.addEventListener("click", async (e) => {
     e.stopPropagation();
 
-    const usuarioActual = auth.currentUser;
+    const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
     if (!usuarioActual || !imagenEstadoGuardada) return;
 
-    if (confirm("¿Deseas eliminar tu historia de la nube ahora mismo?")) {
+    // 🚀 AHORA USA EL MODAL CON FLOW DE MOVACHAT EN LUGAR DEL CONFIRM ANCIANO
+    const confirmado = await mostrarConfirmacionMova({
+      titulo: "¿Eliminar historia?",
+      mensaje: "¿Deseas eliminar tu historia de la nube ahora mismo?",
+      icono: "🗑️",
+      textoAceptar: "Eliminar",
+      textoCancelar: "Cancelar",
+      colorAceptar: "#ff4b2b"
+    });
+
+    if (confirmado) {
       const urlBorrar = imagenEstadoGuardada;
       
-      // Cerrar visor
       if (typeof cerrarEstadoMova === "function") cerrarEstadoMova();
 
-      // Ejecutar borrado completo
       await borrarMiEstadoCompleto(usuarioActual.uid, urlBorrar);
 
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Historia eliminada de Supabase y Firebase 🗑️", "🧹", "#ff4b2b");
+        mostrarAvisoPremium("Historia eliminada de Supabase y Firebase 🧹", "🗑️", "#ff4b2b");
       }
     }
   });
@@ -7278,3 +7340,99 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 });
+
+// 🔮 MODAL DE CONFIRMACIÓN CON ESTILO MOVACHAT (GLASSMORPHISM)
+function mostrarConfirmacionMova({
+  titulo = "¿Estás seguro?",
+  mensaje = "",
+  icono = "🗑️",
+  textoAceptar = "Eliminar",
+  textoCancelar = "Cancelar",
+  colorAceptar = "#ff4b2b"
+}) {
+  return new Promise((resolve) => {
+    // Eliminar modal previo si existía
+    const modalPrevio = document.getElementById("modal-confirmacion-mova");
+    if (modalPrevio) modalPrevio.remove();
+
+    const modal = document.createElement("div");
+    modal.id = "modal-confirmacion-mova";
+    modal.style.cssText = `
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(5, 8, 20, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999999;
+      animation: fadeInMova 0.2s ease-out;
+    `;
+
+    modal.innerHTML = `
+      <div style="
+        background: rgba(18, 24, 38, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 24px;
+        padding: 24px 20px;
+        width: 88%;
+        max-width: 340px;
+        text-align: center;
+        color: #ffffff;
+        font-family: inherit;
+        transform: scale(0.95);
+        animation: popInMova 0.2s ease-out forwards;
+      ">
+        <div style="font-size: 38px; margin-bottom: 10px; filter: drop-shadow(0 0 10px ${colorAceptar});">${icono}</div>
+        <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; font-weight: 700; color: #fff;">${titulo}</h3>
+        <p style="margin: 0 0 20px 0; font-size: 0.88rem; color: rgba(255,255,255,0.7); line-height: 1.4;">${mensaje}</p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <button id="btn-mova-cancelar" style="
+            flex: 1;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 600;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: all 0.2s;
+          ">${textoCancelar}</button>
+          <button id="btn-mova-aceptar" style="
+            flex: 1;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: none;
+            background: ${colorAceptar};
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 0.88rem;
+            box-shadow: 0 0 15px ${colorAceptar}88;
+            cursor: pointer;
+            transition: all 0.2s;
+          ">${textoAceptar}</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const btnCancelar = modal.querySelector("#btn-mova-cancelar");
+    const btnAceptar = modal.querySelector("#btn-mova-aceptar");
+
+    btnCancelar.onclick = () => {
+      modal.remove();
+      resolve(false);
+    };
+
+    btnAceptar.onclick = () => {
+      modal.remove();
+      resolve(true);
+    };
+  });
+}
