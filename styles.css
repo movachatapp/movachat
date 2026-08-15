@@ -3865,3 +3865,13 @@ body.modo-ahorro #badge-campanita,
 body.modo-ahorro .puntos-escribiendo span {
   animation: none !important;
 }
+
+/* Oculta cámara, lápiz de edición y ajustes cuando ves un perfil ajeno */
+#pantalla-perfil.modo-visitante .solo-propietario {
+  display: none !important;
+}
+
+/* Oculta las acciones de interacción cuando ves tu propio perfil */
+#pantalla-perfil:not(.modo-visitante) .solo-visitante {
+  display: none !important;
+}

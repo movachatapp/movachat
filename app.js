@@ -2295,7 +2295,12 @@ if (btnPerfilMenu) {
 
     switchPantalla(pantallaPerfil, pantallaBienvenida, pantallaChats, pantallaChatPrivado);
 
-    // 🔮 REFLEJAR LA POSICIÓN DE LA CÁPSULA AURA AL ENTRAR AL PERFIL
+    // 🚀 RESTAURAR MI PROPIO PERFIL AL TOCAR EL MENÚ INFERIOR
+    if (auth.currentUser && typeof window.cargarPerfilUsuario === "function") {
+      window.cargarPerfilUsuario(auth.currentUser.uid);
+    }
+
+    // 🔮 Reflejar la cápsula Aura al entrar a mi perfil
     setTimeout(() => {
       const auraGuardada = localStorage.getItem("movachat-aura-tema") || "cyber";
       const valorAttrHTML = (auraGuardada === "cyber") ? "cyan-morado" : auraGuardada;
@@ -2568,13 +2573,9 @@ if (textoDatosCabecera) {
   textoDatosCabecera.style.cursor = "pointer";
   textoDatosCabecera.addEventListener("click", (e) => {
     e.stopPropagation();
-
-    if (menuFlotanteGlobal) menuFlotanteGlobal.style.display = "flex";
-    if (pantallaChatPrivado) pantallaChatPrivado.classList.remove("pantalla-completa");
-
-    if (btnPerfilMenu) {
-      btnPerfilMenu.click();
-      mostrarAvisoPremium("Abriendo el espacio de configuración... 🕵️‍♂️", "👤", "#00f2fe");
+    // 👤 Tocar el NOMBRE abre la pantalla de Perfil del visitante
+    if (window.contactoActivoUid) {
+      window.cargarPerfilUsuario(window.contactoActivoUid);
     }
   });
 }
@@ -2584,6 +2585,7 @@ if (fotoCabeceraPrivada) {
   fotoCabeceraPrivada.addEventListener("click", (e) => {
     e.stopPropagation();
 
+    // 📸 Tocar la FOTO abre el visor en pantalla completa / HD
     const urlImagenEnVivo = fotoCabeceraPrivada.src;
     const nombrePersonaEnVivo = document.querySelector(".amigo-nombre-chat") ? document.querySelector(".amigo-nombre-chat").textContent : "Usuario";
 
@@ -2600,7 +2602,9 @@ if (fotoCabeceraPrivada) {
       }
 
       visorEstados.classList.remove("oculto");
-      mostrarAvisoPremium("Visualizando imagen de perfil en Alta Definición 🌌", "📸", "#00f2fe");
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Visualizando imagen de perfil en Alta Definición 🌌", "📸", "#00f2fe");
+      }
     }
   });
 }
@@ -3151,6 +3155,11 @@ let modoModalEstado = "perfil"; // 'perfil' o 'historia'
 // A) Abrir modal desde PERFIL
 if (btnEditarEstado && modalEstado) {
   btnEditarEstado.addEventListener("click", () => {
+    const pantallaPerfil = document.getElementById("pantalla-perfil");
+
+    // 🛡️ Si la pantalla de perfil está en modo visitante, bloquea la edición del estado
+    if (pantallaPerfil && pantallaPerfil.classList.contains("modo-visitante")) return;
+
     modoModalEstado = "perfil";
 
     // Mostrar selectores de LED
@@ -5686,9 +5695,14 @@ const inputNombre = document.getElementById("input-nuevo-nombre");
 const btnGuardarNombre = document.getElementById("btn-guardar-nombre");
 const btnCerrarModalNombre = document.getElementById("btn-cerrar-modal-nombre");
 
-// 1. Abrir Modal al hacer clic en el nombre
+// 1. Abrir Modal al hacer clic en el nombre (Solo si NO es visitante)
 document.addEventListener("click", (e) => {
   const btnNombre = e.target.closest("#texto-perfil-nombre");
+  const pantallaPerfil = document.getElementById("pantalla-perfil");
+
+  // 🛡️ Si la pantalla de perfil está en modo visitante, bloquea la edición
+  if (pantallaPerfil && pantallaPerfil.classList.contains("modo-visitante")) return;
+
   if (btnNombre && modalNombre) {
     const spanNombre = btnNombre.querySelector("span");
     const nombreActual = spanNombre ? spanNombre.textContent.trim() : "";
@@ -6203,13 +6217,23 @@ function cargarUsuariosPendientes() {
           tarjeta.innerHTML = `
             <div>
               <p style="margin: 0; font-weight: bold; color: #fff;">${u.nombre || 'Sin nombre'}</p>
-              <p style="margin: 0; font-size: 0.8rem; color: #aaa;">${u.correo}</p>
+              <p style="margin: 0; font-size: 0.8rem; color: #aaa;">${u.correo || 'Sin correo'}</p>
             </div>
             <div style="display: flex; gap: 8px;">
-              <button onclick="cambiarEstadoAcceso('${uid}', 'aprobado')" style="background: #2ec4b6; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Aprobar 🟢</button>
-              <button onclick="cambiarEstadoAcceso('${uid}', 'baneado')" style="background: #e71d36; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Rechazar 🔴</button>
+              <button class="btn-aprobar" style="background: #2ec4b6; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: 600;">Aprobar 🟢</button>
+              <button class="btn-rechazar" style="background: #e71d36; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: 600;">Rechazar 🔴</button>
             </div>
           `;
+
+          // Evento al presionar "Aprobar"
+          tarjeta.querySelector(".btn-aprobar").addEventListener("click", () => {
+            cambiarEstadoAcceso(uid, "aprobado");
+          });
+
+          // Evento al presionar "Rechazar"
+          tarjeta.querySelector(".btn-rechazar").addEventListener("click", () => {
+            cambiarEstadoAcceso(uid, "baneado");
+          });
 
           contenedorPendientes.appendChild(tarjeta);
         }
@@ -6220,6 +6244,23 @@ function cargarUsuariosPendientes() {
       contenedorPendientes.innerHTML = `<p style="color: #aaa; font-size: 0.9rem; text-align: center;">No hay solicitudes pendientes ✨</p>`;
     }
   });
+}
+
+// --- FUNCIÓN PARA CAMBIAR EL ESTADO EN FIREBASE ---
+async function cambiarEstadoAcceso(uid, nuevoEstado) {
+  try {
+    await update(ref(db, `usuarios/${uid}`), {
+      estadoAcceso: nuevoEstado
+    });
+
+    if (typeof mostrarAvisoPremium === "function") {
+      const msj = nuevoEstado === "aprobado" ? "Usuario aprobado exitosamente 🟢" : "Usuario rechazado 🔴";
+      const color = nuevoEstado === "aprobado" ? "#2ec4b6" : "#e71d36";
+      mostrarAvisoPremium(msj, "👤", color);
+    }
+  } catch (error) {
+    console.error("Error al actualizar estado del usuario:", error);
+  }
 }
 
 // Función global para cambiar el estado de acceso desde los botones de Admin
@@ -7436,3 +7477,263 @@ function mostrarConfirmacionMova({
     };
   });
 }
+
+// 1. Detectar cuando cambia el Hash en la URL (ej. #perfil/ID_USUARIO)
+window.addEventListener('hashchange', () => {
+  const hash = window.location.hash;
+  
+  if (hash.startsWith('#perfil/')) {
+    const uidTarget = hash.replace('#perfil/', '');
+    cargarPerfilUsuario(uidTarget);
+  }
+});
+
+// ==========================================================
+// 🔙 BOTÓN VOLVER / CERRAR DESDE LA PANTALLA DE PERFIL
+// ==========================================================
+document.addEventListener("click", (e) => {
+  const btnVolver = e.target.closest("#btn-volver-perfil") || 
+                    e.target.closest("#btn-cerrar-perfil") || 
+                    e.target.closest("#pantalla-perfil .btn-volver");
+
+  if (btnVolver) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const pantallaPerfil = document.getElementById("pantalla-perfil");
+    const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
+    const pantallaChats = document.getElementById("pantalla-chats");
+    const menuFlotante = document.querySelector(".menu-flotante");
+
+    // 1. Si regresas al chat activo, ocultamos el menú flotante para liberar la barra de mensajes
+    if (window.contactoActivoUid && pantallaChatPrivado) {
+      if (pantallaPerfil) pantallaPerfil.style.display = "none";
+      if (menuFlotante) menuFlotante.style.display = "none"; // 🚀 Oculta el menú inferior
+      
+      pantallaChatPrivado.style.display = "flex";
+      pantallaChatPrivado.classList.add("pantalla-completa");
+    } 
+    // 2. Si regresas a la lista general, mostramos el menú flotante
+    else if (pantallaChats) {
+      if (pantallaPerfil) pantallaPerfil.style.display = "none";
+      if (menuFlotante) menuFlotante.style.display = "flex";
+      
+      pantallaChats.style.display = "flex";
+
+      const botonesMenu = document.querySelectorAll(".menu-flotante .menu-btn");
+      if (botonesMenu.length > 0) {
+        botonesMenu.forEach(b => b.classList.remove("activo"));
+        botonesMenu[0].classList.add("activo");
+      }
+    }
+  }
+});
+
+// ==========================================================
+// 👤 CARGAR PERFIL DE USUARIO (MODO PROPIETARIO VS VISITANTE)
+// ==========================================================
+window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
+  const usuarioActual = auth.currentUser;
+  const pantallaPerfil = document.getElementById('pantalla-perfil');
+  const menuFlotante = document.querySelector(".menu-flotante");
+  
+  if (!pantallaPerfil || !uidTarget) return;
+
+  // 1. Mostrar pantalla de perfil y asegurar menú inferior
+  if (typeof switchPantalla === "function") {
+    switchPantalla(pantallaPerfil, pantallaChats, pantallaBienvenida, pantallaChatPrivado);
+  } else {
+    pantallaPerfil.style.display = 'flex';
+  }
+
+  if (menuFlotante) menuFlotante.style.display = "flex";
+
+  // 2. Evaluar Modo Visitante vs Mi Perfil
+  const esMiPerfil = (usuarioActual && uidTarget === usuarioActual.uid);
+
+  if (esMiPerfil) {
+    pantallaPerfil.classList.remove('modo-visitante');
+  } else {
+    pantallaPerfil.classList.add('modo-visitante');
+  }
+
+  try {
+    const snapshot = await get(ref(db, `usuarios/${uidTarget}`));
+    const datosUsuario = snapshot.exists() ? snapshot.val() : null;
+
+    if (!datosUsuario) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Usuario no encontrado.", "⚠️", "#ff4b2b");
+      }
+      return;
+    }
+
+    // --- 1. FOTO DE PERFIL / HISTORIA ---
+    const elemFoto = document.querySelector(".avatar-perfil-img");
+    const avatarWrapper = document.querySelector(".avatar-perfil-wrapper");
+    const urlFoto = datosUsuario.fotoUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + uidTarget;
+
+    if (elemFoto) {
+      elemFoto.src = urlFoto;
+      elemFoto.onclick = (e) => {
+        e.stopPropagation();
+        const ahora = Date.now();
+        const TIEMPO_24H = 24 * 60 * 60 * 1000;
+        const esHistoriaValida = datosUsuario.estadoHistoriaUrl && (ahora - (datosUsuario.estadoHistoriaFecha || 0) < TIEMPO_24H);
+
+        const imgTarget = esHistoriaValida ? datosUsuario.estadoHistoriaUrl : urlFoto;
+        const textoTarget = esHistoriaValida ? (datosUsuario.estadoHistoriaTexto || "") : `Foto de perfil de ${datosUsuario.nombre || 'Usuario'}`;
+
+        if (typeof abrirEstadoAmigo === "function") {
+          abrirEstadoAmigo(imgTarget, textoTarget);
+        }
+      };
+    }
+
+    // Aro de neón si tiene historia activa (< 24h)
+    const TIEMPO_24H = 24 * 60 * 60 * 1000;
+    if (avatarWrapper) {
+      if (datosUsuario.estadoHistoriaUrl && (Date.now() - (datosUsuario.estadoHistoriaFecha || 0) < TIEMPO_24H)) {
+        avatarWrapper.classList.add("con-estado-activo");
+      } else {
+        avatarWrapper.classList.remove("con-estado-activo");
+      }
+    }
+
+    // --- 2. NOMBRE DE PERFIL (Solo lectura) ---
+    const elemNombre = document.querySelector("#texto-perfil-nombre span");
+    if (elemNombre) elemNombre.textContent = datosUsuario.nombre || 'Usuario Mova';
+
+    // --- 3. FRASE DE ESTADO (Visualización dinámica estática) ---
+    const btnEstadoSutil = document.querySelector(".btn-estado-sutil");
+    const elemTextoEstado = document.querySelector(".texto-estado");
+    const fraseGuardada = datosUsuario.estadoTexto || datosUsuario.estado || "";
+
+    if (elemTextoEstado) {
+      if (!esMiPerfil && (!fraseGuardada || fraseGuardada.includes("Disponible. Toca para añadir"))) {
+        // En visita, si es la frase por defecto, mostramos la palabra según conexión
+        const estadoConexion = datosUsuario.estadoConexion || datosUsuario.estadoPresencia || "online";
+        elemTextoEstado.textContent = estadoConexion === "ocupado" ? "Ocupado" : (estadoConexion === "offline" ? "Invisible" : "Disponible");
+      } else {
+        elemTextoEstado.textContent = fraseGuardada;
+      }
+    }
+
+    // Cursor estático en modo visitante
+    if (btnEstadoSutil) {
+      btnEstadoSutil.style.cursor = esMiPerfil ? "pointer" : "default";
+    }
+
+    // --- 4. INDICADOR DE CONEXIÓN (LED Estático) ---
+    const elemLedPerfil = document.querySelector(".btn-estado-sutil .punto-online");
+    if (elemLedPerfil) {
+      const estadoConexion = datosUsuario.estadoConexion || datosUsuario.estadoPresencia || "online";
+      let colorLed = "#00f2fe";
+      let sombraLed = "0 0 10px #00f2fe";
+
+      if (estadoConexion === "ocupado") {
+        colorLed = "#ef4444";
+        sombraLed = "0 0 10px #ef4444";
+      } else if (estadoConexion === "offline" || estadoConexion === "invisible") {
+        colorLed = "#888888";
+        sombraLed = "none";
+      }
+
+      elemLedPerfil.style.backgroundColor = colorLed;
+      elemLedPerfil.style.boxShadow = sombraLed;
+    }
+
+    // --- 5. BOTÓN ENVIAR MENSAJE (Exclusivo sin interferencias) ---
+    const btnMensaje = document.getElementById('btn-enviar-mensaje-perfil');
+    if (btnMensaje) {
+      btnMensaje.onclick = (e) => {
+        e.stopPropagation(); // Evita rebotes
+        if (typeof abrirChatConUsuario === "function") {
+          abrirChatConUsuario(uidTarget, datosUsuario.nombre, datosUsuario.fotoUrl);
+        }
+      };
+    }
+
+    // --- 6. CÓDIGO QR PRO DEL VISITADO ---
+    const btnQr = document.getElementById('btn-abrir-qr');
+    if (btnQr) {
+      btnQr.onclick = () => {
+        const urlBase = window.location.origin && window.location.origin !== "null" ? window.location.origin : window.location.href;
+        const urlPerfilTarget = `${urlBase}?user=${uidTarget}`;
+        const imgQr = document.getElementById("img-qr-dinamico");
+        const modalQr = document.getElementById("modal-qr-mova");
+
+        if (imgQr) {
+          imgQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlPerfilTarget)}&color=00f2fe&bgcolor=0a0a12`;
+        }
+        if (modalQr) {
+          modalQr.classList.remove("oculto");
+          modalQr.style.display = "flex";
+        }
+      };
+    }
+
+    // --- 7. REDES SOCIALES (Aviso sin enlace vs Botones activos) ---
+    const redes = datosUsuario.redes || {};
+    const contenedorComunidad = document.querySelector(".tarjeta-bento.comunidad");
+    const botonesRedes = document.querySelectorAll(".red-enlace");
+
+    // Verificar si tiene al menos una red configurada
+    const tieneRedesActivas = Object.keys(redes).some(key => redes[key] && redes[key].trim() !== "");
+
+    // Manejo de aviso "no hay enlace agregado"
+    let avisoSinRedes = document.getElementById("aviso-sin-redes-mova");
+    if (!avisoSinRedes && contenedorComunidad) {
+      avisoSinRedes = document.createElement("p");
+      avisoSinRedes.id = "aviso-sin-redes-mova";
+      avisoSinRedes.style.cssText = "font-size: 0.82rem; color: rgba(255, 255, 255, 0.4); text-align: center; margin-top: 10px; font-style: italic;";
+      avisoSinRedes.textContent = "no hay enlace agregado";
+      contenedorComunidad.appendChild(avisoSinRedes);
+    }
+
+    if (!esMiPerfil && !tieneRedesActivas) {
+      if (avisoSinRedes) avisoSinRedes.style.display = "block";
+    } else {
+      if (avisoSinRedes) avisoSinRedes.style.display = "none";
+    }
+
+    // Renderizado dinámico de los botones
+    botonesRedes.forEach(btn => {
+      const tipoRed = btn.dataset.red;
+      const cuentaUsuario = redes[tipoRed];
+
+      if (cuentaUsuario && cuentaUsuario.trim() !== "") {
+        btn.style.display = "flex";
+        btn.style.opacity = "1";
+        btn.style.borderColor = "#00f2fe";
+        btn.style.boxShadow = "0 0 10px rgba(0, 242, 254, 0.3)";
+
+        btn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          if (!esMiPerfil) {
+            let urlFinal = "";
+            if (tipoRed === "instagram") urlFinal = `https://instagram.com/${cuentaUsuario}`;
+            if (tipoRed === "tiktok") urlFinal = `https://tiktok.com/@${cuentaUsuario}`;
+            if (tipoRed === "facebook") urlFinal = `https://facebook.com/${cuentaUsuario}`;
+
+            if (urlFinal) window.open(urlFinal, '_blank');
+          }
+        };
+      } else {
+        if (!esMiPerfil) {
+          btn.style.display = "none"; // En visita se ocultan los botones sin enlace
+        } else {
+          btn.style.display = "flex"; // El dueño sí los ve en estado tenue para editarlos
+          btn.style.opacity = "0.35";
+          btn.style.borderColor = "rgba(255, 255, 255, 0.08)";
+          btn.style.boxShadow = "none";
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Error al cargar perfil:", error);
+  }
+};

@@ -205,10 +205,20 @@
 
     <!-- FASE 4: ÁREA DE PERFIL -->
     <main class="area-perfil" id="pantalla-perfil">
+
+      <!-- 🔙 BOTÓN VOLVER ATRÁS -->
+      <button id="btn-volver-perfil" class="btn-icono-volver" title="Volver atrás"
+        style="position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <i data-lucide="arrow-left"></i>
+      </button>
+
       <section class="perfil-identidad">
         <div class="avatar-perfil-wrapper">
-          <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Usuario" alt="Mi Foto" class="avatar-perfil-img">
-          <div class="overlay-camara">
+          <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Usuario" alt="Mi Foto" class="avatar-perfil-img"
+            id="perfil-foto">
+
+          <!-- Overlay de la cámara: Solo visible para el dueño del perfil -->
+          <div class="overlay-camara solo-propietario" id="btn-cambiar-foto">
             <i data-lucide="camera"></i>
           </div>
         </div>
@@ -217,18 +227,29 @@
 
         <h2 class="perfil-nombre" id="texto-perfil-nombre">
           <span>Tu Nombre</span>
-          <i data-lucide="pencil" class="icono-lapiz-nombre"></i>
+          <!-- Lápiz para editar nombre: Solo para el dueño -->
+          <i data-lucide="pencil" class="icono-lapiz-nombre solo-propietario" id="btn-editar-nombre"></i>
         </h2>
 
+        <!-- Botón de estado / frase -->
         <button class="btn-estado-sutil" id="btn-editar-estado">
           <span class="punto-online"></span>
-          <span class="texto-estado">Disponible. Toca para añadir estado...</span>
-          <i data-lucide="edit-2" class="icono-lapiz"></i>
+          <span class="texto-estado" id="texto-perfil-estado">Disponible. Toca para añadir estado...</span>
+          <i data-lucide="edit-2" class="icono-lapiz solo-propietario"></i>
         </button>
+
+        <!-- BLOQUE: Acción exclusiva para cuando visitas a otra persona -->
+        <div id="acciones-visitante" class="solo-visitante" style="margin-top: 15px; width: 100%;">
+          <button id="btn-enviar-mensaje-perfil" type="button"
+            style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(0, 242, 254, 0.15); border: 1px solid rgba(0, 242, 254, 0.3); color: #00f2fe; padding: 12px; border-radius: 20px; font-weight: 600; cursor: pointer;">
+            <i data-lucide="message-square"></i> Enviar Mensaje
+          </button>
+        </div>
       </section>
 
       <section class="perfil-opciones">
-        <div class="caja-aura">
+        <!-- Selección de Aura: Solo editable por el dueño -->
+        <div class="caja-aura solo-propietario">
           <h3>Tu Aura</h3>
           <div class="selector-aura-pastilla">
             <div class="glizzy-deslizante" id="indicador-aura"></div>
@@ -263,6 +284,7 @@
           </div>
         </div>
 
+        <!-- Acciones generales del perfil -->
         <div class="grupo-acciones-perfil" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
           <button class="btn-compartir"
             style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px;">
@@ -275,15 +297,16 @@
               <i data-lucide="qr-code"></i> QR Pro
             </button>
 
-            <button type="button" id="btn-limpiar-historial-global"
+            <!-- Limpiar historial: Solo disponible para el dueño -->
+            <button type="button" id="btn-limpiar-historial-global" class="solo-propietario"
               style="flex: 1; background: rgba(255, 75, 43, 0.05); border: 1px solid rgba(255, 75, 43, 0.15); border-radius: 20px; color: rgba(255, 75, 43, 0.9); padding: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer;">
               <i data-lucide="trash-2" style="color: #ff4b2b; width: 18px; height: 18px;"></i> Limpiar
             </button>
-
           </div>
         </div>
 
-        <div class="caja-ajustes">
+        <!-- Caja de Ajustes: Solo visible para el dueño -->
+        <div class="caja-ajustes solo-propietario">
           <h3>Ajustes</h3>
           <div class="ajuste-item">
             <div class="ajuste-info">
@@ -307,8 +330,9 @@
           </div>
         </div>
 
+        <!-- Redes sociales públicas: Visibles para todos -->
         <div class="tarjeta-bento comunidad">
-          <h3>Mis Redes Sociales 🌐</h3>
+          <h3>Redes Sociales 🌐</h3>
           <div class="iconos-redes" style="display: flex; justify-content: center; gap: 20px; margin-top: 15px;">
 
             <button type="button" class="red-enlace red-instagram" data-red="instagram"
