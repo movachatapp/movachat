@@ -534,9 +534,16 @@ onAuthStateChanged(auth, async (user) => {
             }
           }
 
-          // 🚀 3. CARGAR CONTACTOS Y LISTA
+          // 🚀 CARGAR CONTACTOS Y LISTA
           if (typeof cargarContactosAprobados === "function") {
             cargarContactosAprobados(user.uid);
+
+            // ⚡ Auto-sincronizador de respaldo para carga inicial lenta
+            setTimeout(() => {
+              if (typeof cargarContactosAprobados === "function") {
+                cargarContactosAprobados(user.uid);
+              }
+            }, 1200);
           }
 
           // 🔕 SINCRONIZAR SILENCIADOS DESDE FIREBASE (CON PROGRAMADOR Y LIMPIEZA AUTOMÁTICA)
@@ -3558,6 +3565,11 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
       contenedorLista.appendChild(tarjetaContacto);
       if (window.lucide) window.lucide.createIcons({ targets: [tarjetaContacto] });
+
+      const datosFresh = (window.usuariosCacheGlobal && window.usuariosCacheGlobal[contactoUid]) || datosUsuario;
+      if (window.actualizarTarjetaContactoUI && datosFresh) {
+        window.actualizarTarjetaContactoUI(contactoUid, datosFresh);
+      }
     }
 
     // Actualizar datos del último mensaje en la tarjeta
@@ -3634,6 +3646,14 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   // Guardar desuscripción en el mapa global
   window.desuscripcionesUltimoMsg[contactoUid] = unsubscribe;
 }
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && auth.currentUser) {
+    if (typeof cargarContactosAprobados === "function") {
+      cargarContactosAprobados(auth.currentUser.uid);
+    }
+  }
+});
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
 
@@ -3939,7 +3959,7 @@ function inyectarBotonBorrarManualVisor() {
 
     if (confirmado) {
       const urlBorrar = imagenEstadoGuardada;
-      
+
       if (typeof cerrarEstadoMova === "function") cerrarEstadoMova();
 
       await borrarMiEstadoCompleto(usuarioActual.uid, urlBorrar);
@@ -6286,6 +6306,62 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
   }
 };
 
+// 🌟 FUNCIÓN AUXILIAR PARA ACTUALIZAR ANILLO DE HISTORIA Y LEDS EN LA TARJETA
+window.actualizarTarjetaContactoUI = function (uid, usuario) {
+  if (!uid || !usuario) return;
+
+  // 1. Guardar siempre en la caché global aunque la tarjeta aún no exista en el DOM
+  window.usuariosCacheGlobal = window.usuariosCacheGlobal || {};
+  window.usuariosCacheGlobal[uid] = usuario;
+
+  const tarjeta = document.getElementById(`tarjeta-chat-${uid}`);
+  if (!tarjeta) return; // Si la tarjeta aún se está creando, se pintará cuando termine escucharUltimoMensajeContacto
+
+  const avatarCaja = tarjeta.querySelector('.chat-avatar-caja');
+  const imgAvatar = tarjeta.querySelector('.chat-avatar-caja img');
+  const led = tarjeta.querySelector('.punto-online-chat');
+  const TIEMPO_24H = 24 * 60 * 60 * 1000;
+  const ahora = Date.now();
+
+  // A) Verificar si tiene historia activa (< 24 horas)
+  const tieneHistoriaUrl = usuario.estadoHistoriaUrl;
+  const fechaHistoria = usuario.estadoHistoriaFecha || 0;
+  const esHistoriaValida = tieneHistoriaUrl && (ahora - fechaHistoria < TIEMPO_24H);
+
+  if (esHistoriaValida) {
+    tarjeta.dataset.estadoUrl = usuario.estadoHistoriaUrl;
+    tarjeta.dataset.estadoTexto = usuario.estadoHistoriaTexto || "";
+    if (avatarCaja) avatarCaja.classList.add("con-estado-activo");
+  } else {
+    delete tarjeta.dataset.estadoUrl;
+    delete tarjeta.dataset.estadoTexto;
+    if (avatarCaja) avatarCaja.classList.remove("con-estado-activo");
+  }
+
+  // B) Actualizar foto de perfil
+  if (imgAvatar && usuario.fotoUrl && imgAvatar.src !== usuario.fotoUrl) {
+    imgAvatar.src = usuario.fotoUrl;
+  }
+
+  // C) Actualizar LED de conexión
+  if (led) {
+    const estadoManual = usuario.estadoConexion || usuario.estadoPresencia || "online";
+    let colorLed = "#00f2fe";
+    let sombraLed = "0 0 8px #00f2fe";
+
+    if (estadoManual === "ocupado") {
+      colorLed = "#ef4444";
+      sombraLed = "0 0 8px #ef4444";
+    } else if (estadoManual === "offline" || estadoManual === "invisible") {
+      colorLed = "#888888";
+      sombraLed = "0 0 8px #888888";
+    }
+
+    led.style.backgroundColor = colorLed;
+    led.style.boxShadow = sombraLed;
+  }
+};
+
 // 🟢 CARGAR CONTACTOS Y SINCRONIZAR HISTORIAS (24H) EN TIEMPO REAL
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
@@ -6302,14 +6378,12 @@ function cargarContactosAprobados(usuarioActualUid) {
       try {
         if (snapshot.exists()) {
           const usuarios = snapshot.val();
-          const TIEMPO_24H = 24 * 60 * 60 * 1000;
-          const ahora = Date.now();
+          window.usuariosCacheGlobal = usuarios;
 
           Object.keys(usuarios).forEach((uid) => {
             const usuario = usuarios[uid];
 
             if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
-              // 1. Registrar escuchador de chats si no existía
               if (!contactosRegistradosSet.has(uid)) {
                 contactosRegistradosSet.add(uid);
 
@@ -6318,55 +6392,8 @@ function cargarContactosAprobados(usuarioActualUid) {
                 }
               }
 
-              // 2. SINCRONIZAR HISTORIA Y ESTADOS EN VIVO EN LA TARJETA DEL CONTACTO
-              const tarjeta = document.getElementById(`tarjeta-chat-${uid}`);
-              if (tarjeta) {
-                const avatarCaja = tarjeta.querySelector('.chat-avatar-caja');
-                const imgAvatar = tarjeta.querySelector('.chat-avatar-caja img');
-                const led = tarjeta.querySelector('.punto-online-chat');
-
-                // A) Verificar si el contacto tiene una historia activa (< 24 horas)
-                const tieneHistoriaUrl = usuario.estadoHistoriaUrl;
-                const fechaHistoria = usuario.estadoHistoriaFecha || 0;
-                const esHistoriaValida = tieneHistoriaUrl && (ahora - fechaHistoria < TIEMPO_24H);
-
-                if (esHistoriaValida) {
-                  // Asignar datos a la tarjeta para que el clic abra la historia
-                  tarjeta.dataset.estadoUrl = usuario.estadoHistoriaUrl;
-                  tarjeta.dataset.estadoTexto = usuario.estadoHistoriaTexto || "";
-
-                  // Activar aro de neón en el avatar
-                  if (avatarCaja) avatarCaja.classList.add("con-estado-activo");
-                } else {
-                  // Si no tiene o ya pasaron 24h, quitar el aro y los datos
-                  delete tarjeta.dataset.estadoUrl;
-                  delete tarjeta.dataset.estadoTexto;
-                  if (avatarCaja) avatarCaja.classList.remove("con-estado-activo");
-                }
-
-                // B) Actualizar foto de perfil si la cambió
-                if (imgAvatar && usuario.fotoUrl && imgAvatar.src !== usuario.fotoUrl) {
-                  imgAvatar.src = usuario.fotoUrl;
-                }
-
-                // C) Actualizar LED de conexión en vivo
-                if (led) {
-                  const estadoManual = usuario.estadoConexion || usuario.estadoPresencia || "online";
-                  let colorLed = "#00f2fe";
-                  let sombraLed = "0 0 8px #00f2fe";
-
-                  if (estadoManual === "ocupado") {
-                    colorLed = "#ef4444";
-                    sombraLed = "0 0 8px #ef4444";
-                  } else if (estadoManual === "offline" || estadoManual === "invisible") {
-                    colorLed = "#888888";
-                    sombraLed = "0 0 8px #888888";
-                  }
-
-                  led.style.backgroundColor = colorLed;
-                  led.style.boxShadow = sombraLed;
-                }
-              }
+              // Intentar actualizar la tarjeta
+              window.actualizarTarjetaContactoUI(uid, usuario);
             }
           });
         }
@@ -7481,7 +7508,7 @@ function mostrarConfirmacionMova({
 // 1. Detectar cuando cambia el Hash en la URL (ej. #perfil/ID_USUARIO)
 window.addEventListener('hashchange', () => {
   const hash = window.location.hash;
-  
+
   if (hash.startsWith('#perfil/')) {
     const uidTarget = hash.replace('#perfil/', '');
     cargarPerfilUsuario(uidTarget);
@@ -7492,9 +7519,9 @@ window.addEventListener('hashchange', () => {
 // 🔙 BOTÓN VOLVER / CERRAR DESDE LA PANTALLA DE PERFIL
 // ==========================================================
 document.addEventListener("click", (e) => {
-  const btnVolver = e.target.closest("#btn-volver-perfil") || 
-                    e.target.closest("#btn-cerrar-perfil") || 
-                    e.target.closest("#pantalla-perfil .btn-volver");
+  const btnVolver = e.target.closest("#btn-volver-perfil") ||
+    e.target.closest("#btn-cerrar-perfil") ||
+    e.target.closest("#pantalla-perfil .btn-volver");
 
   if (btnVolver) {
     e.preventDefault();
@@ -7509,15 +7536,15 @@ document.addEventListener("click", (e) => {
     if (window.contactoActivoUid && pantallaChatPrivado) {
       if (pantallaPerfil) pantallaPerfil.style.display = "none";
       if (menuFlotante) menuFlotante.style.display = "none"; // 🚀 Oculta el menú inferior
-      
+
       pantallaChatPrivado.style.display = "flex";
       pantallaChatPrivado.classList.add("pantalla-completa");
-    } 
+    }
     // 2. Si regresas a la lista general, mostramos el menú flotante
     else if (pantallaChats) {
       if (pantallaPerfil) pantallaPerfil.style.display = "none";
       if (menuFlotante) menuFlotante.style.display = "flex";
-      
+
       pantallaChats.style.display = "flex";
 
       const botonesMenu = document.querySelectorAll(".menu-flotante .menu-btn");
@@ -7530,16 +7557,22 @@ document.addEventListener("click", (e) => {
 });
 
 // ==========================================================
-// 👤 CARGAR PERFIL DE USUARIO (MODO PROPIETARIO VS VISITANTE)
+// 👤 CARGAR PERFIL DE USUARIO (MODO PROPIETARIO VS VISITANTE EN TIEMPO REAL)
 // ==========================================================
-window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
+window.cargarPerfilUsuario = function cargarPerfilUsuario(uidTarget) {
   const usuarioActual = auth.currentUser;
   const pantallaPerfil = document.getElementById('pantalla-perfil');
   const menuFlotante = document.querySelector(".menu-flotante");
   
   if (!pantallaPerfil || !uidTarget) return;
 
-  // 1. Mostrar pantalla de perfil y asegurar menú inferior
+  // 1. Apagar escuchador previo si estábamos viendo otro perfil
+  if (window.desuscribirPerfilEnVivo) {
+    window.desuscribirPerfilEnVivo();
+    window.desuscribirPerfilEnVivo = null;
+  }
+
+  // 2. Mostrar pantalla de perfil y asegurar menú inferior
   if (typeof switchPantalla === "function") {
     switchPantalla(pantallaPerfil, pantallaChats, pantallaBienvenida, pantallaChatPrivado);
   } else {
@@ -7548,7 +7581,7 @@ window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
 
   if (menuFlotante) menuFlotante.style.display = "flex";
 
-  // 2. Evaluar Modo Visitante vs Mi Perfil
+  // 3. Evaluar Modo Visitante vs Mi Perfil
   const esMiPerfil = (usuarioActual && uidTarget === usuarioActual.uid);
 
   if (esMiPerfil) {
@@ -7557,8 +7590,10 @@ window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
     pantallaPerfil.classList.add('modo-visitante');
   }
 
-  try {
-    const snapshot = await get(ref(db, `usuarios/${uidTarget}`));
+  // 4. ESCUCHADOR EN TIEMPO REAL CON onValue
+  const userRef = ref(db, `usuarios/${uidTarget}`);
+
+  window.desuscribirPerfilEnVivo = onValue(userRef, (snapshot) => {
     const datosUsuario = snapshot.exists() ? snapshot.val() : null;
 
     if (!datosUsuario) {
@@ -7600,18 +7635,17 @@ window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
       }
     }
 
-    // --- 2. NOMBRE DE PERFIL (Solo lectura) ---
+    // --- 2. NOMBRE DE PERFIL ---
     const elemNombre = document.querySelector("#texto-perfil-nombre span");
     if (elemNombre) elemNombre.textContent = datosUsuario.nombre || 'Usuario Mova';
 
-    // --- 3. FRASE DE ESTADO (Visualización dinámica estática) ---
+    // --- 3. FRASE DE ESTADO ---
     const btnEstadoSutil = document.querySelector(".btn-estado-sutil");
     const elemTextoEstado = document.querySelector(".texto-estado");
     const fraseGuardada = datosUsuario.estadoTexto || datosUsuario.estado || "";
 
     if (elemTextoEstado) {
       if (!esMiPerfil && (!fraseGuardada || fraseGuardada.includes("Disponible. Toca para añadir"))) {
-        // En visita, si es la frase por defecto, mostramos la palabra según conexión
         const estadoConexion = datosUsuario.estadoConexion || datosUsuario.estadoPresencia || "online";
         elemTextoEstado.textContent = estadoConexion === "ocupado" ? "Ocupado" : (estadoConexion === "offline" ? "Invisible" : "Disponible");
       } else {
@@ -7619,12 +7653,11 @@ window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
       }
     }
 
-    // Cursor estático en modo visitante
     if (btnEstadoSutil) {
       btnEstadoSutil.style.cursor = esMiPerfil ? "pointer" : "default";
     }
 
-    // --- 4. INDICADOR DE CONEXIÓN (LED Estático) ---
+    // --- 4. INDICADOR DE CONEXIÓN (LED EN TIEMPO REAL) ---
     const elemLedPerfil = document.querySelector(".btn-estado-sutil .punto-online");
     if (elemLedPerfil) {
       const estadoConexion = datosUsuario.estadoConexion || datosUsuario.estadoPresencia || "online";
@@ -7643,18 +7676,18 @@ window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
       elemLedPerfil.style.boxShadow = sombraLed;
     }
 
-    // --- 5. BOTÓN ENVIAR MENSAJE (Exclusivo sin interferencias) ---
+    // --- 5. BOTÓN ENVIAR MENSAJE ---
     const btnMensaje = document.getElementById('btn-enviar-mensaje-perfil');
     if (btnMensaje) {
       btnMensaje.onclick = (e) => {
-        e.stopPropagation(); // Evita rebotes
+        e.stopPropagation();
         if (typeof abrirChatConUsuario === "function") {
           abrirChatConUsuario(uidTarget, datosUsuario.nombre, datosUsuario.fotoUrl);
         }
       };
     }
 
-    // --- 6. CÓDIGO QR PRO DEL VISITADO ---
+    // --- 6. CÓDIGO QR PRO ---
     const btnQr = document.getElementById('btn-abrir-qr');
     if (btnQr) {
       btnQr.onclick = () => {
@@ -7673,15 +7706,13 @@ window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
       };
     }
 
-    // --- 7. REDES SOCIALES (Aviso sin enlace vs Botones activos) ---
+    // --- 7. REDES SOCIALES ---
     const redes = datosUsuario.redes || {};
     const contenedorComunidad = document.querySelector(".tarjeta-bento.comunidad");
     const botonesRedes = document.querySelectorAll(".red-enlace");
 
-    // Verificar si tiene al menos una red configurada
     const tieneRedesActivas = Object.keys(redes).some(key => redes[key] && redes[key].trim() !== "");
 
-    // Manejo de aviso "no hay enlace agregado"
     let avisoSinRedes = document.getElementById("aviso-sin-redes-mova");
     if (!avisoSinRedes && contenedorComunidad) {
       avisoSinRedes = document.createElement("p");
@@ -7697,7 +7728,6 @@ window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
       if (avisoSinRedes) avisoSinRedes.style.display = "none";
     }
 
-    // Renderizado dinámico de los botones
     botonesRedes.forEach(btn => {
       const tipoRed = btn.dataset.red;
       const cuentaUsuario = redes[tipoRed];
@@ -7723,17 +7753,14 @@ window.cargarPerfilUsuario = async function cargarPerfilUsuario(uidTarget) {
         };
       } else {
         if (!esMiPerfil) {
-          btn.style.display = "none"; // En visita se ocultan los botones sin enlace
+          btn.style.display = "none";
         } else {
-          btn.style.display = "flex"; // El dueño sí los ve en estado tenue para editarlos
+          btn.style.display = "flex";
           btn.style.opacity = "0.35";
           btn.style.borderColor = "rgba(255, 255, 255, 0.08)";
           btn.style.boxShadow = "none";
         }
       }
     });
-
-  } catch (error) {
-    console.error("❌ Error al cargar perfil:", error);
-  }
+  });
 };

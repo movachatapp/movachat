@@ -2,7 +2,7 @@
 // 📱 SERVICE WORKER MOVACHAT (Versión Optimizada)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.0.2';
+const CACHE_NAME = 'movachat-v1.0.0.3';
 
 // Recursos estáticos a descargar e instalar inmediatamente
 const ASSETS_TO_CACHE = [
