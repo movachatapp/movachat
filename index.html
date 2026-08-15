@@ -213,6 +213,8 @@
           </div>
         </div>
 
+        <input type="file" id="input-foto-perfil" accept="image/*" style="display: none;">
+
         <h2 class="perfil-nombre" id="texto-perfil-nombre">
           <span>Tu Nombre</span>
           <i data-lucide="pencil" class="icono-lapiz-nombre"></i>
@@ -546,8 +548,10 @@
       <button class="opcion-menu-ctx" data-accion="editar"><i data-lucide="edit-3"></i> Editar mensaje</button>
       <button class="opcion-menu-ctx" data-accion="reenviar"><i data-lucide="forward"></i> Reenviar</button>
       <hr class="divisor-menu-ctx">
-      <button class="opcion-menu-ctx texto-rojo" data-accion="eliminar-todos"><i data-lucide="trash-2"></i> Eliminar para todos</button>
-      <button class="opcion-menu-ctx texto-rojo" data-accion="eliminar-mi"><i data-lucide="user-minus"></i> Eliminar para mí</button>
+      <button class="opcion-menu-ctx texto-rojo" data-accion="eliminar-todos"><i data-lucide="trash-2"></i> Eliminar
+        para todos</button>
+      <button class="opcion-menu-ctx texto-rojo" data-accion="eliminar-mi"><i data-lucide="user-minus"></i> Eliminar
+        para mí</button>
     </div>
 
     <div class="menu-contextual" id="menu-tarjetas-chat" style="width: 210px; display: none;">
@@ -869,6 +873,9 @@
   <!-- 🔊 AUDIOS DEL SISTEMA -->
   <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
   <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
+
+  <!-- 📦 CDN OFICIAL DE SUPABASE -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <!-- 📜 SCRIPTS PRINCIPALES (SIEMPRE AL FINAL DEL BODY) -->
   <script type="module" src="app.js?v=2"></script>

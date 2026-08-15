@@ -47,6 +47,284 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
+// --- CONFIGURACIÓN DE SUPABASE (STORAGE) ---
+const SUPABASE_URL = "https://tnzsdtmesqfcunqtoqyh.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_wLeldDB6ZazOpVq21_cg1A_P1ndcD-N";
+// Inicializamos el cliente global de Supabase
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/**
+ * Sube un archivo a Supabase Storage y retorna la URL pública.
+ * @param {File} archivo - El archivo File/Blob obtenido del input.
+ * @param {string} bucket - Nombre de tu bucket en Supabase (ej: 'movachat-adjuntos').
+ * @returns {Promise<string|null>} URL pública del archivo o null si ocurre un error.
+ */
+async function subirArchivoSupabase(archivo, bucket = "movachat-adjuntos") {
+  try {
+    if (!archivo) return null;
+
+    // 1. Generar un nombre único basado en fecha y extensión
+    const extension = archivo.name ? archivo.name.split('.').pop() : 'bin';
+    const nombreUnico = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${extension}`;
+    const rutaArchivo = `adjuntos/${nombreUnico}`;
+
+    // 2. Subir archivo a Supabase Storage
+    const { data, error } = await supabaseClient
+      .storage
+      .from(bucket)
+      .upload(rutaArchivo, archivo, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      console.error("❌ Error subiendo a Supabase Storage:", error.message);
+      return null;
+    }
+
+    // 3. Obtener la URL pública del archivo subido
+    const { data: publicUrlData } = supabaseClient
+      .storage
+      .from(bucket)
+      .getPublicUrl(rutaArchivo);
+
+    console.log("✅ Archivo subido con éxito a Supabase:", publicUrlData.publicUrl);
+    return publicUrlData.publicUrl;
+
+  } catch (err) {
+    console.error("❌ Error inesperado en subirArchivoSupabase:", err);
+    return null;
+  }
+}
+
+/**
+ * 🗜️ COMPRESOR NATIVO DE IMÁGENES A WEBP (CANVAS)
+ * @param {File} archivoImagen - Archivo de imagen original.
+ * @param {Object} opciones - Configuración de dimensiones y calidad.
+ * @returns {Promise<File>} Archivo File comprimido en formato WebP.
+ */
+function comprimirImagenWebP(archivoImagen, opciones = { maxAncho: 1200, maxAlto: 1200, calidad: 0.75, esPerfil: false }) {
+  return new Promise((resolve, reject) => {
+    if (!archivoImagen || !archivoImagen.type.startsWith("image/")) {
+      return resolve(archivoImagen); // Si no es imagen, retornar archivo original
+    }
+
+    const lector = new FileReader();
+    lector.readAsDataURL(archivoImagen);
+
+    lector.onload = (evento) => {
+      const img = new Image();
+      img.src = evento.target.result;
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        let ancho = img.width;
+        let alto = img.height;
+
+        if (opciones.esPerfil) {
+          // 👤 FOTO DE PERFIL: Recorte cuadrado centrado 250x250px
+          canvas.width = 250;
+          canvas.height = 250;
+
+          const minLado = Math.min(ancho, alto);
+          const srcX = (ancho - minLado) / 2;
+          const srcY = (alto - minLado) / 2;
+
+          ctx.drawImage(img, srcX, srcY, minLado, minLado, 0, 0, 250, 250);
+        } else {
+          // 💬 IMAGEN DE CHAT: Escalar proporcionalmente (Máx 1200px)
+          const maxAncho = opciones.maxAncho || 1200;
+          const maxAlto = opciones.maxAlto || 1200;
+
+          if (ancho > maxAncho || alto > maxAlto) {
+            if (ancho > alto) {
+              alto = Math.round((alto * maxAncho) / ancho);
+              ancho = maxAncho;
+            } else {
+              ancho = Math.round((ancho * maxAlto) / alto);
+              alto = maxAlto;
+            }
+          }
+
+          canvas.width = ancho;
+          canvas.height = alto;
+          ctx.drawImage(img, 0, 0, ancho, alto);
+        }
+
+        // Exportar como Blob WebP comprimido
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              console.warn("⚠️ No se pudo comprimir a WebP, usando archivo original.");
+              return resolve(archivoImagen);
+            }
+
+            const nombreOriginal = archivoImagen.name ? archivoImagen.name.split('.')[0] : "foto";
+            const nuevoArchivo = new File([blob], `${nombreOriginal}_comp.webp`, {
+              type: "image/webp",
+              lastModified: Date.now()
+            });
+
+            console.log(`🗜️ Imagen comprimida: ${(archivoImagen.size / 1024).toFixed(1)} KB ➔ ${(nuevoArchivo.size / 1024).toFixed(1)} KB (WebP)`);
+            resolve(nuevoArchivo);
+          },
+          "image/webp",
+          opciones.calidad || 0.75
+        );
+      };
+
+      img.onerror = (err) => reject(err);
+    };
+
+    lector.onerror = (err) => reject(err);
+  });
+}
+
+/**
+ * 🗑️ ELIMINAR ARCHIVO FÍSICO DE SUPABASE STORAGE A PARTIR DE SU URL
+ * @param {string} urlPublica - URL completa guardada en la nube.
+ * @param {string} bucket - Nombre del bucket en Supabase.
+ */
+async function eliminarArchivoSupabase(urlPublica, bucket = "movachat-adjuntos") {
+  try {
+    if (!urlPublica || !urlPublica.includes("supabase.co")) return;
+
+    // Extraer la ruta interna del archivo desde la URL pública
+    const partesUrl = urlPublica.split(`${bucket}/`);
+    if (partesUrl.length < 2) return;
+
+    const rutaInterna = partesUrl[1];
+
+    const { error } = await supabaseClient
+      .storage
+      .from(bucket)
+      .remove([rutaInterna]);
+
+    if (error) {
+      console.error("❌ Error al eliminar archivo de Supabase:", error.message);
+    } else {
+      console.log("🗑️ Archivo antiguo eliminado de Supabase Storage:", rutaInterna);
+    }
+  } catch (err) {
+    console.error("❌ Error inesperado en eliminarArchivoSupabase:", err);
+  }
+}
+
+// ========================================================
+// 👤 SUBIR Y REEMPLAZAR FOTO DE PERFIL CON COMPRESIÓN Y LIMPIEZA
+// ========================================================
+const inputFotoPerfil = document.getElementById("input-foto-perfil");
+
+if (inputFotoPerfil) {
+  inputFotoPerfil.addEventListener("change", async (e) => {
+    const archivoSel = e.target.files && e.target.files[0];
+    const usuarioActual = auth.currentUser;
+
+    if (!archivoSel || !usuarioActual) return;
+
+    try {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Optimizando y subiendo nueva foto de perfil... 👤", "☁️", "#00f2fe");
+      }
+
+      // 1. Obtener la foto de perfil actual desde Firebase para saber si debemos borrarla
+      const userSnap = await get(ref(db, `usuarios/${usuarioActual.uid}`));
+      const fotoUrlAnterior = userSnap.exists() ? userSnap.val().fotoUrl : null;
+
+      // 2. Comprimir imagen a WebP de 250x250px (< 30 KB)
+      const fotoPerfilComprimida = await comprimirImagenWebP(archivoSel, {
+        esPerfil: true,
+        calidad: 0.8
+      });
+
+      // 3. Subir la nueva foto a Supabase Storage
+      const nuevaUrlFoto = await subirArchivoSupabase(fotoPerfilComprimida, "movachat-adjuntos");
+
+      if (nuevaUrlFoto) {
+        // 4. Si la subida fue exitosa, borrar la foto anterior de Supabase para evitar basura
+        if (fotoUrlAnterior) {
+          await eliminarArchivoSupabase(fotoUrlAnterior, "movachat-adjuntos");
+        }
+
+        // 5. Actualizar la nueva URL en Firebase y Auth
+        await update(ref(db, `usuarios/${usuarioActual.uid}`), { fotoUrl: nuevaUrlFoto });
+        await updateProfile(usuarioActual, { photoURL: nuevaUrlFoto });
+
+        // 6. Actualizar elemento visual en la interfaz
+        const elemFotoPerfil = document.querySelector(".avatar-perfil-img");
+        if (elemFotoPerfil) elemFotoPerfil.src = nuevaUrlFoto;
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("¡Foto de perfil actualizada y optimizada! ✨", "📸", "#00f2fe");
+        }
+      }
+    } catch (err) {
+      console.error("❌ Error al actualizar foto de perfil:", err);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("No se pudo actualizar la foto de perfil.", "❌", "#ff4b2b");
+      }
+    }
+  });
+}
+
+// ========================================================
+// 📸 INTERACTIVIDAD DE FOTO DE PERFIL (VER HD Y CAMBIAR)
+// ========================================================
+
+// 1. Capturamos los elementos de tu HTML exacto
+const imgAvatarPerfil = document.querySelector(".avatar-perfil-img"); // Atrapa tu imagen
+const btnCamarita = document.querySelector(".overlay-camara"); // ¡Actualizado a tu clase overlay-camara!
+
+// 2. Lógica para la Camarita (Abrir Galería y probar Supabase)
+if (btnCamarita && inputFotoPerfil) {
+  btnCamarita.addEventListener("click", (e) => {
+    // Evita que el clic abra la foto en HD por accidente
+    e.stopPropagation();
+    
+    // Simula un clic en el input oculto para abrir la galería del celular/PC
+    inputFotoPerfil.click();
+  });
+}
+
+// 3. Lógica para la Foto de Perfil (Abrir Modal HD)
+if (imgAvatarPerfil) {
+  imgAvatarPerfil.style.cursor = "pointer";
+  
+  imgAvatarPerfil.addEventListener("click", (e) => {
+    e.stopPropagation();
+
+    const urlMiFoto = imgAvatarPerfil.src;
+    // Buscamos tu nombre en el perfil, si no lo encuentra dice "Mí"
+    const miNombreNodo = document.querySelector("#texto-perfil-nombre span");
+    const miNombre = miNombreNodo ? miNombreNodo.textContent : "Mí";
+
+    // Reutilizamos el visor de historias
+    const visor = document.getElementById("visor-historias-mova");
+    const imgRender = document.getElementById("img-estado-render");
+    const textoRender = document.getElementById("texto-estado-render");
+    const lineaProg = document.getElementById("linea-progreso-estado");
+
+    if (visor && imgRender && textoRender) {
+      imgRender.src = urlMiFoto;
+      textoRender.textContent = `Foto de perfil de ${miNombre}`;
+
+      // Ocultamos la barrita de tiempo de las historias
+      if (lineaProg && lineaProg.parentNode) {
+        lineaProg.parentNode.style.visibility = "hidden";
+      }
+
+      visor.classList.remove("oculto");
+
+      // Notificación estilo Glassmorphism
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Visualizando tu foto en Alta Definición 🌌", "📸", "#00f2fe");
+      }
+    }
+  });
+}
+
 const contactosRegistradosSet = new Set();
 
 // 🌐 FORZAR IDIOMA ESPAÑOL EN FIREBASE
@@ -374,7 +652,7 @@ onAuthStateChanged(auth, async (user) => {
     }
   } else {
     if (authPantalla) authPantalla.style.display = "flex";
-    
+
     // 🛡️ Limpiar formulario al quedar sin sesión activa
     const formAuth = document.getElementById("form-auth");
     if (formAuth) formAuth.reset();
@@ -1112,15 +1390,29 @@ async function iniciarGrabacionVoz(e) {
       if (event.data.size > 0) fragmentosAudio.push(event.data);
     };
 
-    mediaRecorderAudio.onstop = () => {
+    // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA DIRECTA A SUPABASE
+    mediaRecorderAudio.onstop = async () => {
       if (streamAudioLive) streamAudioLive.getTracks().forEach(track => track.stop());
 
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
         const blobAudio = new Blob(fragmentosAudio, { type: mimeAudio });
-        const urlAudioReal = URL.createObjectURL(blobAudio);
+
+        // Crear archivo File listo para Supabase
+        const extensionAudio = mimeAudio.includes('mp4') ? 'm4a' : 'webm';
+        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${extensionAudio}`, { type: mimeAudio });
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Subiendo nota de voz a Supabase... 🎙️", "☁️", "#00f2fe");
+        }
+
+        // Subir nota de voz a Supabase Storage
+        const urlAudioSupabase = await subirArchivoSupabase(archivoAudio, "movachat-adjuntos");
+
+        // Si la subida fue exitosa usa la URL fija de Supabase, si no usa la local de respaldo
+        const urlFinalAudio = urlAudioSupabase || URL.createObjectURL(blobAudio);
 
         if (typeof inyectarNotaDeVozBurbuja === "function") {
-          inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlAudioReal);
+          inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlFinalAudio);
         }
       }
     };
@@ -1287,7 +1579,7 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 let estaEnviandoMensaje = false;
 
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS + SUPABASE STORAGE)
 // ========================================================
 async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
@@ -1410,24 +1702,54 @@ async function enviarMensajeNuevo() {
   const vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
   if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
 
+  // 📦 SUBIDA DE ARCHIVOS ADJUNTOS A SUPABASE STORAGE
   if (tieneAdjunto) {
     objetoMensaje.tipoAdjunto = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
 
-    if (objetoMensaje.tipoAdjunto === 'foto') {
-      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "";
-    } else if (objetoMensaje.tipoAdjunto === 'documento') {
-      objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : "Documento_Mova.pdf";
-      objetoMensaje.urlAdjunto = imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "";
-    } else if (objetoMensaje.tipoAdjunto === 'video') {
-      const urlVideoCapturado = imgMiniaturaAdjunto && imgMiniaturaAdjunto.src && imgMiniaturaAdjunto.src.startsWith("blob:")
-        ? imgMiniaturaAdjunto.src
-        : "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
-      objetoMensaje.urlAdjunto = urlVideoCapturado;
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Subiendo archivo multimedia a Supabase... ☁️", "📤", "#00f2fe");
     }
 
-    // Limpiar caja de vista previa
+    let urlSubidaSupabase = null;
+
+    try {
+      if (objetoMensaje.tipoAdjunto === 'foto' && inputRealGaleria && inputRealGaleria.files[0]) {
+        // 🗜️ Comprimir la foto antes de subir a Supabase
+        const fotoComprimida = await comprimirImagenWebP(inputRealGaleria.files[0], {
+          maxAncho: 1200,
+          maxAlto: 1200,
+          calidad: 0.75,
+          esPerfil: false
+        });
+
+        urlSubidaSupabase = await subirArchivoSupabase(fotoComprimida, "movachat-adjuntos");
+      } else if (objetoMensaje.tipoAdjunto === 'documento' && inputRealDocumento && inputRealDocumento.files[0]) {
+        objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : inputRealDocumento.files[0].name;
+        urlSubidaSupabase = await subirArchivoSupabase(inputRealDocumento.files[0], "movachat-adjuntos");
+      } else if (objetoMensaje.tipoAdjunto === 'video' && imgMiniaturaAdjunto && imgMiniaturaAdjunto.src) {
+        // Convertir la URL blob temporal del video capturado a un objeto File para subida
+        if (imgMiniaturaAdjunto.src.startsWith("blob:")) {
+          const respuestaBlob = await fetch(imgMiniaturaAdjunto.src);
+          const blobVideo = await respuestaBlob.blob();
+          const archivoVideo = new File([blobVideo], `video_${Date.now()}.mp4`, { type: blobVideo.type || 'video/mp4' });
+          urlSubidaSupabase = await subirArchivoSupabase(archivoVideo, "movachat-adjuntos");
+        } else {
+          urlSubidaSupabase = imgMiniaturaAdjunto.src;
+        }
+      }
+    } catch (errSubida) {
+      console.error("❌ Error al procesar subida a Supabase:", errSubida);
+    }
+
+    // Asignar URL subida o mantener fallback en caso extremo
+    objetoMensaje.urlAdjunto = urlSubidaSupabase || (imgMiniaturaAdjunto ? imgMiniaturaAdjunto.src : "");
+
+    // Limpiar caja de vista previa e inputs de archivo
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
     if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
+    if (inputRealGaleria) inputRealGaleria.value = "";
+    if (inputRealDocumento) inputRealDocumento.value = "";
+
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
     if (iconoPrevio) iconoPrevio.remove();
     if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
@@ -1732,7 +2054,7 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
               const datosMensaje = snapshot.val();
               const tiempoMensaje = datosMensaje.timestamp || 0;
               const tiempoActual = Date.now();
-              
+
               // Matemáticas: Restamos el tiempo actual menos el del mensaje (da en milisegundos).
               // Lo dividimos entre 60,000 (que son los milisegundos en un minuto) para tener los minutos reales.
               const diferenciaMinutos = (tiempoActual - tiempoMensaje) / 60000;
@@ -1765,7 +2087,7 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
             if (typeof mostrarAvisoPremium === "function") {
               mostrarAvisoPremium("Mensaje eliminado para ti.", "🗑️", "#ff4b2b");
             }
-            desaparecerBurbuja(); 
+            desaparecerBurbuja();
           });
         }
       }
@@ -2158,7 +2480,7 @@ function asignarEventosMenuCabecera() {
         if (usuarioActual && usuarioActual.email) {
           try {
             const { sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-            
+
             // Disparar correo de restablecimiento seguro desde Firebase
             await sendPasswordResetEmail(auth, usuarioActual.email);
 
@@ -2729,10 +3051,10 @@ async function ejecutarCompartirMova() {
 document.addEventListener("click", (e) => {
   // 1. Buscar explícitamente por clase o ID
   let btn = e.target.closest(".btn-compartir") || e.target.closest("#btn-compartir-mova");
-  
+
   // 2. Si no tiene ID/Clase, buscamos por texto PERO estrictamente dentro de un botón real
   if (!btn) {
-    const botonCercano = e.target.closest("button"); 
+    const botonCercano = e.target.closest("button");
     if (botonCercano && botonCercano.textContent.includes("Compartir MovaChat")) {
       btn = botonCercano;
     }
@@ -2988,10 +3310,10 @@ window.actualizarBadgesNotificaciones = function () {
   // 📱 Sincronizar marcador nativo PWA / Icono en pantalla de inicio del teléfono
   if ("setAppBadge" in navigator) {
     if (totalNoLeidos > 0) {
-      navigator.setAppBadge(totalNoLeidos).catch(() => {});
+      navigator.setAppBadge(totalNoLeidos).catch(() => { });
     } else {
       if ("clearAppBadge" in navigator) {
-        navigator.clearAppBadge().catch(() => {});
+        navigator.clearAppBadge().catch(() => { });
       }
     }
   }
@@ -3101,7 +3423,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
     // Si ocultó o vació el chat completamente
     if ((timestampOculto > 0 && timestampOculto >= timestampUltimoVaciado && (ultimoMsg?.timestamp || 0) <= timestampOculto) ||
-        (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0)) {
+      (!hayMensajesHistoricos && timestampUltimoVaciado === 0 && timestampOculto === 0)) {
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
       if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
@@ -3301,7 +3623,7 @@ if (typeof solicitarPermisoNotificaciones === "function") {
 }
 
 // ========================================================
-// 10. ESTADO PROPIO, REDES BENTO Y CONTACTOS
+// 10. ESTADO PROPIO Y HISTORIAS (24H + SUPABASE + FIREBASE)
 // ========================================================
 const tarjetaMiEstado = document.getElementById("tarjeta-mi-estado-propio");
 const avatarMiEstadoClick = document.getElementById("avatar-mi-estado-click");
@@ -3311,30 +3633,168 @@ const inputSubirEstadoReal = document.getElementById("input-subir-estado");
 
 let imagenEstadoGuardada = null;
 let fraseEstadoGuardada = "";
+let fechaEstadoGuardada = null;
 
+const TIEMPO_EXPIRACION_24H = 24 * 60 * 60 * 1000; // 24 horas en milisegundos
+
+// 🧹 Función auxiliar para limpiar la historia en Supabase, Firebase e interfaz
+async function borrarMiEstadoCompleto(usuarioUid, urlFotoBorrar) {
+  try {
+    // 1. Borrar la imagen física del bucket de Supabase
+    if (urlFotoBorrar) {
+      await eliminarArchivoSupabase(urlFotoBorrar, "movachat-adjuntos");
+    }
+
+    // 2. Limpiar los datos en Firebase Realtime Database
+    await update(ref(db, `usuarios/${usuarioUid}`), {
+      estadoHistoriaUrl: null,
+      estadoHistoriaFecha: null,
+      estadoHistoriaTexto: null
+    });
+
+    // 3. Resetear variables globales
+    imagenEstadoGuardada = null;
+    fraseEstadoGuardada = "";
+    fechaEstadoGuardada = null;
+
+    // 4. Restaurar el diseño original de la tarjeta en la interfaz
+    if (avatarMiEstadoClick) avatarMiEstadoClick.classList.remove("con-estado-activo");
+    if (textoSubtituloMiEstado) {
+      textoSubtituloMiEstado.textContent = "Comparte imágenes con tus amigos...";
+      textoSubtituloMiEstado.classList.remove("texto-cyan");
+    }
+    if (tiempoMiEstado) tiempoMiEstado.textContent = "Toca para subir foto";
+
+    const miniBotonMas = avatarMiEstadoClick ? avatarMiEstadoClick.querySelector(".punto-online-chat-plus") : null;
+    if (miniBotonMas) {
+      miniBotonMas.textContent = "+";
+      miniBotonMas.style.boxShadow = "none";
+    }
+
+    // Remover botón de eliminar del visor si existía
+    const btnBorrarVisor = document.getElementById("btn-borrar-mi-estado-visor");
+    if (btnBorrarVisor) btnBorrarVisor.remove();
+
+  } catch (err) {
+    console.error("❌ Error al borrar la historia:", err);
+  }
+}
+
+// ⏰ Verificar si la historia del usuario ya pasó de 24 horas
+async function verificarExpiracion24Horas() {
+  const usuarioActual = auth.currentUser;
+  if (!usuarioActual) return;
+
+  try {
+    const userSnap = await get(ref(db, `usuarios/${usuarioActual.uid}`));
+    if (userSnap.exists()) {
+      const datos = userSnap.val();
+      
+      if (datos.estadoHistoriaUrl && datos.estadoHistoriaFecha) {
+        const tiempoTranscurrido = Date.now() - datos.estadoHistoriaFecha;
+
+        if (tiempoTranscurrido >= TIEMPO_EXPIRACION_24H) {
+          console.log("⏰ Historia expirada (+24h). Limpiando Supabase y Firebase...");
+          await borrarMiEstadoCompleto(usuarioActual.uid, datos.estadoHistoriaUrl);
+          
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Tu historia anterior superó las 24 horas y fue eliminada de la nube ⌛", "🧹", "#00f2fe");
+          }
+        } else {
+          // Si aún no vence, cargamos los datos en la memoria
+          imagenEstadoGuardada = datos.estadoHistoriaUrl;
+          fraseEstadoGuardada = datos.estadoHistoriaTexto || "";
+          fechaEstadoGuardada = datos.estadoHistoriaFecha;
+
+          // Reflejar estado activo visualmente
+          if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
+          if (textoSubtituloMiEstado) {
+            textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
+            textoSubtituloMiEstado.classList.add("texto-cyan");
+          }
+          if (tiempoMiEstado) tiempoMiEstado.textContent = "Estado activo (24h)";
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error al consultar expiración de estado:", err);
+  }
+}
+
+// Escuchar inicio de sesión para comprobar expiración al entrar
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    verificarExpiracion24Horas();
+  }
+});
+
+// 1. Clic en la tarjeta "Mi Estado"
 if (tarjetaMiEstado) {
   tarjetaMiEstado.addEventListener("click", (e) => {
     e.stopPropagation();
+    
     if (imagenEstadoGuardada) {
       const textoFinal = fraseEstadoGuardada || "¡Compartiendo mi día en MovaChat! 🌌🔥";
-      if (typeof abrirEstadoAmigo === "function") abrirEstadoAmigo(imagenEstadoGuardada, textoFinal);
+      if (typeof abrirEstadoAmigo === "function") {
+        abrirEstadoAmigo(imagenEstadoGuardada, textoFinal);
+        inyectarBotonBorrarManualVisor();
+      }
     } else {
       if (inputSubirEstadoReal) inputSubirEstadoReal.click();
     }
   });
 }
 
+// 2. Subida con compresión WebP, reemplazo automático y registro en Firebase
 if (inputSubirEstadoReal) {
-  inputSubirEstadoReal.addEventListener("change", (e) => {
-    if (!imagenEstadoGuardada && e.target.files && e.target.files[0]) {
-      const lector = new FileReader();
-      lector.onload = function (evento) {
-        imagenEstadoGuardada = evento.target.result;
+  inputSubirEstadoReal.addEventListener("change", async (e) => {
+    const archivoSel = e.target.files && e.target.files[0];
+    const usuarioActual = auth.currentUser;
+
+    if (!archivoSel || !usuarioActual) return;
+
+    try {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Comprimiendo y subiendo tu estado a la nube... 🪐", "☁️", "#00f2fe");
+      }
+
+      // A) Si ya existía una foto activa, se elimina de Supabase antes de subir la nueva
+      if (imagenEstadoGuardada) {
+        await eliminarArchivoSupabase(imagenEstadoGuardada, "movachat-adjuntos");
+      }
+
+      // B) Comprimir imagen a WebP (1080x1920 máx)
+      const estadoComprimido = await comprimirImagenWebP(archivoSel, {
+        maxAncho: 1080,
+        maxAlto: 1920,
+        calidad: 0.8,
+        esPerfil: false
+      });
+
+      // C) Subir al bucket movachat-adjuntos en Supabase
+      const urlEstadoSupabase = await subirArchivoSupabase(estadoComprimido, "movachat-adjuntos");
+
+      if (urlEstadoSupabase) {
+        imagenEstadoGuardada = urlEstadoSupabase;
+        fechaEstadoGuardada = Date.now();
+
+        // D) Guardar URL y timestamp en Firebase
+        await update(ref(db, `usuarios/${usuarioActual.uid}`), {
+          estadoHistoriaUrl: urlEstadoSupabase,
+          estadoHistoriaFecha: fechaEstadoGuardada
+        });
+
+        // E) Abrir modal para añadir comentario opcional
         if (modalEstado) modalEstado.classList.remove("oculto");
         if (inputNuevoEstado) inputNuevoEstado.focus();
 
-        const interceptarGuardado = () => {
+        const interceptarGuardado = async () => {
           if (inputNuevoEstado) fraseEstadoGuardada = inputNuevoEstado.value.trim();
+
+          await update(ref(db, `usuarios/${usuarioActual.uid}`), {
+            estadoHistoriaTexto: fraseEstadoGuardada
+          });
+
           if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
           if (textoSubtituloMiEstado) {
             textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
@@ -3342,19 +3802,88 @@ if (inputSubirEstadoReal) {
           }
           if (tiempoMiEstado) tiempoMiEstado.textContent = "Hace un momento";
 
-          const miniBotonMas = avatarMiEstadoClick ? avatarMiEstadoClick.querySelector(".punto-online-chat") : null;
+          const miniBotonMas = avatarMiEstadoClick ? avatarMiEstadoClick.querySelector(".punto-online-chat-plus") : null;
           if (miniBotonMas) {
             miniBotonMas.textContent = "";
             miniBotonMas.style.boxShadow = "0 0 10px #00f2fe";
           }
-          mostrarAvisoPremium("¡Tu nueva historia ha sido publicada con éxito! 🪐", "🛸", "#00f2fe");
+
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("¡Tu historia ya está publicada en la nube (24h)! 🚀", "🛸", "#00f2fe");
+          }
+
           if (btnGuardarEstado) btnGuardarEstado.removeEventListener("click", interceptarGuardado);
         };
+
         if (btnGuardarEstado) btnGuardarEstado.addEventListener("click", interceptarGuardado);
-      };
-      lector.readAsDataURL(e.target.files[0]);
+      }
+    } catch (err) {
+      console.error("❌ Error al publicar historia:", err);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("No se pudo publicar la historia.", "❌", "#ff4b2b");
+      }
+    } finally {
+      inputSubirEstadoReal.value = "";
     }
   });
+}
+
+// 🗑️ Inyectar botón de eliminación manual dentro del Visor de Historias
+function inyectarBotonBorrarManualVisor() {
+  const visor = document.getElementById("visor-historias-mova");
+  if (!visor) return;
+
+  // Evitar duplicar el botón
+  if (document.getElementById("btn-borrar-mi-estado-visor")) return;
+
+  const btnBorrar = document.createElement("button");
+  btnBorrar.id = "btn-borrar-mi-estado-visor";
+  btnBorrar.title = "Eliminar mi historia";
+  btnBorrar.innerHTML = `<i data-lucide="trash-2"></i>`;
+  btnBorrar.style.cssText = `
+    position: absolute;
+    top: 25px;
+    left: 20px;
+    background: rgba(255, 75, 43, 0.25);
+    border: 1px solid rgba(255, 75, 43, 0.5);
+    color: #ff4b2b;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 9999;
+    backdrop-filter: blur(10px);
+  `;
+
+  btnBorrar.addEventListener("click", async (e) => {
+    e.stopPropagation();
+
+    const usuarioActual = auth.currentUser;
+    if (!usuarioActual || !imagenEstadoGuardada) return;
+
+    if (confirm("¿Deseas eliminar tu historia de la nube ahora mismo?")) {
+      const urlBorrar = imagenEstadoGuardada;
+      
+      // Cerrar visor
+      if (typeof cerrarEstadoMova === "function") cerrarEstadoMova();
+
+      // Ejecutar borrado completo
+      await borrarMiEstadoCompleto(usuarioActual.uid, urlBorrar);
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Historia eliminada de Supabase y Firebase 🗑️", "🧹", "#ff4b2b");
+      }
+    }
+  });
+
+  visor.appendChild(btnBorrar);
+
+  if (window.lucide) {
+    window.lucide.createIcons({ targets: [btnBorrar] });
+  }
 }
 
 // ========================================================
@@ -5457,7 +5986,7 @@ window.despertarAudioForzado = function () {
       audio.play().then(() => {
         audio.pause();
         audio.currentTime = 0;
-      }).catch(() => {});
+      }).catch(() => { });
     }
   });
 };
@@ -6677,7 +7206,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Si ya había escrito su correo en el login, se auto-completa aquí
       const correoLogin = document.getElementById("auth-email")?.value || "";
       if (inputCorreoRecuperar) inputCorreoRecuperar.value = correoLogin;
-      
+
       modalRecuperar.classList.remove("oculto");
     };
   }
