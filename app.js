@@ -6183,7 +6183,7 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
   }
 };
 
-// 🟢 Cargar presencia y escuchadores de chats activos (OPTIMIZADO ANTI-CALENTAMIENTO + ESTADOS EN VIVO)
+// 🟢 CARGAR CONTACTOS Y SINCRONIZAR HISTORIAS (24H) EN TIEMPO REAL
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
@@ -6191,61 +6191,84 @@ function cargarContactosAprobados(usuarioActualUid) {
   const usuariosRef = ref(db, 'usuarios');
   const fijadosRef = ref(db, `fijados/${usuarioActualUid}`);
 
-  // 1. Obtener fijados solo una vez al cargar
   get(fijadosRef).then((snapFijados) => {
     const fijadosBD = snapFijados.exists() ? snapFijados.val() : {};
 
-    // 🚀 CAMBIO CLAVE: Cambiamos get() por onValue() para escuchar cambios EN TIEMPO REAL
+    // Escuchamos la tabla de usuarios en tiempo real
     onValue(usuariosRef, (snapshot) => {
       try {
         if (snapshot.exists()) {
           const usuarios = snapshot.val();
+          const TIEMPO_24H = 24 * 60 * 60 * 1000;
+          const ahora = Date.now();
 
           Object.keys(usuarios).forEach((uid) => {
             const usuario = usuarios[uid];
 
             if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
-              // 2. Registrar el escuchador de mensajes SOLO SI NO se ha registrado previamente
+              // 1. Registrar escuchador de chats si no existía
               if (!contactosRegistradosSet.has(uid)) {
                 contactosRegistradosSet.add(uid);
 
                 if (typeof escucharUltimoMensajeContacto === "function") {
                   escucharUltimoMensajeContacto(usuarioActualUid, uid, usuario, fijadosBD);
                 }
-              } else {
-                // 🔥 3. SI YA ESTÁ REGISTRADO, ACTUALIZAMOS SU LED EN LA LISTA PRINCIPAL
-                const tarjeta = document.getElementById(`tarjeta-chat-${uid}`);
-                if (tarjeta) {
-                  const led = tarjeta.querySelector('.punto-online-chat');
-                  if (led) {
-                    const estadoManual = usuario.estadoConexion || usuario.estadoPresencia || "online";
-                    let colorLed = "#00f2fe";
-                    let sombraLed = "0 0 8px #00f2fe";
+              }
 
-                    if (estadoManual === "ocupado") {
-                      colorLed = "#ef4444";
-                      sombraLed = "0 0 8px #ef4444";
-                    } else if (estadoManual === "offline" || estadoManual === "invisible") {
-                      colorLed = "#888888";
-                      sombraLed = "0 0 8px #888888";
-                    }
+              // 2. SINCRONIZAR HISTORIA Y ESTADOS EN VIVO EN LA TARJETA DEL CONTACTO
+              const tarjeta = document.getElementById(`tarjeta-chat-${uid}`);
+              if (tarjeta) {
+                const avatarCaja = tarjeta.querySelector('.chat-avatar-caja');
+                const imgAvatar = tarjeta.querySelector('.chat-avatar-caja img');
+                const led = tarjeta.querySelector('.punto-online-chat');
 
-                    led.style.backgroundColor = colorLed;
-                    led.style.boxShadow = sombraLed;
+                // A) Verificar si el contacto tiene una historia activa (< 24 horas)
+                const tieneHistoriaUrl = usuario.estadoHistoriaUrl;
+                const fechaHistoria = usuario.estadoHistoriaFecha || 0;
+                const esHistoriaValida = tieneHistoriaUrl && (ahora - fechaHistoria < TIEMPO_24H);
+
+                if (esHistoriaValida) {
+                  // Asignar datos a la tarjeta para que el clic abra la historia
+                  tarjeta.dataset.estadoUrl = usuario.estadoHistoriaUrl;
+                  tarjeta.dataset.estadoTexto = usuario.estadoHistoriaTexto || "";
+
+                  // Activar aro de neón en el avatar
+                  if (avatarCaja) avatarCaja.classList.add("con-estado-activo");
+                } else {
+                  // Si no tiene o ya pasaron 24h, quitar el aro y los datos
+                  delete tarjeta.dataset.estadoUrl;
+                  delete tarjeta.dataset.estadoTexto;
+                  if (avatarCaja) avatarCaja.classList.remove("con-estado-activo");
+                }
+
+                // B) Actualizar foto de perfil si la cambió
+                if (imgAvatar && usuario.fotoUrl && imgAvatar.src !== usuario.fotoUrl) {
+                  imgAvatar.src = usuario.fotoUrl;
+                }
+
+                // C) Actualizar LED de conexión en vivo
+                if (led) {
+                  const estadoManual = usuario.estadoConexion || usuario.estadoPresencia || "online";
+                  let colorLed = "#00f2fe";
+                  let sombraLed = "0 0 8px #00f2fe";
+
+                  if (estadoManual === "ocupado") {
+                    colorLed = "#ef4444";
+                    sombraLed = "0 0 8px #ef4444";
+                  } else if (estadoManual === "offline" || estadoManual === "invisible") {
+                    colorLed = "#888888";
+                    sombraLed = "0 0 8px #888888";
                   }
 
-                  // 💎 EXTRA PREMIUM: Si tu amigo cambia su foto de perfil, se actualiza en vivo también
-                  const img = tarjeta.querySelector('.chat-avatar-caja img');
-                  if (img && usuario.fotoUrl && img.src !== usuario.fotoUrl) {
-                    img.src = usuario.fotoUrl;
-                  }
+                  led.style.backgroundColor = colorLed;
+                  led.style.boxShadow = sombraLed;
                 }
               }
             }
           });
         }
       } catch (e) {
-        console.error("Error al sincronizar contactos con la lista de chats:", e);
+        console.error("Error al sincronizar contactos e historias:", e);
       }
     });
   });
