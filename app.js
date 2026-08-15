@@ -1676,9 +1676,9 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // 🗑️ OPCIÓN 4: ELIMINAR (De la pantalla y de Firebase)
-    else if (accion === "eliminar") {
-      // 1. 🙈 Ocultar el menú contextual inmediatamente
+    // 🗑️ OPCIÓN 4: ELIMINAR (Para todos o solo para mí)
+    else if (accion === "eliminar-todos" || accion === "eliminar-mi") {
+      // 1. 🙈 Ocultar el menú contextual inmediatamente para que no estorbe
       const menuFlotante = typeof menuCtx !== "undefined" ? menuCtx : document.getElementById("menu-contextual-mensaje");
       if (menuFlotante) {
         menuFlotante.classList.add("oculto");
@@ -1693,27 +1693,27 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       const elementoBurbuja = nodoMensaje || (idParaBorrar ? document.querySelector(`[data-msg-id="${idParaBorrar}"]`) : null);
 
       if (!idParaBorrar) {
-        console.error("No se pudo obtener el ID del mensaje.");
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium("No se encontró el ID del mensaje.", "⚠️", "#ff4b2b");
         }
         return;
       }
 
-      // 3. 🎨 Animación fluida de salida en pantalla
-      if (elementoBurbuja) {
-        elementoBurbuja.style.transition = "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
-        elementoBurbuja.style.opacity = "0";
-        elementoBurbuja.style.transform = "scale(0.85) translateY(10px)";
-
-        setTimeout(() => {
-          if (elementoBurbuja && elementoBurbuja.parentNode) {
-            elementoBurbuja.remove();
-          }
-        }, 250);
+      // Función interna que hace la animación bonita SOLO cuando se confirme el borrado
+      function desaparecerBurbuja() {
+        if (elementoBurbuja) {
+          elementoBurbuja.style.transition = "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
+          elementoBurbuja.style.opacity = "0";
+          elementoBurbuja.style.transform = "scale(0.85) translateY(10px)";
+          setTimeout(() => {
+            if (elementoBurbuja && elementoBurbuja.parentNode) {
+              elementoBurbuja.remove();
+            }
+          }, 250);
+        }
       }
 
-      // 4. ☁️ Borrar en Firebase Realtime Database
+      // 3. ☁️ Preparar la conexión con Firebase
       const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
       const miUid = usuarioActual ? usuarioActual.uid : null;
       const contactoUid = window.contactoActivoUid;
@@ -1725,21 +1725,49 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
 
         const mensajeRef = ref(db, `chats/${chatId}/mensajes/${idParaBorrar}`);
 
-        // Uso de set(..., null) para garantizar compatibilidad total con tus importaciones existentes
-        set(mensajeRef, null)
-          .then(() => {
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Mensaje eliminado.", "🗑️", "#ff4b2b");
+        if (accion === "eliminar-todos") {
+          // ⏳ NUEVO: Consultamos el mensaje primero para ver su timestamp
+          get(mensajeRef).then((snapshot) => {
+            if (snapshot.exists()) {
+              const datosMensaje = snapshot.val();
+              const tiempoMensaje = datosMensaje.timestamp || 0;
+              const tiempoActual = Date.now();
+              
+              // Matemáticas: Restamos el tiempo actual menos el del mensaje (da en milisegundos).
+              // Lo dividimos entre 60,000 (que son los milisegundos en un minuto) para tener los minutos reales.
+              const diferenciaMinutos = (tiempoActual - tiempoMensaje) / 60000;
+
+              if (diferenciaMinutos > 15) {
+                // ❌ Si pasaron más de 15 minutos, bloqueamos la acción
+                if (typeof mostrarAvisoPremium === "function") {
+                  mostrarAvisoPremium("Pasaron más de 15 minutos. Ya no puedes eliminarlo para todos.", "⏱️", "#ff4b2b");
+                }
+              } else {
+                // ✅ Está dentro del tiempo permitido, ejecutamos el borrado
+                set(mensajeRef, null)
+                  .then(() => {
+                    if (typeof mostrarAvisoPremium === "function") {
+                      mostrarAvisoPremium("Mensaje eliminado para todos.", "🗑️", "#ff4b2b");
+                    }
+                    desaparecerBurbuja(); // Solo desaparece si Firebase dio el OK
+                  });
+              }
             }
-          })
-          .catch((err) => {
-            console.error("Error al eliminar mensaje de Firebase:", err);
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Error al eliminar de la nube.", "⚠️", "#ff4b2b");
-            }
+          }).catch((error) => {
+            console.error("Error al verificar el tiempo del mensaje:", error);
           });
-      } else {
-        console.warn("Falta miUid o contactoUid para la conexión con Firebase.");
+
+        } else if (accion === "eliminar-mi") {
+          // Eliminar para mí no tiene límite de tiempo, así que lo hacemos directo
+          update(mensajeRef, {
+            [`eliminadoPara/${miUid}`]: true
+          }).then(() => {
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("Mensaje eliminado para ti.", "🗑️", "#ff4b2b");
+            }
+            desaparecerBurbuja(); 
+          });
+        }
       }
     }
 
@@ -3026,6 +3054,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         .map(key => ({ key, ...mensajes[key] }))
         .filter(m => {
           const esPosteriorVaciado = (m.timestamp || 0) > timestampUltimoVaciado;
+          if (m.eliminadoPara && m.eliminadoPara[miUid]) return false;
           if (m.esEfimero) {
             const limiteMs = m.duracionEfimeraMs || 10000;
             const transcurrido = ahora - (m.timestamp || ahora);
@@ -6111,6 +6140,9 @@ function escucharMensajesChat(chatId) {
         keysMensajes.forEach((msgId) => {
           const msg = mensajes[msgId];
           if (!msg) return;
+
+          // 👇 NUEVO: Si el mensaje fue eliminado para mí, lo ignoramos y no se dibuja
+          if (msg.eliminadoPara && msg.eliminadoPara[miUid]) return;
 
           const msgTimestamp = msg.timestamp || 0;
           if (msgTimestamp <= timestampUltimoVaciado) return;
