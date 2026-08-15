@@ -5625,7 +5625,7 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
   }
 };
 
-// 🟢 Cargar presencia y escuchadores de chats activos (OPTIMIZADO ANTI-CALENTAMIENTO)
+// 🟢 Cargar presencia y escuchadores de chats activos (OPTIMIZADO ANTI-CALENTAMIENTO + ESTADOS EN VIVO)
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
@@ -5637,8 +5637,8 @@ function cargarContactosAprobados(usuarioActualUid) {
   get(fijadosRef).then((snapFijados) => {
     const fijadosBD = snapFijados.exists() ? snapFijados.val() : {};
 
-    // 2. Obtener usuarios solo una vez al cargar
-    get(usuariosRef).then((snapshot) => {
+    // 🚀 CAMBIO CLAVE: Cambiamos get() por onValue() para escuchar cambios EN TIEMPO REAL
+    onValue(usuariosRef, (snapshot) => {
       try {
         if (snapshot.exists()) {
           const usuarios = snapshot.val();
@@ -5646,13 +5646,41 @@ function cargarContactosAprobados(usuarioActualUid) {
           Object.keys(usuarios).forEach((uid) => {
             const usuario = usuarios[uid];
 
-            // 3. Registrar el escuchador SOLO SI NO se ha registrado previamente
             if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
+              // 2. Registrar el escuchador de mensajes SOLO SI NO se ha registrado previamente
               if (!contactosRegistradosSet.has(uid)) {
                 contactosRegistradosSet.add(uid);
 
                 if (typeof escucharUltimoMensajeContacto === "function") {
                   escucharUltimoMensajeContacto(usuarioActualUid, uid, usuario, fijadosBD);
+                }
+              } else {
+                // 🔥 3. SI YA ESTÁ REGISTRADO, ACTUALIZAMOS SU LED EN LA LISTA PRINCIPAL
+                const tarjeta = document.getElementById(`tarjeta-chat-${uid}`);
+                if (tarjeta) {
+                  const led = tarjeta.querySelector('.punto-online-chat');
+                  if (led) {
+                    const estadoManual = usuario.estadoConexion || usuario.estadoPresencia || "online";
+                    let colorLed = "#00f2fe";
+                    let sombraLed = "0 0 8px #00f2fe";
+
+                    if (estadoManual === "ocupado") {
+                      colorLed = "#ef4444";
+                      sombraLed = "0 0 8px #ef4444";
+                    } else if (estadoManual === "offline" || estadoManual === "invisible") {
+                      colorLed = "#888888";
+                      sombraLed = "0 0 8px #888888";
+                    }
+
+                    led.style.backgroundColor = colorLed;
+                    led.style.boxShadow = sombraLed;
+                  }
+
+                  // 💎 EXTRA PREMIUM: Si tu amigo cambia su foto de perfil, se actualiza en vivo también
+                  const img = tarjeta.querySelector('.chat-avatar-caja img');
+                  if (img && usuario.fotoUrl && img.src !== usuario.fotoUrl) {
+                    img.src = usuario.fotoUrl;
+                  }
                 }
               }
             }
