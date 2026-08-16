@@ -1959,7 +1959,17 @@ function limpiarContador() {
 
 function desplegarMenuContextual(x, y, burbuja) {
   mensajeSeleccionadoNode = burbuja;
+
   if (menuMensajes) {
+    // 🛡️ Determinar si el mensaje fue enviado por el usuario actual
+    const esMio = burbuja.classList.contains("enviado");
+    const btnEliminarTodos = menuMensajes.querySelector('[data-accion="eliminar-todos"]');
+
+    // Si el mensaje es de la otra persona, ocultar la opción "Eliminar para todos"
+    if (btnEliminarTodos) {
+      btnEliminarTodos.style.display = esMio ? "flex" : "none";
+    }
+
     menuMensajes.classList.remove("oculto");
 
     const marcoRect = document.querySelector(".contenedor-chat").getBoundingClientRect();
@@ -2120,7 +2130,7 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
 
     // 🗑️ OPCIÓN 4: ELIMINAR (Para todos o solo para mí)
     else if (accion === "eliminar-todos" || accion === "eliminar-mi") {
-      // 1. 🙈 Ocultar el menú contextual inmediatamente para que no estorbe
+      // 1. Ocultar el menú contextual inmediatamente
       const menuFlotante = typeof menuCtx !== "undefined" ? menuCtx : document.getElementById("menu-contextual-mensaje");
       if (menuFlotante) {
         menuFlotante.classList.add("oculto");
@@ -2141,7 +2151,6 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
         return;
       }
 
-      // Función interna que hace la animación bonita SOLO cuando se confirme el borrado
       function desaparecerBurbuja() {
         if (elementoBurbuja) {
           elementoBurbuja.style.transition = "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)";
@@ -2155,7 +2164,6 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
         }
       }
 
-      // 3. ☁️ Preparar la conexión con Firebase
       const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
       const miUid = usuarioActual ? usuarioActual.uid : null;
       const contactoUid = window.contactoActivoUid;
@@ -2168,9 +2176,27 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
         const mensajeRef = ref(db, `chats/${chatId}/mensajes/${idParaBorrar}`);
 
         if (accion === "eliminar-todos") {
+          // 🛡️ REGLA 1: Bloqueo inmediato en interfaz si no es tu mensaje
+          if (!esMio) {
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("Solo el emisor puede eliminar este mensaje para todos.", "⚠️", "#ff4b2b");
+            }
+            return;
+          }
+
           get(mensajeRef).then(async (snapshot) => {
             if (snapshot.exists()) {
               const datosMensaje = snapshot.val();
+              const emisorReal = datosMensaje.emisor || datosMensaje.emisorUid;
+
+              // 🛡️ REGLA 2: Verificación estricta del ID del emisor en la base de datos
+              if (emisorReal !== miUid) {
+                if (typeof mostrarAvisoPremium === "function") {
+                  mostrarAvisoPremium("No tienes permiso para eliminar este mensaje para todos.", "🚫", "#ff4b2b");
+                }
+                return;
+              }
+
               const tiempoMensaje = datosMensaje.timestamp || 0;
               const diferenciaMinutos = (Date.now() - tiempoMensaje) / 60000;
 
@@ -2179,7 +2205,7 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
                   mostrarAvisoPremium("Pasaron más de 15 minutos. Ya no puedes eliminarlo para todos.", "⏱️", "#ff4b2b");
                 }
               } else {
-                // 🗑️ Si el mensaje tenía un adjunto en Supabase, borrar el archivo físico primero
+                // 🗑️ Si el mensaje tenía un adjunto en Supabase, borrar el archivo físico
                 if (datosMensaje.urlAdjunto && datosMensaje.urlAdjunto.includes("supabase.co")) {
                   await eliminarArchivoSupabase(datosMensaje.urlAdjunto, "movachat-adjuntos");
                 }
@@ -2193,7 +2219,7 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
             }
           });
         } else if (accion === "eliminar-mi") {
-          // Eliminar para mí no tiene límite de tiempo, así que lo hacemos directo
+          // Eliminar solo para mí no tiene restricción de autoría ni límite de tiempo
           update(mensajeRef, {
             [`eliminadoPara/${miUid}`]: true
           }).then(() => {
