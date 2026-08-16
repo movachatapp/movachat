@@ -923,30 +923,31 @@
     </div>
   </div>
 
-  <!-- 🔊 AUDIOS DEL SISTEMA -->
-  <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
-  <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
+  <!-- AUDIOS DEL SISTEMA -->
+    <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
+    <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
 
-  <!-- 📦 CDN OFICIAL DE SUPABASE -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- LIBRERÍAS EXTERNAS (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
 
-  <!-- 📜 SCRIPTS PRINCIPALES (SIEMPRE AL FINAL DEL BODY) -->
-  <script type="module" src="app.js?v=2"></script>
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      if (window.lucide) {
-        lucide.createIcons();
-      }
-    });
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('Service Worker registrado correctamente', reg))
-          .catch(err => console.error('Error al registrar Service Worker', err));
+    <!-- SCRIPTS PRINCIPALES DE LA APP -->
+    <script type="module" src="app.js?v=2"></script>
+    
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        if (window.lucide) {
+          lucide.createIcons();
+        }
       });
-    }
-  </script>
-</body>
 
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker registrado correctamente', reg))
+            .catch(err => console.error('Error al registrar Service Worker', err));
+        });
+      }
+    </script>
+</body>
 </html>
