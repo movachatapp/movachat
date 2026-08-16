@@ -98,15 +98,15 @@ async function subirArchivoSupabase(archivo, bucket = "movachat-adjuntos") {
 }
 
 /**
- * 🗜️ COMPRESOR NATIVO DE IMÁGENES A WEBP (CANVAS)
- * @param {File} archivoImagen - Archivo de imagen original.
+ * 🗜️ COMPRESOR GRADUADO DE IMÁGENES A WEBP (SIN RECORTES AGRESIVOS)
+ * @param {File} archivoImagen - Archivo original.
  * @param {Object} opciones - Configuración de dimensiones y calidad.
  * @returns {Promise<File>} Archivo File comprimido en formato WebP.
  */
-function comprimirImagenWebP(archivoImagen, opciones = { maxAncho: 1200, maxAlto: 1200, calidad: 0.75, esPerfil: false }) {
+function comprimirImagenWebP(archivoImagen, opciones = { maxAncho: 1440, maxAlto: 1440, calidad: 0.82, esPerfil: false }) {
   return new Promise((resolve, reject) => {
     if (!archivoImagen || !archivoImagen.type.startsWith("image/")) {
-      return resolve(archivoImagen); // Si no es imagen, retornar archivo original
+      return resolve(archivoImagen);
     }
 
     const lector = new FileReader();
@@ -124,28 +124,25 @@ function comprimirImagenWebP(archivoImagen, opciones = { maxAncho: 1200, maxAlto
         let alto = img.height;
 
         if (opciones.esPerfil) {
-          // 👤 FOTO DE PERFIL: Recorte cuadrado centrado 250x250px
-          canvas.width = 250;
-          canvas.height = 250;
+          // 👤 FOTO DE PERFIL: 400x400px con calidad alta (0.85)
+          const tamanoTarget = 400;
+          canvas.width = tamanoTarget;
+          canvas.height = tamanoTarget;
 
           const minLado = Math.min(ancho, alto);
           const srcX = (ancho - minLado) / 2;
           const srcY = (alto - minLado) / 2;
 
-          ctx.drawImage(img, srcX, srcY, minLado, minLado, 0, 0, 250, 250);
+          ctx.drawImage(img, srcX, srcY, minLado, minLado, 0, 0, tamanoTarget, tamanoTarget);
         } else {
-          // 💬 IMAGEN DE CHAT: Escalar proporcionalmente (Máx 1200px)
-          const maxAncho = opciones.maxAncho || 1200;
-          const maxAlto = opciones.maxAlto || 1200;
+          // 💬 CHAT E HISTORIAS: Escalar respetando la proporción exactas sin recortar
+          const maxAncho = opciones.maxAncho || 1440;
+          const maxAlto = opciones.maxAlto || 1440;
 
           if (ancho > maxAncho || alto > maxAlto) {
-            if (ancho > alto) {
-              alto = Math.round((alto * maxAncho) / ancho);
-              ancho = maxAncho;
-            } else {
-              ancho = Math.round((ancho * maxAlto) / alto);
-              alto = maxAlto;
-            }
+            const proporcion = Math.min(maxAncho / ancho, maxAlto / alto);
+            ancho = Math.round(ancho * proporcion);
+            alto = Math.round(alto * proporcion);
           }
 
           canvas.width = ancho;
@@ -153,7 +150,7 @@ function comprimirImagenWebP(archivoImagen, opciones = { maxAncho: 1200, maxAlto
           ctx.drawImage(img, 0, 0, ancho, alto);
         }
 
-        // Exportar como Blob WebP comprimido
+        // Exportar a WebP con calidad alta de 0.82
         canvas.toBlob(
           (blob) => {
             if (!blob) {
@@ -167,11 +164,11 @@ function comprimirImagenWebP(archivoImagen, opciones = { maxAncho: 1200, maxAlto
               lastModified: Date.now()
             });
 
-            console.log(`🗜️ Imagen comprimida: ${(archivoImagen.size / 1024).toFixed(1)} KB ➔ ${(nuevoArchivo.size / 1024).toFixed(1)} KB (WebP)`);
+            console.log(`🗜️ Imagen optimizada: ${(archivoImagen.size / 1024).toFixed(1)} KB ➔ ${(nuevoArchivo.size / 1024).toFixed(1)} KB (${ancho}x${alto}px)`);
             resolve(nuevoArchivo);
           },
           "image/webp",
-          opciones.calidad || 0.75
+          opciones.calidad || 0.82
         );
       };
 
@@ -236,7 +233,7 @@ if (inputFotoPerfil) {
       // 2. Comprimir imagen a WebP de 250x250px (< 30 KB)
       const fotoPerfilComprimida = await comprimirImagenWebP(archivoSel, {
         esPerfil: true,
-        calidad: 0.8
+        calidad: 0.85
       });
 
       // 3. Subir la nueva foto a Supabase Storage
@@ -252,9 +249,12 @@ if (inputFotoPerfil) {
         await update(ref(db, `usuarios/${usuarioActual.uid}`), { fotoUrl: nuevaUrlFoto });
         await updateProfile(usuarioActual, { photoURL: nuevaUrlFoto });
 
-        // 6. Actualizar elemento visual en la interfaz
+        // ⚡ 6. REFRESCAR EN VIVO LOS ELEMENTOS VISUALES EN LA PANTALLA
         const elemFotoPerfil = document.querySelector(".avatar-perfil-img");
+        const imgMiAvatarBandeja = document.getElementById("img-mi-avatar-bandeja");
+
         if (elemFotoPerfil) elemFotoPerfil.src = nuevaUrlFoto;
+        if (imgMiAvatarBandeja) imgMiAvatarBandeja.src = nuevaUrlFoto;
 
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium("¡Foto de perfil actualizada y optimizada! ✨", "📸", "#00f2fe");
@@ -336,6 +336,9 @@ let segundosRestantes = 10;
 let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
+
+// Objeto global de respaldo para mensajes efímeros temporales
+window.chatsTemporalesBD = window.chatsTemporalesBD || {};
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -492,6 +495,11 @@ onAuthStateChanged(auth, async (user) => {
 
           if (typeof iniciarControlPresenciaReal === "function") {
             iniciarControlPresenciaReal();
+          }
+
+          // 🧹 PURGA AUTOMÁTICA DE GALERÍA AL INICIAR SESIÓN (FOTOS DE MÁS DE 7 DÍAS)
+          if (typeof purgarFotosAntiguasGaleria === "function") {
+            purgarFotosAntiguasGaleria(user.uid);
           }
 
           // 🌐 Cargar redes sociales del perfil
@@ -1585,8 +1593,71 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 // Variable candado global para evitar envíos dobles por rebote de eventos
 let estaEnviandoMensaje = false;
 
+// 📊 1. CONSULTAR LÍMITE DIARIO (MÁXIMO 12 FOTOS)
+async function verificarLimiteDiarioFotos(uid) {
+  if (!uid) return { permitido: false, conteo: 0 };
+
+  const hoy = new Date().toISOString().split('T')[0];
+  const limiteRef = ref(db, `limites_diarios/${uid}/${hoy}/fotos`);
+
+  try {
+    const snap = await get(limiteRef);
+    const conteoActual = snap.exists() ? snap.val() : 0;
+
+    // Retorna 'permitido: true' si lleva menos de 12 fotos
+    return { permitido: conteoActual < 12, conteo: conteoActual };
+  } catch (err) {
+    console.error("Error consultando límite de fotos:", err);
+    return { permitido: true, conteo: 0 };
+  }
+}
+
+// 📈 2. INCREMENTAR CONTADOR (+1 TRAS SUBIDA EXITOSA)
+async function incrementarContadorFotos(uid) {
+  if (!uid) return;
+
+  const hoy = new Date().toISOString().split('T')[0];
+  const limiteRef = ref(db, `limites_diarios/${uid}/${hoy}/fotos`);
+
+  try {
+    const snap = await get(limiteRef);
+    const conteoActual = snap.exists() ? snap.val() : 0;
+    await set(limiteRef, conteoActual + 1);
+  } catch (err) {
+    console.error("Error incrementando contador de fotos:", err);
+  }
+}
+
+// 🧹 PURGA AUTOMÁTICA DE GALERÍA (7 DÍAS)
+async function purgarFotosAntiguasGaleria(uid) {
+  if (!uid) return;
+
+  const SIETE_DIAS_MS = 7 * 24 * 60 * 60 * 1000;
+  const ahora = Date.now();
+  const fotosRef = ref(db, `galeria/${uid}`);
+
+  try {
+    const snap = await get(fotosRef);
+    if (!snap.exists()) return;
+
+    snap.forEach((child) => {
+      const foto = child.val();
+      if (foto.fechaSubida && (ahora - foto.fechaSubida > SIETE_DIAS_MS)) {
+        // 1. Borrar archivo físico de Supabase Storage
+        if (foto.pathSupabase) {
+          supabase.storage.from('galeria').remove([foto.pathSupabase]);
+        }
+        // 2. Borrar registro en Firebase Realtime Database
+        remove(ref(db, `galeria/${uid}/${child.key}`));
+      }
+    });
+  } catch (error) {
+    console.error("Error al purgar fotos antiguas de la galería:", error);
+  }
+}
+
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS + SUPABASE STORAGE)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS + LÍMITE DIARIO + SUPABASE STORAGE)
 // ========================================================
 async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
@@ -1696,7 +1767,7 @@ async function enviarMensajeNuevo() {
     timestamp: Date.now(),
     esEfimero: duracionEfimeraMs > 0,
     duracionEfimeraMs: duracionEfimeraMs,
-    // ↪️ METADATOS DE REENVÍO (Lee la variable global)
+    // ↪️ METADATOS DE REENVÍO
     esReenviado: window.mensajeReenviadoActivo ? true : false,
     autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
     tipoAdjunto: null,
@@ -1713,28 +1784,52 @@ async function enviarMensajeNuevo() {
   if (tieneAdjunto) {
     objetoMensaje.tipoAdjunto = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
 
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Subiendo archivo multimedia a Supabase... ☁️", "📤", "#00f2fe");
-    }
-
     let urlSubidaSupabase = null;
 
     try {
       if (objetoMensaje.tipoAdjunto === 'foto' && inputRealGaleria && inputRealGaleria.files[0]) {
-        // 🗜️ Comprimir la foto antes de subir a Supabase
+
+        // 🛑 1. VERIFICAR LÍMITE DE 12 FOTOS POR DÍA
+        const chequeoDiario = await verificarLimiteDiarioFotos(miUid);
+        if (!chequeoDiario.permitido) {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("Has alcanzado tu límite de 12 fotos por hoy 🛑", "⚠️", "#ff4b2b");
+          }
+          estaEnviandoMensaje = false;
+          return; // Detiene el proceso sin gastar espacio ni subir archivo
+        }
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Subiendo archivo multimedia a Supabase... ☁️", "📤", "#00f2fe");
+        }
+
+        // 🗜️ 2. Comprimir la foto a 1440px y calidad 0.82
         const fotoComprimida = await comprimirImagenWebP(inputRealGaleria.files[0], {
-          maxAncho: 1200,
-          maxAlto: 1200,
-          calidad: 0.75,
+          maxAncho: 1440,
+          maxAlto: 1440,
+          calidad: 0.82,
           esPerfil: false
         });
 
+        // ☁️ 3. Subir archivo comprimido a Supabase
         urlSubidaSupabase = await subirArchivoSupabase(fotoComprimida, "movachat-adjuntos");
+
+        // 📈 4. Incrementar contador diario en Firebase
+        if (urlSubidaSupabase) {
+          await incrementarContadorFotos(miUid);
+        }
+
       } else if (objetoMensaje.tipoAdjunto === 'documento' && inputRealDocumento && inputRealDocumento.files[0]) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Subiendo documento a Supabase... ☁️", "📤", "#00f2fe");
+        }
         objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : inputRealDocumento.files[0].name;
         urlSubidaSupabase = await subirArchivoSupabase(inputRealDocumento.files[0], "movachat-adjuntos");
+
       } else if (objetoMensaje.tipoAdjunto === 'video' && imgMiniaturaAdjunto && imgMiniaturaAdjunto.src) {
-        // Convertir la URL blob temporal del video capturado a un objeto File para subida
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Subiendo video circular a Supabase... ☁️", "📤", "#00f2fe");
+        }
         if (imgMiniaturaAdjunto.src.startsWith("blob:")) {
           const respuestaBlob = await fetch(imgMiniaturaAdjunto.src);
           const blobVideo = await respuestaBlob.blob();
@@ -1812,6 +1907,24 @@ if (historialMensajes) {
   }, { passive: true });
 
   historialMensajes.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+
+// 📸 ESCUCHADOR DE CLICS Y TOQUES EN FOTOS (COMPATIBLE CON MÓVILES Y PC)
+if (historialMensajes) {
+  historialMensajes.addEventListener("click", (e) => {
+    // Si fue pulsación larga, ignorar apertura
+    if (isLongPress) return;
+
+    const contenedorFoto = e.target.closest(".contenedor-foto-enviada");
+    if (contenedorFoto) {
+      e.stopPropagation();
+      const urlFoto = contenedorFoto.getAttribute("data-foto-hd") || contenedorFoto.querySelector("img")?.src;
+      
+      if (urlFoto && typeof abrirFotoChatHD === "function") {
+        abrirFotoChatHD(urlFoto);
+      }
+    }
+  });
 }
 
 window.addEventListener("mouseup", (e) => {
@@ -2055,37 +2168,30 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
         const mensajeRef = ref(db, `chats/${chatId}/mensajes/${idParaBorrar}`);
 
         if (accion === "eliminar-todos") {
-          // ⏳ NUEVO: Consultamos el mensaje primero para ver su timestamp
-          get(mensajeRef).then((snapshot) => {
+          get(mensajeRef).then(async (snapshot) => {
             if (snapshot.exists()) {
               const datosMensaje = snapshot.val();
               const tiempoMensaje = datosMensaje.timestamp || 0;
-              const tiempoActual = Date.now();
-
-              // Matemáticas: Restamos el tiempo actual menos el del mensaje (da en milisegundos).
-              // Lo dividimos entre 60,000 (que son los milisegundos en un minuto) para tener los minutos reales.
-              const diferenciaMinutos = (tiempoActual - tiempoMensaje) / 60000;
+              const diferenciaMinutos = (Date.now() - tiempoMensaje) / 60000;
 
               if (diferenciaMinutos > 15) {
-                // ❌ Si pasaron más de 15 minutos, bloqueamos la acción
                 if (typeof mostrarAvisoPremium === "function") {
                   mostrarAvisoPremium("Pasaron más de 15 minutos. Ya no puedes eliminarlo para todos.", "⏱️", "#ff4b2b");
                 }
               } else {
-                // ✅ Está dentro del tiempo permitido, ejecutamos el borrado
-                set(mensajeRef, null)
-                  .then(() => {
-                    if (typeof mostrarAvisoPremium === "function") {
-                      mostrarAvisoPremium("Mensaje eliminado para todos.", "🗑️", "#ff4b2b");
-                    }
-                    desaparecerBurbuja(); // Solo desaparece si Firebase dio el OK
-                  });
+                // 🗑️ Si el mensaje tenía un adjunto en Supabase, borrar el archivo físico primero
+                if (datosMensaje.urlAdjunto && datosMensaje.urlAdjunto.includes("supabase.co")) {
+                  await eliminarArchivoSupabase(datosMensaje.urlAdjunto, "movachat-adjuntos");
+                }
+
+                await set(mensajeRef, null);
+                if (typeof mostrarAvisoPremium === "function") {
+                  mostrarAvisoPremium("Mensaje e imagen eliminados de la nube.", "🗑️", "#ff4b2b");
+                }
+                desaparecerBurbuja();
               }
             }
-          }).catch((error) => {
-            console.error("Error al verificar el tiempo del mensaje:", error);
           });
-
         } else if (accion === "eliminar-mi") {
           // Eliminar para mí no tiene límite de tiempo, así que lo hacemos directo
           update(mensajeRef, {
@@ -2626,6 +2732,36 @@ if (botonCerrarVisorHistorias) {
   });
 }
 
+// ========================================================
+// 📸 VISOR HD EN MODAL PARA FOTOS DE CHAT
+// ========================================================
+function abrirFotoChatHD(urlFoto) {
+  if (!urlFoto) return;
+
+  const visor = document.getElementById("visor-historias-mova");
+  const imgRender = document.getElementById("img-estado-render");
+  const textoRender = document.getElementById("texto-estado-render");
+  const lineaProg = document.getElementById("linea-progreso-estado");
+
+  if (visor && imgRender && textoRender) {
+    imgRender.src = urlFoto;
+    textoRender.textContent = "Vista previa en Alta Definición";
+
+    if (lineaProg && lineaProg.parentNode) {
+      lineaProg.parentNode.style.visibility = "hidden";
+    }
+
+    visor.classList.remove("oculto");
+
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Visualizando imagen completa en HD 🌌", "📸", "#00f2fe");
+    }
+  }
+}
+
+// 🌐 HACER LA FUNCIÓN ACCESIBLE DE FORMA GLOBAL PARA LOS ONCLICK EN HTML
+window.abrirFotoChatHD = abrirFotoChatHD;
+
 // 💡 FUNCIÓN CORREGIDA: Actualiza solo los leds de la cabecera del usuario (sin afectar a otros contactos)
 function actualizarDobleLedCabecera(pantallaActual) {
   const ledSuperior = document.getElementById("led-enfoque-app");
@@ -2858,9 +2994,15 @@ async function toggleLikeHistoria(uidAutorHistoria) {
         mostrarAvisoPremium("Has quitado tu me gusta 💔", "💔", "#ff4b2b");
       }
     } else {
+      // 🚀 Obtener foto y nombre actualizados directamente de la base de datos
+      const snapUser = await get(ref(db, `usuarios/${miUid}`));
+      const datosUser = snapUser.exists() ? snapUser.val() : {};
+      const fotoPerfilReal = datosUser.fotoUrl || usuarioActual.photoURL || "";
+      const nombreReal = datosUser.nombre || usuarioActual.displayName || "Usuario Mova";
+
       await set(likeRef, {
-        nombre: usuarioActual.displayName || "Usuario Mova",
-        fotoUrl: usuarioActual.photoURL || "",
+        nombre: nombreReal,
+        fotoUrl: fotoPerfilReal,
         timestamp: Date.now()
       });
 
@@ -3895,7 +4037,7 @@ if (inputSubirEstadoReal) {
       const estadoComprimido = await comprimirImagenWebP(archivoSel, {
         maxAncho: 1080,
         maxAlto: 1920,
-        calidad: 0.8,
+        calidad: 0.82,
         esPerfil: false
       });
 
@@ -4730,7 +4872,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  // 🟢 2. Aceptar Modal (Vaciar Chat INDIVIDUAL interno)
+  // 🟢 2. Aceptar Modal (Vaciar Chat INDIVIDUAL interno con Borrado Físico en Supabase)
   if (btnAceptarVaciar) {
     btnAceptarVaciar.addEventListener("click", async () => {
       const miUid = auth.currentUser ? auth.currentUser.uid : null;
@@ -4742,17 +4884,36 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!miUid || !contactoUid) return;
 
       try {
-        // 1. Guardar la marca de vaciado personal en Firebase
+        const chatId = typeof obtenerChatId === "function"
+          ? obtenerChatId(miUid, contactoUid)
+          : [miUid, contactoUid].sort().join("_");
+
+        // 🗑️ 1. BORRADO FÍSICO EN SUPABASE: Obtener mensajes y destruir adjuntos de la nube
+        const snapshotMsgs = await get(ref(db, `chats/${chatId}/mensajes`));
+        if (snapshotMsgs.exists()) {
+          const mensajesMap = snapshotMsgs.val();
+          const promesasBorradoFisico = [];
+
+          Object.values(mensajesMap).forEach((msg) => {
+            if (msg.urlAdjunto && msg.urlAdjunto.includes("supabase.co")) {
+              promesasBorradoFisico.push(eliminarArchivoSupabase(msg.urlAdjunto, "movachat-adjuntos"));
+            }
+          });
+
+          await Promise.all(promesasBorradoFisico);
+        }
+
+        // 2. Guardar la marca de vaciado personal en Firebase
         const timestampVaciado = Date.now();
         await set(ref(db, `vaciados/${miUid}/${contactoUid}`), timestampVaciado);
 
-        // 2. Limpiar visualmente la pantalla del chat
+        // 3. Limpiar visualmente la pantalla del chat
         const contenedorHistorial = document.querySelector(".historial-mensajes");
         if (contenedorHistorial) {
           contenedorHistorial.innerHTML = "";
         }
 
-        // 3. Limpiar inmediatamente la tarjeta de la lista de chats principal
+        // 4. Limpiar inmediatamente la tarjeta de la lista de chats principal
         const tarjetaAmigoNodo = document.getElementById(`tarjeta-chat-${contactoUid}`);
         if (tarjetaAmigoNodo) {
           const elemTexto = tarjetaAmigoNodo.querySelector(".chat-texto");
@@ -4771,12 +4932,12 @@ document.addEventListener("DOMContentLoaded", () => {
           window.actualizarBadgesNotificaciones();
         }
 
-        // 4. Notificación de confirmación
+        // 5. Notificación de confirmación
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Se ha limpiado tu historial con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
+          mostrarAvisoPremium(`Se ha limpiado tu historial y archivos en la nube con <b>${nombreAmigoActual}</b>.`, "🗑️", "#ff4b2b");
         }
       } catch (err) {
-        console.error("Error al vaciar el chat en Firebase:", err);
+        console.error("Error al vaciar el chat en Firebase y Supabase:", err);
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium("No se pudo vaciar el chat. Inténtalo de nuevo.", "❌", "#ff4b2b");
         }
@@ -5569,18 +5730,19 @@ if (btnCancelarEliminar && capaConfirmarEliminar) {
 
 if (btnConfirmarEliminar && capaConfirmarEliminar) {
   btnConfirmarEliminar.addEventListener("click", () => {
-    if (contactoParaEliminarNodo) {
-      const idx = listaContactosBD.findIndex(c => c.nombre === contactoParaEliminarNodo.nombre);
-      if (idx !== -1) listaContactosBD.splice(idx, 1);
+    if (contactoParaEliminarNodo && contactoParaEliminarNodo.nodo) {
+      const nodoFila = contactoParaEliminarNodo.nodo;
 
-      contactoParaEliminarNodo.nodo.style.transition = "all 0.25s ease";
-      contactoParaEliminarNodo.nodo.style.opacity = "0";
-      contactoParaEliminarNodo.nodo.style.transform = "scale(0.9)";
+      nodoFila.style.transition = "all 0.25s ease";
+      nodoFila.style.opacity = "0";
+      nodoFila.style.transform = "scale(0.9)";
 
       setTimeout(() => {
-        contactoParaEliminarNodo.nodo.remove();
-        capaConfirmarEliminar.classList.add("oculto");
-        mostrarAvisoPremium(`Contacto <b>${contactoParaEliminarNodo.nombre}</b> eliminado.`, "🗑️", "#ff4b2b");
+        nodoFila.remove();
+        if (capaConfirmarEliminar) capaConfirmarEliminar.classList.add("oculto");
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(`Contacto <b>${contactoParaEliminarNodo.nombre || ''}</b> eliminado.`, "🗑️", "#ff4b2b");
+        }
         contactoParaEliminarNodo = null;
       }, 250);
     }
@@ -6828,7 +6990,6 @@ function escucharMensajesChat(chatId) {
     listenerPresenciaContactoActivo = onValue(presenciaContactoRef, (snapPresencia) => {
       estaEnAppReceptorLive = snapPresencia.exists() && snapPresencia.val() === true;
 
-      // Si el contacto se desconecta, refrescar visualmente los mensajes no leídos a 1 check
       document.querySelectorAll(".indicador-checks-mova").forEach((contenedor) => {
         const esLeido = contenedor.classList.contains("leido");
         if (!esLeido) {
@@ -6869,7 +7030,6 @@ function escucharMensajesChat(chatId) {
         const mensajes = snapshot.val();
         const keysMensajes = Object.keys(mensajes);
 
-        // Marcar como leído ÚNICAMENTE si el chat privado está visible en pantalla
         const pantallaChat = document.getElementById("pantalla-chat-privado");
         const chatEstaAbierto = (window.contactoActivoUid === contactoUid) &&
           pantallaChat &&
@@ -6882,11 +7042,13 @@ function escucharMensajesChat(chatId) {
           set(ref(db, `lecturas/${miUid}/${contactoUid}`), ultimoMsgKey);
         }
 
+        const TIEMPO_7_DIAS_MS = 7 * 24 * 60 * 60 * 1000;
+        const ahoraMs = Date.now();
+
         keysMensajes.forEach((msgId) => {
           const msg = mensajes[msgId];
           if (!msg) return;
 
-          // 👇 NUEVO: Si el mensaje fue eliminado para mí, lo ignoramos y no se dibuja
           if (msg.eliminadoPara && msg.eliminadoPara[miUid]) return;
 
           const msgTimestamp = msg.timestamp || 0;
@@ -6897,33 +7059,47 @@ function escucharMensajesChat(chatId) {
 
           if (estaBloqueadoElContacto && !esMio) return;
 
+          // 🗑️ BORRADO FÍSICO EN MENSAJES TEMPORALES (EFÍMEROS)
           if (msg.esEfimero) {
             const limiteMs = msg.duracionEfimeraMs || 10000;
             const transcurrido = Date.now() - (msg.timestamp || Date.now());
             const tiempoRestante = limiteMs - transcurrido;
 
-            if (tiempoRestante <= 0) {
+            const autoDestruirEfimero = async () => {
+              if (msg.urlAdjunto && msg.urlAdjunto.includes("supabase.co")) {
+                await eliminarArchivoSupabase(msg.urlAdjunto, "movachat-adjuntos");
+              }
               set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
+            };
+
+            if (tiempoRestante <= 0) {
+              autoDestruirEfimero();
               return;
             } else {
-              setTimeout(() => {
-                set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
-              }, tiempoRestante);
+              setTimeout(autoDestruirEfimero, tiempoRestante);
             }
           }
 
-          // 🟢 DEFINICIÓN DE TIEMPO PARA MENSAJES EN VIVO
+          // ⏳ VERIFICACIÓN Y LIMPIEZA AUTOMÁTICA A LOS 7 DÍAS
+          if (msg.tipoAdjunto === 'foto' && msg.urlAdjunto && !msg.expirado && (ahoraMs - msgTimestamp) >= TIEMPO_7_DIAS_MS) {
+            eliminarArchivoSupabase(msg.urlAdjunto, "movachat-adjuntos");
+            update(ref(db, `chats/${chatId}/mensajes/${msgId}`), {
+              expirado: true,
+              urlAdjunto: null
+            });
+            msg.expirado = true;
+            msg.urlAdjunto = null;
+          }
+
           const haceCuantoEnviado = Date.now() - (msg.timestamp || 0);
           const esMensajeNuevoEnVivo = haceCuantoEnviado < 5000;
           const esElUltimoMensaje = (msgId === keysMensajes[keysMensajes.length - 1]);
 
-          // 🛡️ ESCUDO ANTI-DUPLICADOS UNIFICADO
           window.mensajesNotificadosUnificados = window.mensajesNotificadosUnificados || new Set();
           const yaSono = window.mensajesNotificadosUnificados.has(msgId);
 
           if (!esCargaInicial && !esMio && esMensajeNuevoEnVivo && !estaBloqueadoElContacto && esElUltimoMensaje && !yaSono) {
-
-            window.mensajesNotificadosUnificados.add(msgId); // 👈 Marcar en la memoria unificada
+            window.mensajesNotificadosUnificados.add(msgId);
 
             const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
             const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
@@ -6933,7 +7109,6 @@ function escucharMensajesChat(chatId) {
               notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
             }
 
-            // 🔊 DISPARAR REPRODUCCIÓN Y VIBRACIÓN
             if (typeof window.reproducirSonidoRecibido === "function") {
               window.reproducirSonidoRecibido(idEmisorReal);
             }
@@ -6950,13 +7125,11 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
-          // 🟢 EVALUACIÓN INDEPENDIENTE POR CADA MENSAJE
           let htmlChecks = "";
           if (esMio) {
             let claseChecks = "enviado";
             let iconoLucide = "check";
 
-            // Verificar si este mensaje específico es igual o anterior al último leído
             const esLeido = ultimoLeidoKeyReceptor && (keysMensajes.indexOf(msgId) <= keysMensajes.indexOf(ultimoLeidoKeyReceptor));
 
             if (esLeido) {
@@ -6988,15 +7161,27 @@ function escucharMensajesChat(chatId) {
             `;
           }
 
+          // 📷 RENDERING DE FOTO (CON EXPIRACIÓN Y VISOR HD)
           if (msg.tipoAdjunto === 'foto') {
-            contenidoBurbuja = `
-              ${htmlReenviado}
-              <div class="contenedor-foto-enviada" style="max-width: 100%; margin-bottom: 6px; border-radius: 10px; overflow: hidden; cursor: pointer;">
-                <img src="${msg.urlAdjunto}" style="width: 100%; display: block; border-radius: 8px;">
-              </div>
+            if (msg.expirado || !msg.urlAdjunto) {
+              contenidoBurbuja = `
+            ${htmlReenviado}
+             <div style="padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.15); text-align: center; color: rgba(255,255,255,0.5); font-size: 0.8rem; margin-bottom: 6px;">
+              <i data-lucide="clock" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i> Foto expirada (7 días transcurridos)
+             </div>
               ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
-            `;
+               <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+              `;
+            } else {
+              contenidoBurbuja = `
+      ${htmlReenviado}
+      <div class="contenedor-foto-enviada" data-foto-hd="${msg.urlAdjunto}" style="max-width: 100%; margin-bottom: 6px; border-radius: 12px; overflow: hidden; cursor: pointer; position: relative;">
+        <img src="${msg.urlAdjunto}" style="width: 100%; max-height: 280px; object-fit: cover; display: block; border-radius: 12px;">
+      </div>
+      ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+      <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+    `;
+            }
           } else if (msg.tipoAdjunto === 'documento') {
             contenidoBurbuja = `
               ${htmlReenviado}
@@ -7873,14 +8058,21 @@ function escucharLikesHistoria(uidAutor) {
         }
       }
 
-      // 4. Renderizar lista de nombres en el modal
+      // 4. Renderizar lista de nombres en el modal con respaldo de imagen seguro
       if (contenedor) {
         contenedor.innerHTML = "";
         usuarios.forEach((user) => {
+          const fotoValida = (user.fotoUrl && user.fotoUrl.trim() !== "")
+            ? user.fotoUrl
+            : 'assets/logo/icon-192.png';
+
           const item = document.createElement("div");
           item.className = "item-usuario-like";
           item.innerHTML = `
-            <img src="${user.fotoUrl || 'img/default-avatar.png'}" class="avatar-contacto-mini" />
+            <img src="${fotoValida}" 
+                 class="avatar-contacto-mini" 
+                 alt="${user.nombre || 'Usuario'}" 
+                 onerror="this.onerror=null; this.src='assets/logo/icon-192.png';" />
             <span class="nombre-contacto-texto">${user.nombre || 'Usuario Mova'}</span>
           `;
           contenedor.appendChild(item);
@@ -7902,16 +8094,23 @@ function escucharLikesHistoria(uidAutor) {
   });
 }
 
-// 🚀 ESCUCHAR LIKES DE MI ESTADO AL INICIAR LA APP
+// 🚀 ESCUCHAR LIKES Y CARGAR FOTO REAL EN MI ESTADO
 function iniciarEscuchaMiEstado() {
   const usuarioActual = auth.currentUser;
   if (!usuarioActual) return;
+
+  // 🖼️ 1. Cargar tu foto de perfil actual en la tarjeta
+  const imgMiAvatar = document.getElementById("img-mi-avatar-bandeja");
+  if (imgMiAvatar) {
+    imgMiAvatar.src = usuarioActual.photoURL || "img/default-avatar.png";
+  }
 
   const miUid = usuarioActual.uid;
   const badgeTarjeta = document.getElementById("badge-vistas-mi-estado");
   const cantTarjeta = document.getElementById("cant-vistas-tarjeta");
   const likesRef = ref(db, `historias_likes/${miUid}`);
 
+  // 👁️ 2. Escuchar contadores de reacciones
   onValue(likesRef, (snap) => {
     if (snap.exists()) {
       const totalCount = Object.keys(snap.val()).length;
@@ -7924,7 +8123,7 @@ function iniciarEscuchaMiEstado() {
   });
 }
 
-// 👁️ ABRIR Y CERRAR MODAL DE LIKES / REACCIONES
+// 👁️ ABRIR Y CERRAR MODAL DE LIKES / REACCIONES (SINCRONIZACIÓN INSTANTÁNEA)
 const btnVerLikes = document.getElementById("btn-ver-likes-estado");
 const badgeTarjeta = document.getElementById("badge-vistas-mi-estado");
 const modalListaLikes = document.getElementById("modal-lista-likes");
@@ -7934,6 +8133,9 @@ const btnCerrarListaLikes = document.getElementById("btn-cerrar-lista-likes");
 if (btnVerLikes && modalListaLikes) {
   btnVerLikes.addEventListener("click", (e) => {
     e.stopPropagation();
+    if (window.autorHistoriaActivaUid) {
+      escucharLikesHistoria(window.autorHistoriaActivaUid);
+    }
     modalListaLikes.classList.remove("oculto");
   });
 }
@@ -7942,6 +8144,11 @@ if (btnVerLikes && modalListaLikes) {
 if (badgeTarjeta && modalListaLikes) {
   badgeTarjeta.addEventListener("click", (e) => {
     e.stopPropagation();
+    const usuarioActual = auth.currentUser;
+    if (usuarioActual) {
+      // 🚀 Fuerza la lectura inmediata de la lista al tocar el ojito
+      escucharLikesHistoria(usuarioActual.uid);
+    }
     modalListaLikes.classList.remove("oculto");
   });
 }
