@@ -1399,6 +1399,7 @@ body {
 .menu-contextual {
   position: absolute;
   z-index: 1000;
+  margin-top: -30px !important; /* 👈 Desplaza el menú hacia arriba respecto a la coordenada JS */
   background: rgba(15, 20, 35, 0.82);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
