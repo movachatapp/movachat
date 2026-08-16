@@ -1308,6 +1308,10 @@ if (inputRealGaleria) {
   });
 }
 
+// Variables globales para los metadatos del documento
+let pesoDocumentoFormateado = "";
+let extensionDocumentoFormateada = "";
+
 if (inputRealDocumento) {
   inputRealDocumento.addEventListener("change", (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -1323,27 +1327,43 @@ if (inputRealDocumento) {
         return;
       }
 
+      // 1. Extraer la extensión (ej. PDF, DOCX)
+      extensionDocumentoFormateada = archivoDoc.name.split('.').pop().toUpperCase();
+
+      // 2. Calcular peso en MB o KB
+      if (archivoDoc.size >= 1024 * 1024) {
+        pesoDocumentoFormateado = (archivoDoc.size / (1024 * 1024)).toFixed(2) + " MB";
+      } else {
+        pesoDocumentoFormateado = (archivoDoc.size / 1024).toFixed(1) + " KB";
+      }
+
       nombreDocumentoSimulado = archivoDoc.name;
       tipoAdjuntoActivo = 'documento';
       imgMiniaturaAdjunto.style.display = "none";
       const wrapper = document.querySelector(".wrapper-miniatura");
 
-      const iconoPrevio = wrapper.querySelector(".icono-doc-preview");
+      const iconoPrevio = wrapper ? wrapper.querySelector(".icono-doc-preview") : null;
       if (iconoPrevio) iconoPrevio.remove();
 
-      wrapper.insertAdjacentHTML("beforeend", `
-        <div class="icono-doc-preview">
-          <i data-lucide="file-text" style="width: 30px; height: 30px;"></i>
-        </div>
-      `);
+      if (wrapper) {
+        wrapper.insertAdjacentHTML("beforeend", `
+          <div class="icono-doc-preview">
+            <i data-lucide="file-text" style="width: 30px; height: 30px;"></i>
+          </div>
+        `);
+      }
       if (window.lucide) window.lucide.createIcons();
 
-      cajaVistaPrevia.classList.remove("oculto");
-      inputChat.placeholder = `Comentar documento: ${nombreDocumentoSimulado.substring(0, 15)}...`;
-      inputChat.focus();
+      if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
+      if (inputChat) {
+        inputChat.placeholder = `Comentar ${extensionDocumentoFormateada} (${pesoDocumentoFormateado})...`;
+        inputChat.focus();
+      }
 
-      btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
-      if (window.lucide) window.lucide.createIcons();
+      if (btnAccionChat) {
+        btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+        if (window.lucide) window.lucide.createIcons({ targets: [btnAccionChat] });
+      }
     }
   });
 }
@@ -1881,6 +1901,9 @@ async function enviarMensajeNuevo() {
         }
 
         objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : inputRealDocumento.files[0].name;
+        objetoMensaje.pesoDoc = pesoDocumentoFormateado;
+        objetoMensaje.extDoc = extensionDocumentoFormateada;
+
         urlSubidaSupabase = await subirArchivoSupabase(inputRealDocumento.files[0], "movachat-adjuntos");
 
         if (urlSubidaSupabase) {
@@ -1916,39 +1939,43 @@ async function enviarMensajeNuevo() {
     if (iconoPrevio) iconoPrevio.remove();
     if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
     if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
+  } // 👈 CIERRA 'if (tieneAdjunto)'
+
+// 💬 LIMPIEZA DE ENTRADA Y ENVÍO A FIREBASE (Aplica para texto normal Y con adjuntos)
+if (inputChat) {
+  inputChat.value = "";
+  inputChat.readOnly = false; // 🔓 DESBLOQUEAR CAJA PARA MENSAJES FUTUROS
+}
+
+if (miUid && contactoUid) {
+  set(ref(db, `escribiendo/${chatId}/${miUid}`), false);
+}
+
+// 🚀 SUBIR A FIREBASE
+try {
+  const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
+  const nuevoMensajeRef = push(listaMensajesRef);
+  await set(nuevoMensajeRef, objetoMensaje);
+
+  // 🔊 SONIDO DE MENSAJE ENVIADO
+  reproducirSonidoEnviado();
+
+  if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
+} catch (error) {
+  console.error("❌ Error al enviar mensaje a Firebase:", error);
+  if (typeof mostrarAvisoPremium === "function") {
+    mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
   }
+} finally {
+  // Liberar el candado tras 300ms para permitir el siguiente mensaje
+  setTimeout(() => {
+    estaEnviandoMensaje = false;
+  }, 300);
+ }
 
-  if (inputChat) {
-      inputChat.value = "";
-      inputChat.readOnly = false; // 🔓 DESBLOQUEAR CAJA PARA MENSAJES FUTUROS
-    }
+ }
 
-    if (miUid && contactoUid) {
-      set(ref(db, `escribiendo/${chatId}/${miUid}`), false);
-    }
 
-    // 🚀 SUBIR A FIREBASE
-    try {
-      const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
-      const nuevoMensajeRef = push(listaMensajesRef);
-      await set(nuevoMensajeRef, objetoMensaje);
-
-      // 🔊 SONIDO DE MENSAJE ENVIADO
-      reproducirSonidoEnviado();
-
-      if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
-    } catch (error) {
-      console.error("❌ Error al enviar mensaje a Firebase:", error);
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("No se pudo enviar el mensaje.", "❌", "#ff4b2b");
-      }
-    } finally {
-      // Liberar el candado tras 300ms para permitir el siguiente mensaje
-      setTimeout(() => {
-        estaEnviandoMensaje = false;
-      }, 300);
-    }
-  }
 
   // ========================================================
   // 6. EVENTOS DE MENÚ CONTEXTUAL PARA BURBUJAS Y TECLADO
@@ -7323,49 +7350,58 @@ async function enviarMensajeNuevo() {
     `;
               }
             } else if (msg.tipoAdjunto === 'documento') {
+              const extension = msg.extDoc || "DOC";
+              const peso = msg.pesoDoc || "";
+
               contenidoBurbuja = `
-              ${htmlReenviado}
-              <div class="contenedor-documento-enviado" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer;">
-                <i data-lucide="file-text" style="color: #00f2fe; width:24px; height:24px;"></i>
-                <span style="font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;">${msg.nombreDoc || "Documento"}</span>
-              </div>
-              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
-            `;
+             ${htmlReenviado}
+               <a href="${msg.urlAdjunto}" target="_blank" rel="noopener noreferrer" class="tarjeta-documento-link" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.08); padding: 10px 12px; border-radius: 12px; margin-bottom: 6px; border: 1px solid rgba(255,255,255,0.12); text-decoration: none; color: #fff;">
+                <div style="background: rgba(0, 242, 254, 0.15); padding: 8px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="file-text" style="color: #00f2fe; width: 22px; height: 22px;"></i>
+               </div>
+                <div style="display: flex; flex-direction: column; overflow: hidden; flex-grow: 1;">
+                <span style="font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; color: #fff;">${msg.nombreDoc || "Documento"}</span>
+               <span style="font-size: 0.72rem; opacity: 0.7; color: rgba(255,255,255,0.7);">${extension} ${peso ? '• ' + peso : ''}</span>
+               </div>
+                <i data-lucide="download" style="width: 18px; height: 18px; opacity: 0.8; color: #00f2fe;"></i>
+               </a>
+                ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+               <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+                `;
             } else if (msg.tipoAdjunto === 'video') {
               estiloEspecialBurbuja = "padding: 10px;";
               contenidoBurbuja = `
-              ${htmlReenviado}
-              <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-                <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                  <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-                </svg>
-                <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-                  <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
-                </div>
-                <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                  <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-                </div>
-              </div>
-              ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-              <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
-            `;
+                  ${htmlReenviado}
+                   <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
+                   <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+                     <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
+                   </svg>
+                   <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
+                    <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+                   </div>
+                   <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
+                    <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+                    </div>
+                  </div>
+                  ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+                  <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+                  `;
             } else if (msg.tipoAdjunto === 'audio') {
               contenidoBurbuja = `
-              ${htmlReenviado}
-              <div class="reproductor-audio-burbuja">
-                <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
-                <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
+                 ${htmlReenviado}
+                  <div class="reproductor-audio-burbuja">
+                  <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+                  <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
                   <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
                   <span class="onda-barra"></span><span class="onda-barra"></span>
                   <span class="onda-barra"></span><span class="onda-barra"></span>
                   <span class="onda-barra"></span><span class="onda-barra"></span>
-                </div>
-                <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-                <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
-              </div>
-              <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
-            `;
+                   </div>
+                   <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
+                    <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
+                  </div>
+                   <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+                  `;
             } else {
               contenidoBurbuja = `
               ${htmlReenviado}
@@ -8326,3 +8362,4 @@ async function enviarMensajeNuevo() {
       modalListaLikes.classList.add("oculto");
     });
   }
+

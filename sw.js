@@ -2,7 +2,7 @@
 // 📱 SERVICE WORKER MOVACHAT (Versión Optimizada)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.0.4';
+const CACHE_NAME = 'movachat-v1.0.0.5';
 
 // Recursos estáticos a descargar e instalar inmediatamente
 const ASSETS_TO_CACHE = [
@@ -19,14 +19,23 @@ const ASSETS_TO_CACHE = [
   './assets/sounds/recibido.mp3'
 ];
 
-// 1. Instalar el Service Worker y forzar la descarga e instalación inmediata de audios e iconos
+// 1. Instalar el Service Worker con descarga tolerante a fallos
 self.addEventListener('install', (event) => {
   self.skipWaiting(); // Activar el nuevo SW inmediatamente
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
       console.log('📦 Precachando iconos, sonidos y recursos estáticos de MovaChat...');
-      // addAll asegura que todos los sonidos e iconos se descarguen al instalar la app
-      await cache.addAll(ASSETS_TO_CACHE);
+      
+      // Intentar cachar cada recurso individualmente para evitar que un fallo bloquee la PWA
+      await Promise.allSettled(
+        ASSETS_TO_CACHE.map(async (url) => {
+          try {
+            await cache.add(url);
+          } catch (err) {
+            console.warn(`⚠️ No se pudo precachar el recurso: ${url}`, err);
+          }
+        })
+      );
     })
   );
 });
@@ -104,9 +113,7 @@ self.addEventListener('push', (event) => {
     body: data.cuerpo || 'Tienes un nuevo mensaje recibido 📩',
     icon: data.icono || './assets/logo/icon-192.png',
     badge: './assets/logo/badge-72.png',
-    // Patrón de vibración: 200ms vibración, 100ms pausa, 200ms vibración
     vibrate: [200, 100, 200],
-    // Agrupa notificaciones para no saturar si llegan varios mensajes seguidos
     tag: data.tag || 'movachat-chat',
     renotify: true,
     data: { 
@@ -126,13 +133,11 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Si la ventana ya está abierta, la enfoca
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
           return client.focus();
         }
       }
-      // Si está cerrada/bloqueada, abre la PWA
       if (clients.openWindow) {
         return clients.openWindow('./');
       }
