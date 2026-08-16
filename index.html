@@ -197,6 +197,12 @@
             </div>
             <div class="chat-mensaje-caja">
               <p class="chat-texto" id="texto-subtitulo-mi-estado">Comparte imágenes con tus amigos...</p>
+
+              <!-- 👁️ OJITO DE VISTAS EN LA TARJETA (ESQUINA INFERIOR DERECHA) -->
+              <span id="badge-vistas-mi-estado" class="badge-vistas-tarjeta oculto">
+                <i data-lucide="eye"></i>
+                <span id="cant-vistas-tarjeta">0</span>
+              </span>
             </div>
           </div>
         </div>
@@ -538,6 +544,14 @@
 
       <div class="wrapper-foto-estado-premium">
         <img src="" id="img-estado-render" alt="Estado Activo">
+
+        <!-- 👁️ BOTÓN PARA VER QUIÉNES DIERON LIKE (Solo visible en tu propia historia) -->
+        <div id="btn-ver-likes-estado" class="btn-ver-likes-pro oculto">
+          <i data-lucide="eye"></i>
+          <span id="contador-total-likes">0</span>
+        </div>
+
+        <!-- ❤️ BOTÓN PARA DAR LIKE -->
         <button class="btn-like-estado-directo" id="btn-corazon-estado">
           <i data-lucide="heart"></i>
           <span id="contador-likes-estado">0</span>
@@ -890,6 +904,21 @@
           style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px;">Cancelar</button>
         <button id="btn-enviar-recuperar" class="btn-primario"
           style="flex: 1; padding: 12px; font-size: 13.5px; border-radius: 14px; background: linear-gradient(135deg, #00c6ff, #0072ff); box-shadow: 0 4px 15px rgba(0, 114, 255, 0.4);">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 👥 MODAL LISTA DE PERSONAS QUE DIERON ME GUSTA -->
+  <div id="modal-lista-likes" class="modal-overlay oculto">
+    <div class="modal-cristal">
+      <div class="modal-header">
+        <h3>Reacciones ❤️</h3>
+        <button id="btn-cerrar-lista-likes" class="btn-cerrar-icono">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div id="contenedor-usuarios-likes" class="lista-usuarios-likes">
+        <!-- Se inyectan dinámicamente con JavaScript -->
       </div>
     </div>
   </div>

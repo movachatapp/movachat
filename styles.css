@@ -200,7 +200,7 @@ body {
   background: rgba(11, 12, 16, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  padding: 10px 38px; /* ✂️ 10px arriba/abajo (2px menos) y 38px a los lados */
+  padding: 10px 38px;
   border-radius: 40px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.1);
@@ -787,11 +787,11 @@ body {
 /* FASE 3: ÁREA DE CHATS (INICIO)             */
 /* ========================================== */
 #pantalla-chats {
-  display: none; /* Mantén tu display: none para alternar pantallas con JS */
+  display: none;
   flex-direction: column;
   align-items: stretch !important;
-  height: 100dvh; /* Ocupa exactamente el 100% de la pantalla visible */
-  max-height: 100dvh; /* Evita que se encoja de más o se desplace al subir el teclado */
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
   position: relative;
 }
@@ -1123,8 +1123,6 @@ body {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-
-  /* 🟢 FIJAR ENCABEZADO Y EVITAR QUE EL TECLADO LO APLASTE */
   flex-shrink: 0;
   position: sticky;
   top: 0;
@@ -1232,7 +1230,7 @@ body {
 .historial-mensajes {
   flex: 1;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch; /* 🟢 Scroll ultrasuave en móviles */
+  -webkit-overflow-scrolling: touch;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -1363,7 +1361,6 @@ body {
   background: rgba(255, 255, 255, 0.07);
 }
 
-/* 🟢 EVITAR QUE LA BARRA INFERIOR SE APLASTE AL SUBIR EL TECLADO */
 .footer-chat,
 .caja-input-privado {
   flex-shrink: 0;
@@ -1786,7 +1783,9 @@ body {
   opacity: 0 !important;
 }
 
-/* --- ESTADOS Y HISTORIAS --- */
+/* ========================================================
+   --- ESTADOS Y HISTORIAS (ACTUALIZADO HIGH-CONTRAST) ---
+   ======================================================== */
 .tarjeta-chat .chat-avatar-caja.con-estado-activo img {
   border: 2px solid transparent;
   background-image: linear-gradient(#0f1423, #0f1423), linear-gradient(135deg, #00f2fe, #7f00ff);
@@ -1880,48 +1879,80 @@ body {
   object-fit: cover;
 }
 
+/* ❤️ BOTÓN ME GUSTA EN LAS HISTORIAS (GLASSMORPHISM & NEÓN) */
+#btnCorazonEstado,
 .btn-like-estado-directo {
   position: absolute;
   bottom: 20px;
   right: 20px;
-  background: rgba(15, 20, 35, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: rgba(15, 20, 35, 0.65) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 10;
 }
 
+#btnCorazonEstado svg,
+#btnCorazonEstado i,
+.btn-like-estado-directo svg,
 .btn-like-estado-directo i {
   width: 18px;
   height: 18px;
-  transition: transform 0.2s;
+  color: #ffffff !important;
+  fill: transparent;
+  stroke: #ffffff;
+  stroke-width: 2px;
+  transition: all 0.25s ease-in-out;
 }
 
+#contadorLikesEstado {
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.9rem;
+  transition: all 0.25s ease-in-out;
+}
+
+/* ❤️ ESTADO ACTIVO (CUANDO DAS ME GUSTA) */
+#btnCorazonEstado.activo,
 .btn-like-estado-directo.activo {
-  background: linear-gradient(135deg, #ff416c, #ff4b2b);
-  border-color: transparent;
-  box-shadow: 0 0 20px rgba(255, 75, 43, 0.6);
-  animation: latidoEfecto 0.3s ease-out;
+  background: linear-gradient(135deg, rgba(255, 65, 108, 0.95), rgba(255, 75, 43, 0.95)) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 0 20px rgba(255, 75, 43, 0.7), 0 4px 15px rgba(0, 0, 0, 0.3) !important;
+  animation: latidoEfecto 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#btnCorazonEstado.activo svg,
+#btnCorazonEstado.activo i,
+.btn-like-estado-directo.activo svg,
+.btn-like-estado-directo.activo i {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+  stroke: #ffffff !important;
+  transform: scale(1.15);
+}
+
+#btnCorazonEstado.activo #contadorLikesEstado,
+.btn-like-estado-directo.activo #contadorLikesEstado {
+  color: #ffffff !important;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
 }
 
 @keyframes latidoEfecto {
   0% { transform: scale(1); }
-  50% { transform: scale(1.25); }
+  50% { transform: scale(1.2); }
   100% { transform: scale(1); }
-}
-
-.btn-like-estado-directo.activo i {
-  fill: white;
 }
 
 .texto-comentario-estado {
@@ -2081,8 +2112,6 @@ body {
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   animation: deslizarBuscadorInterno 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-
-  /* 🟢 EVITA QUE SE APLASTE CUANDO SUBE EL TECLADO */
   flex-shrink: 0;
 }
 
@@ -3435,7 +3464,6 @@ body.tema-claro .nombre-sugerencia-txt {
    ======================================================== */
 
 @media (max-width: 600px) {
-  /* Fija la posición arriba desde el inicio para evitar saltos al tocar botones */
   .modal-overlay {
     align-items: flex-start !important;
     padding-top: 15px !important;
@@ -3456,7 +3484,6 @@ body.tema-claro .nombre-sugerencia-txt {
    🚀 OPTIMIZACIÓN GPU Y BATERÍA (RENDIMIENTO MÓVIL)
    ======================================================== */
 
-/* Aceleración por Hardware para evitar sobrecalentamiento */
 .modal-overlay,
 .modal-cristal,
 .sugerencias-contactos-caja,
@@ -3467,7 +3494,6 @@ body.tema-claro .nombre-sugerencia-txt {
   backface-visibility: hidden;
 }
 
-/* Suavizado de desplazamiento fluido en móviles */
 .modal-cristal {
   -webkit-overflow-scrolling: touch;
 }
@@ -3476,14 +3502,12 @@ body.tema-claro .nombre-sugerencia-txt {
 /* CORRECCIÓN DE CAPAS (Z-INDEX UNIFICADO)   */
 /* ========================================== */
 
-/* Menús desplegables y contextuales */
 .menu-contextual,
 #menu-desplegable-cabecera,
 #menu-tarjetas-chat {
   z-index: 500 !important;
 }
 
-/* Modales, Pantallas completas e Historias */
 .modal-overlay,
 .pantalla-auth,
 .visor-estado-flotante,
@@ -3492,7 +3516,6 @@ body.tema-claro .nombre-sugerencia-txt {
   z-index: 1000 !important;
 }
 
-/* Notificaciones y Avisos Toasts (Siempre arriba de todo) */
 #toast-premium,
 .toast-movachat {
   z-index: 2000 !important;
@@ -3549,7 +3572,6 @@ body.tema-claro .nombre-sugerencia-txt {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Ocultar texto En Línea de la cabecera */
 .amigo-datos .amigo-estado-texto {
   display: none !important;
 }
@@ -3569,7 +3591,6 @@ body.tema-claro .nombre-sugerencia-txt {
   transition: all 0.2s ease-in-out;
 }
 
-/* 1. Enviado (1 Check Gris Claro - Servidor) */
 .indicador-checks-mova.enviado i,
 .indicador-checks-mova.enviado svg {
   color: #94a3b8 !important;
@@ -3577,7 +3598,6 @@ body.tema-claro .nombre-sugerencia-txt {
   filter: none !important;
 }
 
-/* 2. Entregado (2 Checks Blanco Puro - Receptor en la App) */
 .indicador-checks-mova.entregado i,
 .indicador-checks-mova.entregado svg {
   color: #ffffff !important;
@@ -3585,7 +3605,6 @@ body.tema-claro .nombre-sugerencia-txt {
   filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.8)) !important;
 }
 
-/* 3. Leído (2 Checks Verde Neón Esmeralda - Chat Abierto) */
 .indicador-checks-mova.leido i,
 .indicador-checks-mova.leido svg {
   color: #00ff88 !important;
@@ -3597,7 +3616,6 @@ body.tema-claro .nombre-sugerencia-txt {
    🔮 SISTEMA DE AURAS MOVACHAT (ESTILOS UNIFICADOS)
    ======================================================== */
 
-/* --- 1. ESFERAS DE FONDO DE CORRECCIÓN DE AURA --- */
 .esfera-cyan.aura-cyan-morado { background: rgba(0, 242, 254, 0.15); }
 .esfera-morada.aura-cyan-morado { background: rgba(127, 0, 255, 0.15); }
 .esfera-cyan.aura-fuego { background: rgba(255, 65, 108, 0.15); }
@@ -3607,7 +3625,6 @@ body.tema-claro .nombre-sugerencia-txt {
 .esfera-cyan.aura-matrix { background: rgba(17, 153, 142, 0.15); }
 .esfera-morada.aura-matrix { background: rgba(56, 239, 125, 0.15); }
 
-/* --- 2. CONTENEDOR CONTENEDOR EN PASTILLA SLIDER --- */
 .selector-aura-pastilla {
   position: relative;
   display: flex;
@@ -3620,7 +3637,6 @@ body.tema-claro .nombre-sugerencia-txt {
   justify-content: space-around;
 }
 
-/* --- 3. CÁPSULA DESLIZANTE (Único elemento con marco/borde dinámico) --- */
 .glizzy-deslizante,
 #indicador-aura {
   position: absolute;
@@ -3634,7 +3650,6 @@ body.tema-claro .nombre-sugerencia-txt {
   transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* Colores dinámicos aplicados a la cápsula según el tema seleccionado */
 [data-aura="cyan-morado"] .glizzy-deslizante,
 [data-aura="cyber"] .glizzy-deslizante {
   border: 1px solid #00f2fe;
@@ -3656,7 +3671,6 @@ body.tema-claro .nombre-sugerencia-txt {
   box-shadow: 0 0 15px rgba(56, 239, 125, 0.35), inset 0 0 8px rgba(255, 255, 255, 0.1);
 }
 
-/* --- 4. BOTONES (Sin bordes propios para eliminar el doble marco) --- */
 .opcion-aura {
   flex: 1;
   background: transparent !important;
@@ -3691,19 +3705,19 @@ body.tema-claro .nombre-sugerencia-txt {
   text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
 }
 
-/* --- 5. ORBES Y PUNTOS DE COLOR --- */
+/* --- 5. ORBES Y PUNTOS DE COLOR (CORREGIDO) --- */
 .orbe-aura {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 50% !important;
+  display: inline-block !important;
+  flex-shrink: 0 !important;
 }
 
 .orbe-aura.cyan-morado { background: #00f2fe; box-shadow: 0 0 8px #00f2fe; }
 .orbe-aura.fuego       { background: #ff4b2b; box-shadow: 0 0 8px #ff4b2b; }
 .orbe-aura.oceano      { background: #0072ff; box-shadow: 0 0 8px #0072ff; }
 .orbe-aura.matrix      { background: #38ef7d; box-shadow: 0 0 8px #38ef7d; }
-
 
 /* 🔮 MODAL DE ALERTA FUTURISTA Y CENTRADO */
 #modal-confirmar-limpiar-global {
@@ -3829,7 +3843,6 @@ body.tema-claro .nombre-sugerencia-txt {
    ⚡ MODO AHORRO DE BATERÍA / MÁXIMO RENDIMIENTO
    ======================================================== */
 
-/* 1. Desactivar desenfoques Glassmorphism y acelerar renderizado */
 body.modo-ahorro *,
 body.modo-ahorro *::before,
 body.modo-ahorro *::after {
@@ -3839,13 +3852,11 @@ body.modo-ahorro *::after {
   text-shadow: none !important;
 }
 
-/* 2. Ocultar orbes de fondo neón con animaciones continuas */
 body.modo-ahorro .luces-fondo,
 body.modo-ahorro .esfera {
   display: none !important;
 }
 
-/* 3. Fondos sólidos de alto rendimiento para contenedores principales */
 body.modo-ahorro .contenedor-chat,
 body.modo-ahorro .menu-flotante,
 body.modo-ahorro .modal-cristal,
@@ -3859,19 +3870,98 @@ body.modo-ahorro .caja-ajustes {
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
-/* 4. Detener animaciones infinitas para liberar CPU/GPU */
 body.modo-ahorro .punto-online,
 body.modo-ahorro #badge-campanita,
 body.modo-ahorro .puntos-escribiendo span {
   animation: none !important;
 }
 
-/* Oculta cámara, lápiz de edición y ajustes cuando ves un perfil ajeno */
 #pantalla-perfil.modo-visitante .solo-propietario {
   display: none !important;
 }
 
-/* Oculta las acciones de interacción cuando ves tu propio perfil */
 #pantalla-perfil:not(.modo-visitante) .solo-visitante {
   display: none !important;
+}
+
+/* 👥 PANEL Y LISTA DE ME GUSTA */
+.btn-ver-likes-pro {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: rgba(15, 20, 35, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 8px 14px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ff4b2b;
+  font-weight: bold;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.lista-usuarios-likes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 250px;
+  overflow-y: auto;
+  margin-top: 10px;
+}
+
+.item-usuario-like {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* 👁️ OJITO NEÓN EN LA TARJETA DE MI ESTADO */
+.badge-vistas-tarjeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0, 242, 254, 0.12);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  color: #00f2fe;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+}
+
+.badge-vistas-tarjeta svg,
+.badge-vistas-tarjeta i {
+  width: 13px;
+  height: 13px;
+  color: #00f2fe;
+}
+
+/* 🔝 SOLUCIÓN A LOS NOMBRES: OBLIGA AL MODAL A QUEDAR POR ENCIMA DE LA HISTORIA */
+#modal-lista-likes {
+  z-index: 3000 !important;
+}
+
+.item-usuario-like {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 8px;
+}
+
+.item-usuario-like .nombre-contacto-texto {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
 }

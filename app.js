@@ -865,10 +865,10 @@ if (contenedorChats) {
     if (e.target.closest(".chat-avatar-caja")) {
       e.stopPropagation();
 
-      // Buscar si la tarjeta tiene la clase o indicador de historia/estado activo
       const tieneEstado = tarjeta.dataset.estadoUrl;
       if (tieneEstado) {
-        abrirEstadoAmigo(tarjeta.dataset.estadoUrl, tarjeta.dataset.estadoTexto || "");
+        const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
+        abrirEstadoAmigo(tarjeta.dataset.estadoUrl, tarjeta.dataset.estadoTexto || "", contactoUid);
       }
       return;
     }
@@ -2772,14 +2772,32 @@ let temporizadorEstado = null;
 let intervaloBarraProgreso = null;
 let likesSimulados = 0;
 
-function abrirEstadoAmigo(urlFoto, fraseInicial) {
+function abrirEstadoAmigo(urlFoto, fraseInicial, uidAutor = null) {
   if (!visorEstados) return;
   imgEstadoRender.src = urlFoto;
   textoEstadoRender.textContent = fraseInicial;
 
-  likesSimulados = 0;
-  if (contadorLikesEstado) contadorLikesEstado.textContent = likesSimulados;
-  if (btnCorazonEstado) btnCorazonEstado.classList.remove("activo");
+  window.autorHistoriaActivaUid = uidAutor;
+
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+  const btnVerLikes = document.getElementById("btn-ver-likes-estado");
+
+  // 👁️ Mostrar el ojo de visualización SOLO si es tu propia historia
+  if (btnVerLikes) {
+    if (uidAutor && miUid && uidAutor === miUid) {
+      btnVerLikes.classList.remove("oculto");
+    } else {
+      btnVerLikes.classList.add("oculto");
+    }
+  }
+
+  // Sincronizar escucha en Firebase
+  if (uidAutor) {
+    escucharLikesHistoria(uidAutor);
+  } else {
+    if (contadorLikesEstado) contadorLikesEstado.textContent = "0";
+    if (btnCorazonEstado) btnCorazonEstado.classList.remove("activo");
+  }
 
   visorEstados.classList.remove("oculto");
 
@@ -2804,6 +2822,13 @@ function cerrarEstadoMova() {
   if (temporizadorEstado) clearTimeout(temporizadorEstado);
   if (intervaloBarraProgreso) clearInterval(intervaloBarraProgreso);
   if (lineaProgreso) lineaProgreso.style.width = "0%";
+
+  // Limpiamos el ID activo y apagamos la escucha en Firebase
+  window.autorHistoriaActivaUid = null;
+  if (typeof desuscribirLikesHistoria === "function" && desuscribirLikesHistoria) {
+    desuscribirLikesHistoria();
+    desuscribirLikesHistoria = null;
+  }
 }
 
 if (btnCerrarEstado) {
@@ -2812,18 +2837,54 @@ if (btnCerrarEstado) {
   });
 }
 
+// ❤️ 1. DAR O QUITAR "ME GUSTA" EN LA HISTORIA (FIREBASE)
+async function toggleLikeHistoria(uidAutorHistoria) {
+  const usuarioActual = auth.currentUser;
+  if (!usuarioActual || !uidAutorHistoria) return;
+
+  const miUid = usuarioActual.uid;
+  const likeRef = ref(db, `historias_likes/${uidAutorHistoria}/${miUid}`);
+
+  if (btnCorazonEstado) {
+    btnCorazonEstado.classList.toggle("activo");
+  }
+
+  try {
+    const snap = await get(likeRef);
+
+    if (snap.exists()) {
+      await remove(likeRef);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Has quitado tu me gusta 💔", "💔", "#ff4b2b");
+      }
+    } else {
+      await set(likeRef, {
+        nombre: usuarioActual.displayName || "Usuario Mova",
+        fotoUrl: usuarioActual.photoURL || "",
+        timestamp: Date.now()
+      });
+
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("¡Te ha gustado esta historia! ❤️", "❤️", "#ff4b2b");
+      }
+    }
+  } catch (err) {
+    console.error("Error al actualizar me gusta:", err);
+    if (btnCorazonEstado) {
+      btnCorazonEstado.classList.toggle("activo");
+    }
+  }
+}
+
+// 📊 2. ESCUCHAR CORAZONES Y CONTADOR EN TIEMPO REAL
+let desuscribirLikesHistoria = null;
+
+// ❤️ 3. EVENTO DE CLIC EN EL CORAZÓN CONECTADO A FIREBASE
 if (btnCorazonEstado) {
   btnCorazonEstado.addEventListener("click", (e) => {
     e.stopPropagation();
-
-    if (!btnCorazonEstado.classList.contains("activo")) {
-      btnCorazonEstado.classList.add("activo");
-      likesSimulados++;
-      contadorLikesEstado.textContent = likesSimulados;
-    } else {
-      btnCorazonEstado.classList.remove("activo");
-      likesSimulados--;
-      contadorLikesEstado.textContent = likesSimulados;
+    if (window.autorHistoriaActivaUid) {
+      toggleLikeHistoria(window.autorHistoriaActivaUid);
     }
   });
 }
@@ -3534,7 +3595,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         // 📸 Si hizo clic en la foto de avatar Y la tarjeta tiene una historia activa, abre el Visor de Historias
         if (e.target.closest(".chat-avatar-caja") && tarjetaContacto.dataset.estadoUrl) {
           if (typeof abrirEstadoAmigo === "function") {
-            abrirEstadoAmigo(tarjetaContacto.dataset.estadoUrl, tarjetaContacto.dataset.estadoTexto || "");
+            abrirEstadoAmigo(tarjetaContacto.dataset.estadoUrl, tarjetaContacto.dataset.estadoTexto || "", contactoUid);
           }
           return;
         }
@@ -3790,6 +3851,7 @@ async function verificarExpiracion24Horas() {
 onAuthStateChanged(auth, (user) => {
   if (user) {
     verificarExpiracion24Horas();
+    iniciarEscuchaMiEstado(); // 👁️ Carga automática del contador en la tarjeta al entrar
   }
 });
 
@@ -3800,8 +3862,9 @@ if (tarjetaMiEstado) {
 
     if (imagenEstadoGuardada) {
       const textoFinal = fraseEstadoGuardada || "¡Compartiendo mi día en MovaChat! 🌌🔥";
+      const miUid = auth.currentUser ? auth.currentUser.uid : null;
       if (typeof abrirEstadoAmigo === "function") {
-        abrirEstadoAmigo(imagenEstadoGuardada, textoFinal);
+        abrirEstadoAmigo(imagenEstadoGuardada, textoFinal, miUid);
         inyectarBotonBorrarManualVisor();
       }
     } else {
@@ -7563,7 +7626,7 @@ window.cargarPerfilUsuario = function cargarPerfilUsuario(uidTarget) {
   const usuarioActual = auth.currentUser;
   const pantallaPerfil = document.getElementById('pantalla-perfil');
   const menuFlotante = document.querySelector(".menu-flotante");
-  
+
   if (!pantallaPerfil || !uidTarget) return;
 
   // 1. Apagar escuchador previo si estábamos viendo otro perfil
@@ -7618,9 +7681,10 @@ window.cargarPerfilUsuario = function cargarPerfilUsuario(uidTarget) {
 
         const imgTarget = esHistoriaValida ? datosUsuario.estadoHistoriaUrl : urlFoto;
         const textoTarget = esHistoriaValida ? (datosUsuario.estadoHistoriaTexto || "") : `Foto de perfil de ${datosUsuario.nombre || 'Usuario'}`;
+        const uidAutorTarget = esHistoriaValida ? uidTarget : null;
 
         if (typeof abrirEstadoAmigo === "function") {
-          abrirEstadoAmigo(imgTarget, textoTarget);
+          abrirEstadoAmigo(imgTarget, textoTarget, uidAutorTarget);
         }
       };
     }
@@ -7764,3 +7828,128 @@ window.cargarPerfilUsuario = function cargarPerfilUsuario(uidTarget) {
     });
   });
 };
+
+// 🔍 ESCUCHAR VISTAS / LIKES Y MOSTRAR NOMBRES
+function escucharLikesHistoria(uidAutor) {
+  const contadorLikesEstado = document.getElementById("contador-likes-estado");
+  const btnCorazonEstado = document.getElementById("btn-corazon-estado");
+  const contadorTotal = document.getElementById("contador-total-likes");
+  const contenedor = document.getElementById("contenedor-usuarios-likes");
+
+  // Elementos de la tarjeta principal
+  const badgeTarjeta = document.getElementById("badge-vistas-mi-estado");
+  const cantTarjeta = document.getElementById("cant-vistas-tarjeta");
+  const miUid = auth.currentUser ? auth.currentUser.uid : null;
+
+  if (typeof desuscribirLikesHistoria === "function" && desuscribirLikesHistoria) {
+    desuscribirLikesHistoria();
+  }
+
+  const likesRef = ref(db, `historias_likes/${uidAutor}`);
+
+  desuscribirLikesHistoria = onValue(likesRef, (snap) => {
+    if (snap.exists()) {
+      const likesData = snap.val();
+      const listaUids = Object.keys(likesData);
+      const usuarios = Object.values(likesData);
+      const totalCount = listaUids.length;
+
+      // 1. Actualizar contadores en la historia
+      if (contadorLikesEstado) contadorLikesEstado.textContent = totalCount;
+      if (contadorTotal) contadorTotal.textContent = totalCount;
+
+      // 2. Actualizar ojito en la tarjeta "Mi Estado" si es tuya
+      if (miUid && uidAutor === miUid) {
+        if (badgeTarjeta) badgeTarjeta.classList.remove("oculto");
+        if (cantTarjeta) cantTarjeta.textContent = totalCount;
+      }
+
+      // 3. Activar corazón si tú ya le diste me gusta
+      if (btnCorazonEstado) {
+        if (miUid && likesData[miUid]) {
+          btnCorazonEstado.classList.add("activo");
+        } else {
+          btnCorazonEstado.classList.remove("activo");
+        }
+      }
+
+      // 4. Renderizar lista de nombres en el modal
+      if (contenedor) {
+        contenedor.innerHTML = "";
+        usuarios.forEach((user) => {
+          const item = document.createElement("div");
+          item.className = "item-usuario-like";
+          item.innerHTML = `
+            <img src="${user.fotoUrl || 'img/default-avatar.png'}" class="avatar-contacto-mini" />
+            <span class="nombre-contacto-texto">${user.nombre || 'Usuario Mova'}</span>
+          `;
+          contenedor.appendChild(item);
+        });
+      }
+    } else {
+      // Sin reacciones
+      if (contadorLikesEstado) contadorLikesEstado.textContent = "0";
+      if (contadorTotal) contadorTotal.textContent = "0";
+      if (cantTarjeta) cantTarjeta.textContent = "0";
+      if (badgeTarjeta && miUid && uidAutor === miUid) badgeTarjeta.classList.add("oculto");
+
+      if (btnCorazonEstado) btnCorazonEstado.classList.remove("activo");
+
+      if (contenedor) {
+        contenedor.innerHTML = `<p style="color: rgba(255,255,255,0.5); font-size: 13px; text-align: center; padding: 15px;">Nadie ha reaccionado aún</p>`;
+      }
+    }
+  });
+}
+
+// 🚀 ESCUCHAR LIKES DE MI ESTADO AL INICIAR LA APP
+function iniciarEscuchaMiEstado() {
+  const usuarioActual = auth.currentUser;
+  if (!usuarioActual) return;
+
+  const miUid = usuarioActual.uid;
+  const badgeTarjeta = document.getElementById("badge-vistas-mi-estado");
+  const cantTarjeta = document.getElementById("cant-vistas-tarjeta");
+  const likesRef = ref(db, `historias_likes/${miUid}`);
+
+  onValue(likesRef, (snap) => {
+    if (snap.exists()) {
+      const totalCount = Object.keys(snap.val()).length;
+      if (cantTarjeta) cantTarjeta.textContent = totalCount;
+      if (badgeTarjeta) badgeTarjeta.classList.remove("oculto");
+    } else {
+      if (cantTarjeta) cantTarjeta.textContent = "0";
+      if (badgeTarjeta) badgeTarjeta.classList.add("oculto");
+    }
+  });
+}
+
+// 👁️ ABRIR Y CERRAR MODAL DE LIKES / REACCIONES
+const btnVerLikes = document.getElementById("btn-ver-likes-estado");
+const badgeTarjeta = document.getElementById("badge-vistas-mi-estado");
+const modalListaLikes = document.getElementById("modal-lista-likes");
+const btnCerrarListaLikes = document.getElementById("btn-cerrar-lista-likes");
+
+// Abrir modal desde el ojito del visor de historias
+if (btnVerLikes && modalListaLikes) {
+  btnVerLikes.addEventListener("click", (e) => {
+    e.stopPropagation();
+    modalListaLikes.classList.remove("oculto");
+  });
+}
+
+// Abrir modal al tocar el ojito en la tarjeta "Mi Estado"
+if (badgeTarjeta && modalListaLikes) {
+  badgeTarjeta.addEventListener("click", (e) => {
+    e.stopPropagation();
+    modalListaLikes.classList.remove("oculto");
+  });
+}
+
+// Cerrar modal con la X
+if (btnCerrarListaLikes && modalListaLikes) {
+  btnCerrarListaLikes.addEventListener("click", (e) => {
+    e.stopPropagation();
+    modalListaLikes.classList.add("oculto");
+  });
+}
