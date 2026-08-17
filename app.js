@@ -5996,36 +5996,112 @@ if (btnConfirmarEliminar && capaConfirmarEliminar) {
   });
 }
 
+// 📇 BOTÓN COMPARTIR CONTACTO EN EL CHAT (CORREGIDO)
 const btnAdjuntarContacto = document.getElementById("btn-adjuntar-contacto");
 
 if (btnAdjuntarContacto && modalContactos) {
-  btnAdjuntarContacto.addEventListener("click", (e) => {
+  btnAdjuntarContacto.addEventListener("click", async (e) => {
     e.stopPropagation();
 
-    if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
-    if (btnAdjuntarTodo) btnAdjuntarTodo.classList.remove("caiman-abierto");
+    // 1. Cerrar menú de adjuntos
+    if (typeof menuAdjuntar !== "undefined" && menuAdjuntar) {
+      menuAdjuntar.classList.add("oculto");
+    }
+    if (typeof btnAdjuntarTodo !== "undefined" && btnAdjuntarTodo) {
+      btnAdjuntarTodo.classList.remove("caiman-abierto");
+    }
 
-    renderizarListaContactosModal();
+    // 2. Cargar la lista esperando a que la consulta a Firebase termine
+    await renderizarListaContactosModal();
 
-    setTimeout(() => {
-      document.querySelectorAll(".item-contacto-fila").forEach(fila => {
-        fila.style.cursor = "pointer";
+    // 3. Asignar el evento para compartir inmediatamente sobre los elementos generados
+    const filasContactos = document.querySelectorAll(".item-contacto-fila");
 
-        fila.addEventListener("click", (evt) => {
-          if (evt.target.closest(".btn-eliminar-contacto-item")) return;
+    filasContactos.forEach(fila => {
+      fila.style.cursor = "pointer";
 
-          const nombreContacto = fila.querySelector(".nombre-contacto-texto").textContent;
-          const srcAvatar = fila.querySelector(".avatar-contacto-mini").src;
+      // Clonar para eliminar escuchadores previos que abrían el chat privado
+      const nuevaFila = fila.cloneNode(true);
+      fila.parentNode.replaceChild(nuevaFila, fila);
 
-          modalContactos.classList.add("oculto");
-          inyectarContactoCompartidoBurbuja(nombreContacto, srcAvatar);
-        });
+      nuevaFila.addEventListener("click", async (evt) => {
+        evt.stopPropagation();
+        evt.preventDefault();
+
+        if (evt.target.closest(".btn-eliminar-contacto-item")) return;
+
+        const elemNombre = nuevaFila.querySelector(".nombre-contacto-texto");
+        const elemAvatar = nuevaFila.querySelector(".avatar-contacto-mini");
+
+        const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "Contacto";
+        const srcAvatar = elemAvatar ? elemAvatar.src : "";
+        const targetUid = nuevaFila.dataset.uid || "";
+
+        // Ocultar modal
+        modalContactos.classList.add("oculto");
+
+        // Enviar la tarjeta de contacto a Firebase Realtime Database
+        await enviarContactoAFirebase(targetUid, nombreContacto, srcAvatar);
       });
-    }, 100);
+    });
 
     modalContactos.classList.remove("oculto");
-    mostrarAvisoPremium("Selecciona un contacto para compartirlo en la conversación.", "📇", "#00f2fe");
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Selecciona un contacto para enviarlo a este chat 📇", "✨", "#00f2fe");
+    }
   });
+}
+
+/**
+ * ☁️ Guarda el contacto compartido en Firebase
+ */
+async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto) {
+  const usuarioActual = auth.currentUser;
+  const miUid = usuarioActual ? usuarioActual.uid : null;
+  const contactoUid = window.contactoActivoUid;
+
+  if (!miUid || !contactoUid) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Debes estar dentro de un chat activo para enviar el contacto.", "⚠️", "#ff4b2b");
+    }
+    return;
+  }
+
+  const chatId = typeof obtenerChatId === "function"
+    ? obtenerChatId(miUid, contactoUid)
+    : [miUid, contactoUid].sort().join("_");
+
+  const ahora = new Date();
+  const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  const objetoMensaje = {
+    emisor: miUid,
+    receptor: contactoUid,
+    tipoAdjunto: 'contacto',
+    contactoInfo: {
+      uid: uidContacto,
+      nombre: nombreContacto,
+      foto: fotoContacto
+    },
+    texto: "",
+    hora: horaFormateada,
+    timestamp: Date.now()
+  };
+
+  try {
+    const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
+    const nuevoMensajeRef = push(listaMensajesRef);
+    await set(nuevoMensajeRef, objetoMensaje);
+
+    if (typeof reproducirSonidoEnviado === "function") {
+      reproducirSonidoEnviado();
+    }
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(`Contacto <b>${nombreContacto}</b> compartido con éxito.`, "📇", "#00f2fe");
+    }
+  } catch (err) {
+    console.error("❌ Error al enviar tarjeta de contacto a Firebase:", err);
+  }
 }
 
 function inyectarContactoCompartidoBurbuja(nombre, avatar) {
@@ -7524,6 +7600,29 @@ function escucharMensajesChat(chatId) {
                    </div>
                     <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
                    `;
+
+          } else if (msg.tipoAdjunto === 'contacto') {
+            const contacto = msg.contactoInfo || {};
+            const nombreContacto = contacto.nombre || "Contacto";
+            const fotoContacto = contacto.foto || `https://ui-avatars.com/api/?name=${encodeURIComponent(nombreContacto)}&background=00f2fe&color=000`;
+            const uidContacto = contacto.uid || "";
+
+            contenidoBurbuja = `
+              ${htmlReenviado}
+              <div class="tarjeta-contacto-adjunto" style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.08); padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(0, 242, 254, 0.25); margin-bottom: 8px; min-width: 210px;">
+                <img src="${fotoContacto}" style="width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid #00f2fe;" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(nombreContacto)}&background=00f2fe&color=000'">
+                <div style="display: flex; flex-direction: column; overflow: hidden; flex-grow: 1;">
+                  <span style="font-size: 0.88rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nombreContacto}</span>
+                  <span style="font-size: 0.72rem; color: #00f2fe;">Contacto de MovaChat</span>
+                </div>
+              </div>
+              <button onclick="abrirChatDesdeContacto('${uidContacto}')" style="width: 100%; background: linear-gradient(135deg, #00f2fe, #4facfe); border: none; padding: 7px; border-radius: 8px; color: #000; font-weight: 700; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 6px;">
+                <i data-lucide="message-square" style="width: 15px; height: 15px; fill: black;"></i> Mensaje
+              </button>
+              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+            `;
+
           } else {
             contenidoBurbuja = `
               ${htmlReenviado}
@@ -8497,3 +8596,44 @@ if (!document.getElementById("anim-spin-mova")) {
   `;
   document.head.appendChild(estiloSpin);
 }
+
+/**
+ * 👤 Envía una tarjeta de contacto al chat actual
+ */
+function enviarContactoAlChat(contacto) {
+  if (!contacto || !chatActualId || !usuarioActual) return;
+
+  const idMensaje = `msg_${Date.now()}`;
+  const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const nuevoMensaje = {
+    id: idMensaje,
+    emisorId: usuarioActual.uid,
+    receptorId: chatActualId,
+    timestamp: Date.now(),
+    hora: horaActual,
+    tipoAdjunto: 'contacto',
+    urlAdjunto: 'contacto',
+    contactoInfo: {
+      uid: contacto.uid || contacto.id,
+      nombre: contacto.nombre || contacto.displayName || "Usuario Mova",
+      foto: contacto.foto || contacto.photoURL || ""
+    },
+    leido: false
+  };
+
+  // Guardar mensaje en base de datos (Firebase)
+  const rutaMensaje = database.ref(`chats/${obtenerIdChatCombinado(usuarioActual.uid, chatActualId)}/${idMensaje}`);
+  rutaMensaje.set(nuevoMensaje).then(() => {
+    // Cerrar modal de selección si está abierto
+    const modalContactos = document.getElementById("modal-seleccionar-contacto");
+    if (modalContactos) modalContactos.classList.add("oculto");
+  });
+}
+
+// Global para abrir chat desde el botón de la tarjeta
+window.abrirChatDesdeContacto = function(uidContacto) {
+  if (uidContacto && typeof abrirChat === "function") {
+    abrirChat(uidContacto);
+  }
+};
