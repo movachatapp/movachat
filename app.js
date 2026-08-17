@@ -2397,19 +2397,37 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
             }
           });
         } else if (accion === "eliminar-mi") {
-          // 🛡️ REGLA 3: Eliminar archivo de la nube al borrar solo para mí
+          // 🛡️ ELIMINAR PARA MÍ CON VERIFICACIÓN CRUZADA
           get(mensajeRef).then(async (snap) => {
             if (snap.exists()) {
               const datos = snap.val();
-              if (datos.urlAdjunto && datos.urlAdjunto.includes("supabase.co")) {
-                await eliminarArchivoSupabase(datos.urlAdjunto, "movachat-adjuntos");
+              const emisorId = datos.emisor || datos.emisorUid;
+              const receptorId = datos.receptor || datos.receptorUid || contactoUid;
+              const otroUid = miUid === emisorId ? receptorId : emisorId;
+
+              // Marcar como oculto para mí
+              await update(mensajeRef, { 
+                [`eliminadoPara/${miUid}`]: true,
+                [`ocultoPara/${miUid}`]: true 
+              });
+
+              // Verificar si la otra persona YA lo había ocultado para sí misma
+              const yaLoOcultoOtro = (datos.ocultoPara && datos.ocultoPara[otroUid]) || 
+                                     (datos.eliminadoPara && datos.eliminadoPara[otroUid]);
+
+              // Si ambos lo ocultaron, realizar la purga física definitiva de la nube
+              if (yaLoOcultoOtro) {
+                if (datos.urlAdjunto && datos.urlAdjunto.includes("supabase.co")) {
+                  await eliminarArchivoSupabase(datos.urlAdjunto, "movachat-adjuntos");
+                }
+                await set(mensajeRef, null);
               }
+
+              if (typeof mostrarAvisoPremium === "function") {
+                mostrarAvisoPremium("Mensaje eliminado de tu vista.", "🗑️", "#ff4b2b");
+              }
+              desaparecerBurbuja();
             }
-            await update(mensajeRef, { [`eliminadoPara/${miUid}`]: true });
-            if (typeof mostrarAvisoPremium === "function") {
-              mostrarAvisoPremium("Mensaje y archivo eliminados de la nube.", "🗑️", "#ff4b2b");
-            }
-            desaparecerBurbuja();
           });
         }
       }
@@ -6079,8 +6097,52 @@ if (btnAdjuntarContacto && modalContactos) {
   });
 }
 
+// ========================================================
+// 📊 VALIDACIÓN Y CONTROL DE LÍMITE DIARIO DE CONTACTOS (MÁXIMO 10)
+// ========================================================
+
 /**
- * ☁️ Guarda el contacto compartido en Firebase
+ * Consulta y valida si el usuario ha superado su límite de 10 contactos compartidos por día.
+ * @param {string} uid - ID del usuario actual.
+ * @returns {Promise<{permitido: boolean, conteo: number}>}
+ */
+async function verificarLimiteDiarioContactos(uid) {
+  if (!uid) return { permitido: false, conteo: 0 };
+
+  const hoy = new Date().toISOString().split('T')[0];
+  const limiteRef = ref(db, `limites_diarios/${uid}/${hoy}/contactos_compartidos`);
+
+  try {
+    const snap = await get(limiteRef);
+    const conteoActual = snap.exists() ? snap.val() : 0;
+    return { permitido: conteoActual < 10, conteo: conteoActual };
+  } catch (err) {
+    console.error("Error consultando límite diario de contactos:", err);
+    return { permitido: true, conteo: 0 };
+  }
+}
+
+/**
+ * Incremente en +1 el contador de contactos compartidos del día tras un envío exitoso.
+ * @param {string} uid - ID del usuario actual.
+ */
+async function incrementarContadorContactos(uid) {
+  if (!uid) return;
+
+  const hoy = new Date().toISOString().split('T')[0];
+  const limiteRef = ref(db, `limites_diarios/${uid}/${hoy}/contactos_compartidos`);
+
+  try {
+    const snap = await get(limiteRef);
+    const conteoActual = snap.exists() ? snap.val() : 0;
+    await set(limiteRef, conteoActual + 1);
+  } catch (err) {
+    console.error("Error incrementando contador de contactos:", err);
+  }
+}
+
+/**
+ * ☁️ Guarda el contacto compartido en Firebase (Con límite diario, expiración a 15 días y ocultoPara)
  */
 async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto) {
   const usuarioActual = auth.currentUser;
@@ -6094,12 +6156,25 @@ async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto
     return;
   }
 
+  // 🛡️ VERIFICAR LÍMITE DIARIO (MÁXIMO 10 CONTACTOS COMPARTIDOS)
+  const chequeoContactos = await verificarLimiteDiarioContactos(miUid);
+  if (!chequeoContactos.permitido) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Has alcanzado tu límite diario de 10 contactos compartidos 🛑", "⚠️", "#ff4b2b");
+    }
+    return;
+  }
+
   const chatId = typeof obtenerChatId === "function"
     ? obtenerChatId(miUid, contactoUid)
     : [miUid, contactoUid].sort().join("_");
 
   const ahora = new Date();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  // ⏱️ Expiración de 15 días en milisegundos (15 días * 24 horas * 60 min * 60 seg * 1000 ms)
+  const TIEMPO_15_DIAS_MS = 15 * 24 * 60 * 60 * 1000;
+  const fechaExpiracion = Date.now() + TIEMPO_15_DIAS_MS;
 
   const objetoMensaje = {
     emisor: miUid,
@@ -6112,13 +6187,18 @@ async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto
     },
     texto: "",
     hora: horaFormateada,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    expiraEn: fechaExpiracion, // ⌛ Expiración a los 15 días
+    ocultoPara: {}             // 🙈 Registro para "Eliminar para mí"
   };
 
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
+
+    // 📈 Incrementar contador diario tras el envío exitoso
+    await incrementarContadorContactos(miUid);
 
     if (typeof reproducirSonidoEnviado === "function") {
       reproducirSonidoEnviado();
@@ -7408,6 +7488,17 @@ function escucharMensajesChat(chatId) {
           const esMio = idEmisorReal === miUid;
 
           if (estaBloqueadoElContacto && !esMio) return;
+
+          // 🙈 REGLA: Si el usuario actual usó "Eliminar para mí" en esta tarjeta/mensaje
+          if ((msg.ocultoPara && msg.ocultoPara[miUid]) || (msg.eliminadoPara && msg.eliminadoPara[miUid])) {
+            return;
+          }
+
+          // ⌛ REGLA AUTOMÁTICA: Expira a los 15 días (Tarjetas de contactos u otros elementos con expiraEn)
+          if (msg.expiraEn && Date.now() >= msg.expiraEn) {
+            set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
+            return;
+          }
 
           // 🗑️ BORRADO FÍSICO EN MENSAJES TEMPORALES (EFÍMEROS)
           if (msg.esEfimero) {
