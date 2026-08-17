@@ -32,6 +32,15 @@ const firebaseConfig = {
   appId: "1:127806471801:web:1924b7881925bff5d41ea8"
 };
 
+// Capturar mensaje desde el Service Worker cuando la app ya está abierta
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.accion === 'ABRIR_CHAT' && event.data.chatId) {
+      abrirConversacion(event.data.chatId);
+    }
+  });
+}
+
 // 🔄 Cargar preferencia de tema visual de forma segura
 (function cargarTemaGuardado() {
   const aplicarTema = () => {
@@ -399,6 +408,8 @@ let segundosRestantes = 10;
 let contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
+let archivoAdjuntoPendiente = null;
+let ultimoArchivoFallido = null;
 
 // Objeto global de respaldo para mensajes efímeros temporales
 window.chatsTemporalesBD = window.chatsTemporalesBD || {};
@@ -711,6 +722,14 @@ onAuthStateChanged(auth, async (user) => {
             if (btnAdmin) btnAdmin.style.display = "none";
           }
 
+          // 📩 REDIRECCIÓN AUTOMÁTICA DE NOTIFICACIONES (PWA CERRADA O SEGUNDO PLANO)
+          const urlParams = new URLSearchParams(window.location.search);
+          const chatId = urlParams.get('chatId');
+          if (chatId && typeof abrirConversacion === 'function') {
+            abrirConversacion(chatId);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+
         } else {
           // ⏳ Bloqueo real si está pendiente
           await signOut(auth);
@@ -979,6 +998,17 @@ if (contenedorChats) {
 }
 
 // ========================================================
+// 🧲 FUNCIÓN GLOBAL DE LIMPIEZA DEL BOTÓN (X)
+// ========================================================
+function cerrarMenuAdjuntar() {
+  if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
+  if (btnAdjuntarTodo) {
+    btnAdjuntarTodo.classList.remove("caiman-abierto");
+    btnAdjuntarTodo.blur(); // Remueve el foco residual en dispositivos móviles
+  }
+}
+
+// ========================================================
 // 3. MENÚS DESPLEGABLES Y ARCHIVOS DE CÁMARA PRO
 // ========================================================
 if (btnOpcionesChat) {
@@ -987,20 +1017,18 @@ if (btnOpcionesChat) {
 
     const contactoUid = window.contactoActivoUid;
 
-    // 🔕 1. TEXTO DEL BOTÓN SILENCIAR
     const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
     if (btnCtxSilenciar && contactoUid) {
       btnCtxSilenciar.innerHTML = `<i data-lucide="bell-off"></i> Silenciar / Notificacio..`;
     }
 
-    // 🛡️ 2. ACTUALIZAR TEXTO Y ESTADO DEL BOTÓN BLOQUEAR EN TIEMPO REAL
     if (typeof verificarEstadoBloqueo === "function" && contactoUid) {
       await verificarEstadoBloqueo(contactoUid);
     }
 
     menuCabecera.classList.toggle("oculto");
-    menuAdjuntar.classList.add("oculto");
-    menuCamaraPro.classList.add("oculto");
+    cerrarMenuAdjuntar();
+    if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
 
     const rect = btnOpcionesChat.getBoundingClientRect();
     const marcoRect = document.querySelector(".contenedor-chat").getBoundingClientRect();
@@ -1017,15 +1045,18 @@ if (btnOpcionesChat) {
 if (btnAdjuntarTodo) {
   btnAdjuntarTodo.addEventListener("click", (e) => {
     e.stopPropagation();
-    menuAdjuntar.classList.toggle("oculto");
-    menuCabecera.classList.add("oculto");
-    menuCamaraPro.classList.add("oculto");
 
-    if (!menuAdjuntar.classList.contains("oculto")) {
+    const estaOculto = menuAdjuntar.classList.contains("oculto");
+
+    if (estaOculto) {
+      menuAdjuntar.classList.remove("oculto");
       btnAdjuntarTodo.classList.add("caiman-abierto");
     } else {
-      btnAdjuntarTodo.classList.remove("caiman-abierto");
+      cerrarMenuAdjuntar();
     }
+
+    if (menuCabecera) menuCabecera.classList.add("oculto");
+    if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
 
     const rect = btnAdjuntarTodo.getBoundingClientRect();
     const marcoRect = document.querySelector(".contenedor-chat").getBoundingClientRect();
@@ -1038,8 +1069,8 @@ if (btnAdjuntarTodo) {
 if (btnCamaraMovaPro) {
   btnCamaraMovaPro.addEventListener("click", (e) => {
     e.stopPropagation();
-    menuAdjuntar.classList.add("oculto");
-    menuCamaraPro.classList.remove("oculto");
+    cerrarMenuAdjuntar();
+    if (menuCamaraPro) menuCamaraPro.classList.remove("oculto");
 
     const rect = btnAdjuntarTodo.getBoundingClientRect();
     const marcoRect = document.querySelector(".contenedor-chat").getBoundingClientRect();
@@ -1052,8 +1083,9 @@ if (btnCamaraMovaPro) {
 if (btnCancelarCamara) {
   btnCancelarCamara.addEventListener("click", (e) => {
     e.stopPropagation();
-    menuCamaraPro.classList.add("oculto");
-    menuAdjuntar.classList.remove("oculto");
+    if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
+    if (menuAdjuntar) menuAdjuntar.classList.remove("oculto");
+    if (btnAdjuntarTodo) btnAdjuntarTodo.classList.add("caiman-abierto");
   });
 }
 
@@ -1061,7 +1093,7 @@ const btnGaleriaMenu = document.querySelector("#menu-adjuntar-files button:nth-o
 if (btnGaleriaMenu) {
   btnGaleriaMenu.addEventListener("click", () => {
     inputRealGaleria.click();
-    menuAdjuntar.classList.add("oculto");
+    cerrarMenuAdjuntar();
   });
 }
 
@@ -1069,7 +1101,61 @@ const btnDocMenu = document.querySelector("#menu-adjuntar-files button:nth-of-ty
 if (btnDocMenu) {
   btnDocMenu.addEventListener("click", () => {
     inputRealDocumento.click();
-    menuAdjuntar.classList.add("oculto");
+    cerrarMenuAdjuntar();
+  });
+}
+
+// ========================================================
+// 🌐 CIERRE GLOBAL AL TOCAR EN CUALQUIER OTRA PARTE
+// ========================================================
+document.addEventListener("click", (e) => {
+  if (typeof isLongPress !== "undefined" && isLongPress) return;
+
+  // Cierra el menú de adjuntos y resetea el botón (X) a su estado normal
+  if (menuAdjuntar && !menuAdjuntar.contains(e.target) && btnAdjuntarTodo && !btnAdjuntarTodo.contains(e.target)) {
+    cerrarMenuAdjuntar();
+  }
+
+  if (typeof menuCabecera !== "undefined" && menuCabecera && !menuCabecera.contains(e.target) && typeof btnOpcionesChat !== "undefined" && e.target !== btnOpcionesChat) {
+    menuCabecera.classList.add("oculto");
+  }
+
+  if (typeof menuCamaraPro !== "undefined" && menuCamaraPro && !menuCamaraPro.contains(e.target) && typeof btnCamaraMovaPro !== "undefined" && !btnCamaraMovaPro.contains(e.target)) {
+    menuCamaraPro.classList.add("oculto");
+  }
+});
+
+// ========================================================
+// 🔄 FUNCIÓN AUXILIAR: MANTENER FOTO ORIGINAL SIN VOLTEAR
+// ========================================================
+function corregirEfectoEspejo(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const urlTemp = URL.createObjectURL(file);
+    img.src = urlTemp;
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+
+      // ✅ Dibuja la imagen directamente en orientación normal
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(urlTemp);
+        const archivoCorregido = new File([blob], file.name || "foto.jpg", {
+          type: file.type || "image/jpeg"
+        });
+        resolve(archivoCorregido);
+      }, file.type || "image/jpeg", 0.95);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(urlTemp);
+      resolve(file);
+    };
   });
 }
 
@@ -1080,21 +1166,47 @@ async function activarCamaraMovaPro(tipoMedia) {
   const menuCamaraPro = document.getElementById("menu-camara-pro");
   if (menuCamaraPro) menuCamaraPro.classList.add("oculto");
 
-  // 📸 FOTO (Optimizada para rendimiento y compatibilidad)
+  // 📸 FOTO (Cámara frontal limpia sin duplicación de espejo)
   if (tipoMedia === "foto") {
+    // 🛡️ 1. Verificar límite diario
+    const usuarioActual = auth.currentUser;
+    if (usuarioActual && typeof verificarLimiteDiarioFotos === "function") {
+      const chequeoDiario = await verificarLimiteDiarioFotos(usuarioActual.uid);
+      if (!chequeoDiario.permitido) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Has alcanzado tu límite diario de 12 fotos por hoy 🛑", "⚠️", "#ff4b2b");
+        }
+        return;
+      }
+    }
+
     const inputCamara = document.createElement("input");
     inputCamara.type = "file";
     inputCamara.accept = "image/*";
-    // Opcional: quita capture="user" si prefieres que el usuario elija entre frontal/trasera en el selector nativo
 
-    inputCamara.onchange = (evt) => {
-      const archivo = evt.target.files && evt.target.files[0];
+    // 🤳 Cambia a "user" si quieres frontal o a "environment" para trasera
+    inputCamara.setAttribute("capture", "user");
+
+    inputCamara.onchange = async (evt) => {
+      let archivo = evt.target.files && evt.target.files[0];
       if (archivo) {
+        // 🔄 Procesar el archivo con la función de corrección antes de usarlo
+        if (typeof corregirEfectoEspejo === "function") {
+          archivo = await corregirEfectoEspejo(archivo);
+        }
+
+        archivoAdjuntoPendiente = archivo;
         tipoAdjuntoActivo = 'foto';
 
         if (imgMiniaturaAdjunto) {
+          if (imgMiniaturaAdjunto.src.startsWith("blob:")) {
+            URL.revokeObjectURL(imgMiniaturaAdjunto.src);
+          }
           imgMiniaturaAdjunto.style.display = "block";
           imgMiniaturaAdjunto.src = URL.createObjectURL(archivo);
+
+          // ⚡ MANTENER ORIENTACIÓN NORMAL
+          imgMiniaturaAdjunto.style.transform = "none";
         }
 
         const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
@@ -1107,19 +1219,18 @@ async function activarCamaraMovaPro(tipoMedia) {
           inputChat.focus();
         }
 
-        // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono dentro del botón de acción
         if (btnAccionChat) {
           btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
           if (window.lucide) {
-            window.lucide.createIcons({
-              targets: [btnAccionChat]
-            });
+            window.lucide.createIcons({ targets: [btnAccionChat] });
           }
         }
       }
     };
 
+    document.body.appendChild(inputCamara);
     inputCamara.click();
+    document.body.removeChild(inputCamara);
     return;
   }
 
@@ -1192,6 +1303,97 @@ async function activarCamaraMovaPro(tipoMedia) {
       };
     };
     inputVideoDirecto.click();
+  }
+}
+
+// ========================================================
+// 🎥 CONTROLADOR DE GRABACIÓN LIVE DE VIDEO CIRCULAR (10s)
+// ========================================================
+const btnGrabarLive = document.getElementById("btn-iniciar-grabar-live");
+let mediaRecorderCamara = null;
+let fragmentosVideoCamara = [];
+let timerCamara10s = null;
+
+if (btnGrabarLive) {
+  btnGrabarLive.addEventListener("click", async () => {
+    // Si no hay stream activo, salir
+    if (!streamCamaraLive) return;
+
+    // Si ya está grabando y presiona de nuevo, detener antes de tiempo
+    if (mediaRecorderCamara && mediaRecorderCamara.state === "recording") {
+      detenerGrabacionVideoCircular();
+      return;
+    }
+
+    fragmentosVideoCamara = [];
+    let mimeElegido = 'video/webm';
+    if (MediaRecorder.isTypeSupported('video/mp4')) mimeElegido = 'video/mp4';
+
+    try {
+      mediaRecorderCamara = new MediaRecorder(streamCamaraLive, { mimeType: mimeElegido });
+
+      mediaRecorderCamara.ondataavailable = (e) => {
+        if (e.data.size > 0) fragmentosVideoCamara.push(e.data);
+      };
+
+      mediaRecorderCamara.onstop = () => {
+        const blobVideo = new Blob(fragmentosVideoCamara, { type: mimeElegido });
+        const urlVideo = URL.createObjectURL(blobVideo);
+
+        // Guardar archivo File para la subida posterior a Supabase
+        const ext = mimeElegido.includes('mp4') ? 'mp4' : 'webm';
+        archivoAdjuntoPendiente = new File([blobVideo], `video_circular_${Date.now()}.${ext}`, { type: mimeElegido });
+
+        // Apagar la cámara activa y cerrar modal
+        if (streamCamaraLive) {
+          streamCamaraLive.getTracks().forEach(track => track.stop());
+          streamCamaraLive = null;
+        }
+        const modalCamara = document.getElementById("modal-camara-circular");
+        if (modalCamara) modalCamara.classList.add("oculto");
+
+        // Asignar la vista previa del video en la caja del chat
+        asignarPreviewVideoCircular(urlVideo);
+      };
+
+      // Iniciar grabación
+      mediaRecorderCamara.start();
+      btnGrabarLive.textContent = "■ Detener";
+      btnGrabarLive.style.background = "#ff4b2b";
+
+      segundosRestantes = 10;
+      const txtContador = document.getElementById("contador-camara-10s");
+      if (txtContador) txtContador.textContent = "00:10";
+
+      // Cuenta regresiva de 10s
+      if (timerCamara10s) clearInterval(timerCamara10s);
+      timerCamara10s = setInterval(() => {
+        segundosRestantes--;
+        const secsStr = segundosRestantes.toString().padStart(2, '0');
+        if (txtContador) txtContador.textContent = `00:${secsStr}`;
+
+        if (segundosRestantes <= 0) {
+          detenerGrabacionVideoCircular();
+        }
+      }, 1000);
+
+    } catch (err) {
+      console.error("❌ Error al iniciar grabación circular:", err);
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("No se pudo iniciar la grabación de video.", "❌", "#ff4b2b");
+      }
+    }
+  });
+}
+
+function detenerGrabacionVideoCircular() {
+  if (timerCamara10s) clearInterval(timerCamara10s);
+  if (mediaRecorderCamara && mediaRecorderCamara.state === "recording") {
+    mediaRecorderCamara.stop();
+  }
+  if (btnGrabarLive) {
+    btnGrabarLive.textContent = "● Grabar";
+    btnGrabarLive.style.background = "";
   }
 }
 
@@ -1918,8 +2120,10 @@ async function enviarMensajeNuevo() {
     tipoAdjuntoParaSubir = objetoMensaje.tipoAdjunto;
 
     try {
-      // 📸 1. FOTO
-      if (objetoMensaje.tipoAdjunto === 'foto' && inputRealGaleria && inputRealGaleria.files[0]) {
+      // 📸 1. FOTO (Soporta Cámara mediante 'archivoAdjuntoPendiente' y Galería mediante 'inputRealGaleria')
+      const archivoFoto = archivoAdjuntoPendiente || (inputRealGaleria && inputRealGaleria.files ? inputRealGaleria.files[0] : null);
+
+      if (objetoMensaje.tipoAdjunto === 'foto' && archivoFoto) {
         const chequeoDiario = await verificarLimiteDiarioFotos(miUid);
         if (!chequeoDiario.permitido) {
           if (typeof mostrarAvisoPremium === "function") {
@@ -1929,12 +2133,11 @@ async function enviarMensajeNuevo() {
           return;
         }
 
-        // Compresión rápida en memoria (milisegundos)
-        archivoParaSubir = await comprimirImagenWebP(inputRealGaleria.files[0], {
+        archivoParaSubir = await comprimirImagenWebP(archivoFoto, {
           maxAncho: 1440,
           maxAlto: 1440,
           calidad: 0.82,
-          esPerfil: false
+          esPerfil: false // 👈 DEBE SER 'false' PARA QUE NO HAGA RECORTE CUADRADO 1:1
         });
 
         objetoMensaje.urlAdjunto = "subiendo"; // Estado temporal visual
@@ -1969,11 +2172,12 @@ async function enviarMensajeNuevo() {
       console.error("❌ Error al preparar adjunto para subida:", errSubida);
     }
 
-    // 🧹 Limpieza inmediata de la vista previa en pantalla
+    // 🧹 Limpieza inmediata de la vista previa en pantalla y variables temporales
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
     if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
     if (inputRealGaleria) inputRealGaleria.value = "";
     if (inputRealDocumento) inputRealDocumento.value = "";
+    archivoAdjuntoPendiente = null; // Reset del archivo capturado por la cámara
 
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
     if (iconoPrevio) iconoPrevio.remove();
@@ -2032,16 +2236,29 @@ async function enviarMensajeNuevo() {
             await incrementarContadorFotos(miUid);
           }
         } else {
-          // 🔴 Si la subida falló
+          // 🔴 Si la subida falló sin arrojar excepción
           await update(ref(db, `chats/${chatId}/mensajes/${mensajeKey}`), {
             urlAdjunto: "error"
           });
         }
       }).catch(async (err) => {
         console.error("❌ Error en subida con progreso:", err);
+
+        // 🔄 Guardar datos en memoria para reintentar la subida
+        window.ultimoArchivoFallido = {
+          archivo: archivoParaSubir,
+          chatId: chatId,
+          mensajeKey: mensajeKey,
+          tipo: tipoAdjuntoParaSubir
+        };
+
         await update(ref(db, `chats/${chatId}/mensajes/${mensajeKey}`), {
           urlAdjunto: "error"
         });
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Error de red al subir la imagen. Toca la burbuja para reintentar 🔄", "⚠️", "#ff4b2b");
+        }
       });
     }
 
@@ -2055,6 +2272,34 @@ async function enviarMensajeNuevo() {
       estaEnviandoMensaje = false;
     }, 300);
   }
+}
+
+// ========================================================
+// 🧹 LIMPIEZA DE ADJUNTOS PENDIENTES CON LIBERACIÓN DE MEMORIA
+// ========================================================
+function limpiarAdjuntoPendiente() {
+  archivoAdjuntoPendiente = null;
+
+  // 1. Liberar memoria RAM del Blob generado para la vista previa
+  if (typeof imgMiniaturaAdjunto !== 'undefined' && imgMiniaturaAdjunto && imgMiniaturaAdjunto.src) {
+    if (imgMiniaturaAdjunto.src.startsWith("blob:")) {
+      URL.revokeObjectURL(imgMiniaturaAdjunto.src);
+    }
+    imgMiniaturaAdjunto.src = '';
+    imgMiniaturaAdjunto.style.display = 'none';
+  }
+
+  // 2. Limpiar inputs de archivos
+  if (typeof inputRealGaleria !== 'undefined' && inputRealGaleria) inputRealGaleria.value = '';
+  if (typeof inputRealDocumento !== 'undefined' && inputRealDocumento) inputRealDocumento.value = '';
+
+  // 3. Ocultar contenedor y restablecer placeholder
+  if (typeof cajaVistaPrevia !== 'undefined' && cajaVistaPrevia) cajaVistaPrevia.classList.add('oculto');
+  if (typeof inputChat !== 'undefined' && inputChat) inputChat.placeholder = 'Escribe un mensaje privado...';
+
+  // 4. Remover elementos de preview secundarios
+  const iconoPrevio = document.querySelector('.wrapper-miniatura .icono-doc-preview');
+  if (iconoPrevio) iconoPrevio.remove();
 }
 
 // ========================================================
@@ -2406,14 +2651,14 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
               const otroUid = miUid === emisorId ? receptorId : emisorId;
 
               // Marcar como oculto para mí
-              await update(mensajeRef, { 
+              await update(mensajeRef, {
                 [`eliminadoPara/${miUid}`]: true,
-                [`ocultoPara/${miUid}`]: true 
+                [`ocultoPara/${miUid}`]: true
               });
 
               // Verificar si la otra persona YA lo había ocultado para sí misma
-              const yaLoOcultoOtro = (datos.ocultoPara && datos.ocultoPara[otroUid]) || 
-                                     (datos.eliminadoPara && datos.eliminadoPara[otroUid]);
+              const yaLoOcultoOtro = (datos.ocultoPara && datos.ocultoPara[otroUid]) ||
+                (datos.eliminadoPara && datos.eliminadoPara[otroUid]);
 
               // Si ambos lo ocultaron, realizar la purga física definitiva de la nube
               if (yaLoOcultoOtro) {
@@ -6157,12 +6402,14 @@ async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto
   }
 
   // 🛡️ VERIFICAR LÍMITE DIARIO (MÁXIMO 10 CONTACTOS COMPARTIDOS)
-  const chequeoContactos = await verificarLimiteDiarioContactos(miUid);
-  if (!chequeoContactos.permitido) {
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Has alcanzado tu límite diario de 10 contactos compartidos 🛑", "⚠️", "#ff4b2b");
+  if (typeof verificarLimiteDiarioContactos === "function") {
+    const chequeoContactos = await verificarLimiteDiarioContactos(miUid);
+    if (!chequeoContactos.permitido) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Has alcanzado tu límite diario de 10 contactos compartidos 🛑", "⚠️", "#ff4b2b");
+      }
+      return;
     }
-    return;
   }
 
   const chatId = typeof obtenerChatId === "function"
@@ -6172,7 +6419,7 @@ async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto
   const ahora = new Date();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-  // ⏱️ Expiración de 15 días en milisegundos (15 días * 24 horas * 60 min * 60 seg * 1000 ms)
+  // ⏱️ Expiración de 15 días en milisegundos
   const TIEMPO_15_DIAS_MS = 15 * 24 * 60 * 60 * 1000;
   const fechaExpiracion = Date.now() + TIEMPO_15_DIAS_MS;
 
@@ -6183,7 +6430,7 @@ async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto
     contactoInfo: {
       uid: uidContacto,
       nombre: nombreContacto,
-      foto: fotoContacto
+      foto: fotoContacto || ""
     },
     texto: "",
     hora: horaFormateada,
@@ -6197,21 +6444,38 @@ async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto
     const nuevoMensajeRef = push(listaMensajesRef);
     await set(nuevoMensajeRef, objetoMensaje);
 
-    // 📈 Incrementar contador diario tras el envío exitoso
-    await incrementarContadorContactos(miUid);
+    // 📈 Actualizar el resumen del último mensaje en la conversación
+    const resumenChatRef = ref(db, `chats/${chatId}/ultimoMensaje`);
+    await set(resumenChatRef, {
+      texto: `📇 Contacto: ${nombreContacto}`,
+      timestamp: Date.now(),
+      emisor: miUid
+    });
+
+    // Incrementar contador diario tras el envío exitoso
+    if (typeof incrementarContadorContactos === "function") {
+      await incrementarContadorContactos(miUid);
+    }
 
     if (typeof reproducirSonidoEnviado === "function") {
       reproducirSonidoEnviado();
     }
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Contacto <b>${nombreContacto}</b> compartido con éxito.`, "📇", "#00f2fe");
-    }
+
+    // Inyectar visualmente en la pantalla del emisor de forma inmediata
+    inyectarContactoCompartidoBurbuja(uidContacto, nombreContacto, fotoContacto);
+
   } catch (err) {
     console.error("❌ Error al enviar tarjeta de contacto a Firebase:", err);
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Error de red al intentar enviar el contacto.", "⚠️", "#ff4b2b");
+    }
   }
 }
 
-function inyectarContactoCompartidoBurbuja(nombre, avatar) {
+/**
+ * 📇 Renderiza visualmente la burbuja del contacto compartido en el historial del chat
+ */
+function inyectarContactoCompartidoBurbuja(uidContacto, nombre, avatar) {
   const ahora = new Date();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
@@ -6219,7 +6483,7 @@ function inyectarContactoCompartidoBurbuja(nombre, avatar) {
   nuevaBurbujaHTML.className = "mensaje-burbuja enviado";
   nuevaBurbujaHTML.style.padding = "8px";
 
-  // Foto por defecto o la url provista
+  // Foto por defecto si viene vacía
   const avatarUrl = avatar || "https://i.pravatar.cc/150";
 
   nuevaBurbujaHTML.innerHTML = `
@@ -6240,16 +6504,19 @@ function inyectarContactoCompartidoBurbuja(nombre, avatar) {
     <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}</span>
   `;
 
-  // 🛡️ Asignar el evento al botón desde JS para evitar fallos de sintaxis con nombres complejos
+  // 🛡️ Evento para abrir la conversación directamente con el contacto compartido al presionar Chatear
   const btnChatear = nuevaBurbujaHTML.querySelector(".btn-accion-contacto-card");
   if (btnChatear) {
     btnChatear.addEventListener("click", () => {
-      if (typeof mostrarAvisoPremium === "function") {
+      if (typeof abrirConversacion === "function" && uidContacto) {
+        abrirConversacion(uidContacto);
+      } else if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium(`Iniciando conversación con ${nombre}...`, '💬', '#00f2fe');
       }
     });
   }
 
+  const historialMensajes = document.getElementById("historial-mensajes");
   if (historialMensajes) {
     historialMensajes.appendChild(nuevaBurbujaHTML);
 
@@ -6747,7 +7014,7 @@ document.addEventListener("click", function desbloquear() {
   window.despertarAudioForzado();
 }, { once: true });
 
-// 🔔 Función para reproducir sonido al RECIBIR mensaje
+// 🔔 Función para reproducir sonido al RECIBIR mensaje (CORREGIDO ANTI-AUTOPLAY)
 window.reproducirSonidoRecibido = function (contactoUid = null) {
   console.log("🔔 Intentando reproducir sonido para el contacto:", contactoUid);
 
@@ -6774,8 +7041,8 @@ window.reproducirSonidoRecibido = function (contactoUid = null) {
     }
   }
 
-  // 3. VIBRACIÓN HÁPTICA
-  if ("vibrate" in navigator) {
+  // 3. VIBRACIÓN HÁPTICA (Solo si el usuario interactuó primero con la pantalla)
+  if ("vibrate" in navigator && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) {
     try {
       navigator.vibrate([200, 100, 200]);
       console.log("📳 Vibración ejecutada.");
@@ -6784,18 +7051,21 @@ window.reproducirSonidoRecibido = function (contactoUid = null) {
     }
   }
 
-  // 4. REPRODUCCIÓN DE AUDIO
+  // 4. REPRODUCCIÓN DE AUDIO (Manejo silencioso del bloqueo de Chrome)
   const audioRecibido = document.getElementById("sonido-recibido");
   if (audioRecibido) {
     audioRecibido.currentTime = 0;
     audioRecibido.play()
       .then(() => console.log("🔊 ¡Sonido reproducido con éxito!"))
       .catch((err) => {
-        console.error("❌ Chrome bloqueó la reproducción de audio:", err);
-        window.despertarAudioForzado();
+        if (err.name === "NotAllowedError") {
+          console.warn("🔇 Reproducción diferida: esperando interacción previa del usuario.");
+        } else {
+          console.warn("⚠️ Error de reproducción de audio:", err);
+        }
       });
   } else {
-    console.error("❌ No se encontró el elemento HTML <audio id='sonido-recibido'>");
+    console.warn("❌ No se encontró el elemento HTML <audio id='sonido-recibido'>");
   }
 };
 
@@ -7602,27 +7872,52 @@ function escucharMensajesChat(chatId) {
             `;
           }
 
-          // 📷 RENDERING DE FOTO (CON EXPIRACIÓN Y VISOR HD)
+          // 📷 RENDERING DE FOTO (CON EXPIRACIÓN, ESTADOS DE SUBIDA Y VISOR HD)
           if (msg.tipoAdjunto === 'foto') {
-            if (msg.expirado || !msg.urlAdjunto) {
+            const esSubiendo = msg.urlAdjunto === "subiendo";
+            const esError = msg.urlAdjunto === "error";
+
+            if (esSubiendo) {
+              const porcentaje = msg.progresoSubida || 0;
               contenidoBurbuja = `
-            ${htmlReenviado}
-             <div style="padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.15); text-align: center; color: rgba(255,255,255,0.5); font-size: 0.8rem; margin-bottom: 6px;">
-              <i data-lucide="clock" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i> Foto expirada (7 días transcurridos)
-             </div>
-              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-               <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+                ${htmlReenviado}
+                <div style="width: 210px; height: 270px; background: rgba(255,255,255,0.05); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; margin: 0 auto 6px auto; border: 1px solid rgba(0, 242, 254, 0.3);">
+                  <div style="width: 24px; height: 24px; border: 2px solid rgba(0, 242, 254, 0.2); border-top: 2px solid #00f2fe; border-radius: 50%; animation: spinMova 0.8s linear infinite;"></div>
+                  <span style="font-size: 0.75rem; color: #00f2fe; font-weight: 600;">Subiendo imagen... ${porcentaje}%</span>
+                </div>
+                ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+                <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+              `;
+            } else if (esError) {
+              contenidoBurbuja = `
+                ${htmlReenviado}
+                <div style="width: 210px; padding: 20px; background: rgba(255, 75, 43, 0.1); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin: 0 auto 6px auto; border: 1px solid rgba(255, 75, 43, 0.3);">
+                  <i data-lucide="alert-circle" style="color: #ff4b2b; width: 24px; height: 24px;"></i>
+                  <span style="font-size: 0.75rem; color: #ff4b2b; font-weight: 600;">Error al subir la imagen</span>
+                </div>
+                ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+                <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+              `;
+            } else if (msg.expirado || !msg.urlAdjunto) {
+              contenidoBurbuja = `
+                ${htmlReenviado}
+                <div style="padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.15); text-align: center; color: rgba(255,255,255,0.5); font-size: 0.8rem; margin-bottom: 6px;">
+                  <i data-lucide="clock" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i> Foto expirada (7 días transcurridos)
+                </div>
+                ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+                <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
               `;
             } else {
               contenidoBurbuja = `
-                 ${htmlReenviado}
-                        <div class="contenedor-foto-enviada" data-foto-hd="${msg.urlAdjunto}" style="max-width: 100%; margin-bottom: 6px; border-radius: 12px; overflow: hidden; cursor: pointer; position: relative;">
-                       <img src="${msg.urlAdjunto}" style="width: 100%; max-height: 280px; object-fit: cover; display: block; border-radius: 12px;">
-                    </div>
-                              ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
-                              <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
-                `;
+                ${htmlReenviado}
+                <div class="contenedor-foto-enviada" data-foto-hd="${msg.urlAdjunto}" style="max-width: 100%; margin-bottom: 6px; border-radius: 12px; overflow: hidden; cursor: pointer; position: relative;">
+                  <img src="${msg.urlAdjunto}" style="width: 100%; max-height: 280px; object-fit: cover; display: block; border-radius: 12px;">
+                </div>
+                ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
+                <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+              `;
             }
+
           } else if (msg.tipoAdjunto === 'documento') {
             const extension = msg.extDoc || "DOC";
             const peso = msg.pesoDoc || "";
@@ -7684,40 +7979,68 @@ function escucharMensajesChat(chatId) {
                 <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
               `;
             }
+
           } else if (msg.tipoAdjunto === 'video') {
-            estiloEspecialBurbuja = "padding: 10px;";
-            contenidoBurbuja = `
-                  ${htmlReenviado}
-                    <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-                    <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                      <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-                    </svg>
-                    <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
-                     <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
-                    </div>
-                    <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                     <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
-                    </div>
-                   </div>
-                   ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
-                   <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
-                  `;
+            const esSubiendo = msg.urlAdjunto === "subiendo";
+            const esError = msg.urlAdjunto === "error";
+
+            if (esSubiendo) {
+              const porcentaje = msg.progresoSubida || 0;
+              contenidoBurbuja = `
+                ${htmlReenviado}
+                <div style="width: 140px; height: 140px; border-radius: 50%; background: rgba(255,255,255,0.05); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin: 0 auto 6px auto; border: 1px solid rgba(0, 242, 254, 0.3);">
+                  <div style="width: 22px; height: 22px; border: 2px solid rgba(0, 242, 254, 0.2); border-top: 2px solid #00f2fe; border-radius: 50%; animation: spinMova 0.8s linear infinite;"></div>
+                  <span style="font-size: 0.7rem; color: #00f2fe; font-weight: 600;">${porcentaje}%</span>
+                </div>
+                ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+                <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+              `;
+            } else if (esError) {
+              contenidoBurbuja = `
+                ${htmlReenviado}
+                <div style="width: 140px; height: 140px; border-radius: 50%; background: rgba(255, 75, 43, 0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; margin: 0 auto 6px auto; border: 1px solid rgba(255, 75, 43, 0.3);">
+                  <i data-lucide="alert-circle" style="color: #ff4b2b; width: 22px; height: 22px;"></i>
+                  <span style="font-size: 0.68rem; color: #ff4b2b; font-weight: 600;">Error video</span>
+                </div>
+                ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+                <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+              `;
+            } else {
+              estiloEspecialBurbuja = "padding: 10px;";
+              contenidoBurbuja = `
+                ${htmlReenviado}
+                <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
+                  <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+                    <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
+                  </svg>
+                  <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
+                    <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
+                  </div>
+                  <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
+                    <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+                  </div>
+                </div>
+                ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
+                <span class="mensaje-hora" style="margin-top: 6px; display: block; text-align: center;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+              `;
+            }
+
           } else if (msg.tipoAdjunto === 'audio') {
             contenidoBurbuja = `
-                  ${htmlReenviado}
-                   <div class="reproductor-audio-burbuja">
-                   <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
-                   <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-                   <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
-                   <span class="onda-barra"></span><span class="onda-barra"></span>
-                   <span class="onda-barra"></span><span class="onda-barra"></span>
-                   <span class="onda-barra"></span><span class="onda-barra"></span>
-                    </div>
-                    <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-                     <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
-                   </div>
-                    <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
-                   `;
+              ${htmlReenviado}
+              <div class="reproductor-audio-burbuja">
+                <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+                <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
+                  <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
+                </div>
+                <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
+                <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
+              </div>
+              <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
+            `;
 
           } else if (msg.tipoAdjunto === 'contacto') {
             const contacto = msg.contactoInfo || {};
@@ -8862,3 +9185,5 @@ window.abrirChatDesdeContacto = function (uidContacto, nombreContacto = "", foto
     console.error("❌ La función abrirChatConUsuario no está disponible.");
   }
 };
+
+

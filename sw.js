@@ -1,10 +1,9 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Optimizada)
+// 📱 SERVICE WORKER MOVACHAT (Versión Corregida)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.0.5';
+const CACHE_NAME = 'movachat-v1.0.0.6';
 
-// Recursos estáticos a descargar e instalar inmediatamente
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -19,20 +18,18 @@ const ASSETS_TO_CACHE = [
   './assets/sounds/recibido.mp3'
 ];
 
-// 1. Instalar el Service Worker con descarga tolerante a fallos
+// 1. Instalación
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Activar el nuevo SW inmediatamente
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      console.log('📦 Precachando iconos, sonidos y recursos estáticos de MovaChat...');
-      
-      // Intentar cachar cada recurso individualmente para evitar que un fallo bloquee la PWA
+      console.log('📦 Precachando recursos de MovaChat...');
       await Promise.allSettled(
         ASSETS_TO_CACHE.map(async (url) => {
           try {
             await cache.add(url);
           } catch (err) {
-            console.warn(`⚠️ No se pudo precachar el recurso: ${url}`, err);
+            console.warn(`⚠️ No se pudo precachar: ${url}`, err);
           }
         })
       );
@@ -40,7 +37,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activar y limpiar cachés obsoletas
+// 2. Activación y limpieza
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -56,7 +53,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Estrategia de red/caché
+// 3. Estrategias de Intercepción
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
@@ -64,82 +61,101 @@ self.addEventListener('fetch', (event) => {
 
   const url = event.request.url;
 
-  // Archivos JS/HTML siempre frescos desde la red
-  if (url.endsWith('.js') || url.includes('.html') || url === self.location.origin + '/') {
+  // JS y HTML: Network-first + Actualización de Caché
+  if (url.endsWith('.js') || url.includes('.html') || event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          // Fallback a index.html en peticiones de navegación SPA
+          return cached || (event.request.mode === 'navigate' ? caches.match('./index.html') : null);
+        })
     );
     return;
   }
 
-  // Audios, imágenes, CSS e iconos: Caché primero, luego red
+  // Estáticos (Imágenes, Audios, CSS): Cache-first
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+      if (cachedResponse) return cachedResponse;
+
       return fetch(event.request).then((networkResponse) => {
         if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
           return networkResponse;
         }
         const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         return networkResponse;
       });
     })
   );
 });
 
-// 4. RECEPTOR DE NOTIFICACIONES PUSH (Segundo Plano / Pantalla Bloqueada)
+// 4. Recepción de Push
 self.addEventListener('push', (event) => {
   let data = { 
     titulo: 'MovaChat 💬', 
     cuerpo: 'Tienes un nuevo mensaje recibido 📩', 
     icono: './assets/logo/icon-192.png',
-    tag: 'movachat-mensaje'
+    tag: 'movachat-mensaje',
+    chatId: null
   };
 
   if (event.data) {
     try {
-      data = event.data.json();
+      const json = event.data.json();
+      data = { ...data, ...json };
     } catch (e) {
       data.cuerpo = event.data.text();
     }
   }
 
   const opciones = {
-    body: data.cuerpo || 'Tienes un nuevo mensaje recibido 📩',
-    icon: data.icono || './assets/logo/icon-192.png',
+    body: data.cuerpo,
+    icon: data.icono,
     badge: './assets/logo/badge-72.png',
     vibrate: [200, 100, 200],
-    tag: data.tag || 'movachat-chat',
+    tag: data.tag,
     renotify: true,
     data: { 
       url: self.registration.scope,
-      chatId: data.chatId || null 
+      chatId: data.chatId 
     }
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.titulo || 'MovaChat', opciones)
+    self.registration.showNotification(data.titulo, opciones)
   );
 });
 
-// 5. Evento al tocar la notificación
+// 5. Clic en Notificación con apertura de conversación
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const chatId = event.notification.data?.chatId;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Si la ventana ya está abierta, la enfocamos y le enviamos la orden de abrir el chat
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
-          return client.focus();
+          client.focus();
+          if (chatId) {
+            client.postMessage({ accion: 'ABRIR_CHAT', chatId: chatId });
+          }
+          return;
         }
       }
+      // Si la app está cerrada, se abre con el parámetro en la URL
+      const targetUrl = chatId ? `./?chatId=${chatId}` : './';
       if (clients.openWindow) {
-        return clients.openWindow('./');
+        return clients.openWindow(targetUrl);
       }
     })
   );
