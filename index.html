@@ -243,13 +243,21 @@
           <span class="texto-estado" id="texto-perfil-estado">Disponible. Toca para añadir estado...</span>
           <i data-lucide="edit-2" class="icono-lapiz solo-propietario"></i>
         </button>
-
+        
         <!-- BLOQUE: Acción exclusiva para cuando visitas a otra persona -->
-        <div id="acciones-visitante" class="solo-visitante" style="margin-top: 15px; width: 100%;">
+        <div id="acciones-visitante" class="solo-visitante"
+          style="margin-top: 15px; width: 100%; display: flex; flex-direction: column; gap: 12px;">
+
           <button id="btn-enviar-mensaje-perfil" type="button"
-            style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(0, 242, 254, 0.15); border: 1px solid rgba(0, 242, 254, 0.3); color: #00f2fe; padding: 12px; border-radius: 20px; font-weight: 600; cursor: pointer;">
+            style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(0, 242, 254, 0.12); border: 1px solid rgba(0, 242, 254, 0.3); color: #00f2fe; padding: 12px; border-radius: 20px; font-weight: 600; cursor: pointer;">
             <i data-lucide="message-square"></i> Enviar Mensaje
           </button>
+
+          <button id="btn-agregar-contacto-perfil" type="button"
+            style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; border-radius: 20px; font-weight: 600; cursor: pointer; transition: all 0.3s ease;">
+            <i data-lucide="user-plus"></i> Agregar a mi lista
+          </button>
+
         </div>
       </section>
 
@@ -924,30 +932,31 @@
   </div>
 
   <!-- AUDIOS DEL SISTEMA -->
-    <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
-    <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
+  <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
+  <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
 
-    <!-- LIBRERÍAS EXTERNAS (CDN) -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- LIBRERÍAS EXTERNAS (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 
-    <!-- SCRIPTS PRINCIPALES DE LA APP -->
-    <script type="module" src="app.js?v=2"></script>
-    
-    <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        if (window.lucide) {
-          lucide.createIcons();
-        }
-      });
+  <!-- SCRIPTS PRINCIPALES DE LA APP -->
+  <script type="module" src="app.js?v=2"></script>
 
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('Service Worker registrado correctamente', reg))
-            .catch(err => console.error('Error al registrar Service Worker', err));
-        });
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      if (window.lucide) {
+        lucide.createIcons();
       }
-    </script>
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('Service Worker registrado correctamente', reg))
+          .catch(err => console.error('Error al registrar Service Worker', err));
+      });
+    }
+  </script>
 </body>
+
 </html>

@@ -2252,33 +2252,30 @@ body {
 
 /* --- BOTÓN FAB FLOTANTE Y MODAL CONTACTOS --- */
 .btn-flotante-contacto {
-  position: absolute;
-  bottom: 105px !important;
-  right: 20px;
-  width: 50px;
-  height: 50px;
+  position: fixed !important;
+  bottom: 85px !important;
+  right: 20px !important;
+  width: 54px !important;
+  height: 54px !important;
   border-radius: 50% !important;
-  background: linear-gradient(135deg, rgba(0, 242, 254, 0.9), rgba(127, 0, 255, 0.9));
-  border: 1.5px solid rgba(0, 242, 254, 0.6) !important;
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 95;
-  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.3), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
-  filter: drop-shadow(0 0 4px rgba(0, 242, 254, 0.5));
-  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.2s;
-}
-
-.btn-flotante-contacto:hover {
-  transform: translateY(-2px) scale(1.04);
-  filter: drop-shadow(0 0 8px rgba(0, 242, 254, 0.8));
-  box-shadow: 0 8px 20px rgba(0, 242, 254, 0.3) !important;
+  background: linear-gradient(135deg, #00f2fe, #4facfe) !important;
+  border: none !important;
+  color: #000000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 4px 20px rgba(0, 242, 254, 0.4) !important;
+  cursor: pointer !important;
+  z-index: 999 !important;
+  transition: transform 0.2s ease, opacity 0.2s ease !important;
 }
 
 .btn-flotante-contacto:active {
-  transform: scale(0.92);
+  transform: scale(0.92) !important;
+}
+
+.btn-flotante-contacto.oculto {
+  display: none !important;
 }
 
 .modal-contactos-ancho {

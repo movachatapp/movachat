@@ -2079,8 +2079,19 @@ if (historialMensajes) {
 // 📸 ESCUCHADOR DE CLICS Y TOQUES EN FOTOS (COMPATIBLE CON MÓVILES Y PC)
 if (historialMensajes) {
   historialMensajes.addEventListener("click", (e) => {
-    // Si fue pulsación larga, ignorar apertura
     if (isLongPress) return;
+
+    // 📇 Clic en el botón de la tarjeta de contacto
+    const btnContacto = e.target.closest(".btn-mensaje-contacto, .btn-accion-contacto-card");
+    if (btnContacto) {
+      e.stopPropagation();
+      e.preventDefault();
+      const uid = btnContacto.getAttribute("data-uid");
+      if (uid && typeof window.abrirChatDesdeContacto === "function") {
+        window.abrirChatDesdeContacto(uid);
+      }
+      return;
+    }
 
     const contenedorFoto = e.target.closest(".contenedor-foto-enviada");
     if (contenedorFoto) {
@@ -2542,6 +2553,20 @@ if (inputBuscadorModal) {
   }
 })();
 
+// 🔄 Control de visibilidad del botón flotante según la pantalla activa
+function actualizarVisibilidadBtnFlotante(pantallaActiva) {
+  const btnFlotante = document.getElementById("btn-abrir-contactos");
+  if (!btnFlotante) return;
+
+  if (pantallaActiva === "chats" || pantallaActiva === "bienvenida") {
+    btnFlotante.classList.remove("oculto");
+    btnFlotante.style.display = "flex";
+  } else {
+    btnFlotante.classList.add("oculto");
+    btnFlotante.style.display = "none";
+  }
+}
+
 function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
   // 1. APAGADO EN SEGUNDO PLANO (Corta timers y medios activos)
   if (typeof cerrarEstadoMova === "function") {
@@ -2574,14 +2599,15 @@ function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
     mostrar.style.alignItems = "stretch";
   }
 
-  // 3. CONTROL DE BOTÓN FLOTANTE
-  const btnFlotante = document.getElementById("btn-abrir-contactos");
-  if (btnFlotante) {
-    if (mostrar === pantallaChats) {
-      btnFlotante.classList.remove("oculto");
-    } else {
-      btnFlotante.classList.add("oculto");
-    }
+  // 3. CONTROL DE BOTÓN FLOTANTE (Actualizado)
+  if (mostrar === pantallaChats) {
+    actualizarVisibilidadBtnFlotante("chats");
+  } else if (mostrar === pantallaPerfil) {
+    actualizarVisibilidadBtnFlotante("perfil");
+  } else if (mostrar === pantallaChatPrivado) {
+    actualizarVisibilidadBtnFlotante("chatPrivado");
+  } else {
+    actualizarVisibilidadBtnFlotante("bienvenida");
   }
 }
 
@@ -5650,6 +5676,7 @@ async function renderizarListaContactosModal(filtro = "") {
           if (nombreContacto.toLowerCase().includes(textoFiltro)) {
             const filaHTML = document.createElement("div");
             filaHTML.className = "item-contacto-fila";
+            filaHTML.dataset.uid = targetUid; // 👈 Importante: Guarda el UID del contacto en la fila
 
             const primerLetra = nombreContacto.charAt(0).toUpperCase();
             const fotoUrl = usuario.fotoUrl || usuario.fotoPerfil || usuario.photoURL;
@@ -6035,7 +6062,7 @@ if (btnAdjuntarContacto && modalContactos) {
 
         const nombreContacto = elemNombre ? elemNombre.textContent.trim() : "Contacto";
         const srcAvatar = elemAvatar ? elemAvatar.src : "";
-        const targetUid = nuevaFila.dataset.uid || "";
+        const targetUid = nuevaFila.dataset.uid || fila.dataset.uid || "";
 
         // Ocultar modal
         modalContactos.classList.add("oculto");
@@ -7616,7 +7643,7 @@ function escucharMensajesChat(chatId) {
                   <span style="font-size: 0.72rem; color: #00f2fe;">Contacto de MovaChat</span>
                 </div>
               </div>
-              <button onclick="abrirChatDesdeContacto('${uidContacto}')" style="width: 100%; background: linear-gradient(135deg, #00f2fe, #4facfe); border: none; padding: 7px; border-radius: 8px; color: #000; font-weight: 700; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 6px;">
+              <button type="button" class="btn-mensaje-contacto" data-uid="${uidContacto}" onclick="(window.abrirChatDesdeContacto || window.abrirChatConUsuario || function(){})('${uidContacto}')" style="width: 100%; background: linear-gradient(135deg, #00f2fe, #4facfe); border: none; padding: 7px; border-radius: 8px; color: #000; font-weight: 700; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 6px;">
                 <i data-lucide="message-square" style="width: 15px; height: 15px; fill: black;"></i> Mensaje
               </button>
               ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
@@ -8333,6 +8360,96 @@ window.cargarPerfilUsuario = function cargarPerfilUsuario(uidTarget) {
       };
     }
 
+    // --- 5.B. BOTÓN TOGGLE (AGREGAR / ELIMINAR CONTACTO) ---
+    const btnAgregarContacto = document.getElementById("btn-agregar-contacto-perfil");
+
+    if (btnAgregarContacto) {
+      if (esMiPerfil) {
+        btnAgregarContacto.style.display = "none";
+      } else {
+        btnAgregarContacto.style.display = "flex";
+        const miUid = usuarioActual ? usuarioActual.uid : null;
+
+        if (miUid) {
+          btnAgregarContacto.disabled = true;
+
+          // Consultar estado en Firebase
+          get(ref(db, `mis_contactos/${miUid}/${uidTarget}`)).then((snap) => {
+            let yaEsContacto = snap.exists();
+            btnAgregarContacto.disabled = false;
+            actualizarEstadoBotonContacto(btnAgregarContacto, yaEsContacto);
+
+            btnAgregarContacto.onclick = async (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              btnAgregarContacto.disabled = true;
+
+              try {
+                if (yaEsContacto) {
+                  // ❌ SI YA ES CONTACTO -> ELIMINAR DE FIREBASE
+                  await remove(ref(db, `mis_contactos/${miUid}/${uidTarget}`));
+                  yaEsContacto = false;
+                  actualizarEstadoBotonContacto(btnAgregarContacto, false);
+
+                  if (typeof mostrarAvisoPremium === "function") {
+                    mostrarAvisoPremium(
+                      `<b>${datosUsuario.nombre || "Usuario"}</b> eliminado de tus contactos`,
+                      "🗑️",
+                      "#ff4b2b"
+                    );
+                  }
+                } else {
+                  // ➕ SI NO ES CONTACTO -> AGREGAR A FIREBASE
+                  await set(ref(db, `mis_contactos/${miUid}/${uidTarget}`), true);
+                  yaEsContacto = true;
+                  actualizarEstadoBotonContacto(btnAgregarContacto, true);
+
+                  if (typeof mostrarAvisoPremium === "function") {
+                    mostrarAvisoPremium(
+                      `<b>${datosUsuario.nombre || "Usuario"}</b> guardado en tu lista ✨`,
+                      "👤",
+                      "#00f2fe"
+                    );
+                  }
+                }
+              } catch (err) {
+                console.error("Error al actualizar contacto:", err);
+              } finally {
+                btnAgregarContacto.disabled = false;
+              }
+            };
+          }).catch(() => {
+            btnAgregarContacto.disabled = false;
+          });
+        }
+      }
+    }
+
+    // Función helper para cambiar estética entre activo/inactivo
+    function actualizarEstadoBotonContacto(btn, esContacto) {
+      if (!btn) return;
+
+      if (esContacto) {
+        // Apariencia desactivada / guardado (no ilumina)
+        btn.innerHTML = `<i data-lucide="user-check"></i> Contacto en tu lista`;
+        btn.style.background = "rgba(255, 255, 255, 0.05)";
+        btn.style.color = "rgba(255, 255, 255, 0.7)";
+        btn.style.border = "1px solid rgba(255, 255, 255, 0.15)";
+        btn.style.boxShadow = "none";
+      } else {
+        // Apariencia activa / iluminada para agregar
+        btn.innerHTML = `<i data-lucide="user-plus"></i> Agregar a mi lista`;
+        btn.style.background = "linear-gradient(135deg, #00f2fe, #4facfe)";
+        btn.style.color = "#000000";
+        btn.style.border = "none";
+        btn.style.boxShadow = "0 4px 15px rgba(0, 242, 254, 0.3)";
+      }
+
+      if (window.lucide) {
+        window.lucide.createIcons({ targets: [btn] });
+      }
+    }
+
     // --- 6. CÓDIGO QR PRO ---
     const btnQr = document.getElementById('btn-abrir-qr');
     if (btnQr) {
@@ -8632,8 +8749,25 @@ function enviarContactoAlChat(contacto) {
 }
 
 // Global para abrir chat desde el botón de la tarjeta
-window.abrirChatDesdeContacto = function(uidContacto) {
-  if (uidContacto && typeof abrirChat === "function") {
-    abrirChat(uidContacto);
+window.abrirChatDesdeContacto = function (uidContacto, nombreContacto = "", fotoContacto = "") {
+  if (!uidContacto) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("No se encontró el ID del contacto.", "⚠️", "#ff4b2b");
+    }
+    return;
+  }
+
+  // Buscar datos en la caché de usuarios si no vienen informados explícitamente
+  if (window.usuariosCacheGlobal && window.usuariosCacheGlobal[uidContacto]) {
+    const usuario = window.usuariosCacheGlobal[uidContacto];
+    nombreContacto = nombreContacto || usuario.nombre || "Contacto";
+    fotoContacto = fotoContacto || usuario.fotoUrl || usuario.fotoPerfil || usuario.photoURL || "";
+  }
+
+  // Llamada a la función real que abre la pantalla de chat privado
+  if (typeof abrirChatConUsuario === "function") {
+    abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+  } else {
+    console.error("❌ La función abrirChatConUsuario no está disponible.");
   }
 };
