@@ -116,13 +116,16 @@ async function subirArchivoSupabase(archivo, bucket = "movachat-adjuntos") {
     const nombreUnico = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${extension}`;
     const rutaArchivo = `adjuntos/${nombreUnico}`;
 
-    // 2. Subir archivo a Supabase Storage
+    // 2. Subir archivo a Supabase Storage asegurando el tipo de contenido (contentType)
+    const tipoContenido = archivo.type || (rutaArchivo.endsWith('.m4a') ? 'audio/mp4' : 'audio/webm');
+
     const { data, error } = await supabaseClient
       .storage
       .from(bucket)
       .upload(rutaArchivo, archivo, {
         cacheControl: '3600',
-        upsert: false
+        upsert: false,
+        contentType: tipoContenido
       });
 
     if (error) {
@@ -2268,20 +2271,20 @@ async function iniciarGrabacionVoz(e) {
     fragmentosAudio = [];
 
     // ⚡ Selección dinámica segura de formato de audio (Compatible con iOS Safari y Android)
-    window.mimeAudio = '';
+    let mimeAudio = '';
     if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-      window.mimeAudio = 'audio/webm;codecs=opus';
+      mimeAudio = 'audio/webm;codecs=opus';
     } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-      window.mimeAudio = 'audio/mp4';
+      mimeAudio = 'audio/mp4';
     } else if (MediaRecorder.isTypeSupported('audio/aac')) {
-      window.mimeAudio = 'audio/aac';
+      mimeAudio = 'audio/aac';
     } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-      window.mimeAudio = 'audio/ogg';
+      mimeAudio = 'audio/ogg';
     } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-      window.mimeAudio = 'audio/webm';
+      mimeAudio = 'audio/webm';
     }
 
-    const opcionesAudio = window.mimeAudio ? { mimeType: window.mimeAudio } : {};
+    const opcionesAudio = mimeAudio ? { mimeType: mimeAudio } : {};
     mediaRecorderAudio = new MediaRecorder(streamAudioLive, opcionesAudio);
 
     mediaRecorderAudio.ondataavailable = (event) => {
@@ -2296,18 +2299,20 @@ async function iniciarGrabacionVoz(e) {
       }
 
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
-        const tipoFinal = window.mimeAudio || 'audio/webm';
-        const blobAudio = new Blob(fragmentosAudio, { type: tipoFinal });
+        // Detectar formato real utilizado por el navegador
+        const tipoFinal = mediaRecorderAudio.mimeType || window.mimeAudio || 'audio/webm';
 
-        // Crear archivo File listo para Supabase
-        const extensionAudio = tipoFinal.includes('mp4') || tipoFinal.includes('aac') ? 'm4a' : 'webm';
-        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${extensionAudio}`, { type: tipoFinal });
+        // Determinar la extensión adecuada (m4a/mp4 para iOS/Safari, webm/ogg para Android/Chrome)
+        const ext = (tipoFinal.includes('mp4') || tipoFinal.includes('aac')) ? 'm4a' : (tipoFinal.includes('ogg') ? 'ogg' : 'webm');
+
+        const blobAudio = new Blob(fragmentosAudio, { type: tipoFinal });
+        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${ext}`, { type: tipoFinal });
 
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Subiendo nota de voz a Supabase... 🎙️", "☁️", "#00f2fe");
+          mostrarAvisoPremium("Subiendo nota de voz... 🎙️", "☁️", "#00f2fe");
         }
 
-        // 1. Subir nota de voz a Supabase Storage
+        // 1. Subir archivo a Supabase Storage
         let urlAudioSupabase = null;
         if (typeof subirArchivoSupabase === "function") {
           urlAudioSupabase = await subirArchivoSupabase(archivoAudio, "movachat-adjuntos");
@@ -2315,7 +2320,7 @@ async function iniciarGrabacionVoz(e) {
 
         const urlFinalAudio = urlAudioSupabase || URL.createObjectURL(blobAudio);
 
-        // 2. Guardar en Firebase Realtime Database para que le llegue al contacto
+        // 2. Guardar registro en Firebase Realtime Database para enviar al contacto
         const usuarioActual = auth.currentUser;
         const miUid = usuarioActual ? usuarioActual.uid : null;
         const contactoUid = window.contactoActivoUid;
@@ -2346,7 +2351,7 @@ async function iniciarGrabacionVoz(e) {
             reproducirSonidoEnviado();
           }
         } else if (typeof inyectarNotaDeVozBurbuja === "function") {
-          // Vista previa local de respaldo si falla la red
+          // Vista previa local si no hay conexión o falla la subida
           inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlFinalAudio);
         }
       }
@@ -9904,16 +9909,16 @@ function enviarContactoAlChat(contacto) {
   // ========================================================
   // 📱 ENVÍO SEGURO DE CONTACTO ADJUNTO (SIN DUPLICADOS)
   // ========================================================
-  
+
   // Guardar mensaje en la base de datos usando la sintaxis modular de Firebase v10
   const rutaMensaje = ref(db, `chats/${obtenerIdChatCombinado(usuarioActual.uid, chatActualId)}/${idMensaje}`);
-  
+
   set(rutaMensaje, nuevoMensaje).then(() => {
     // Cerrar modal de selección si está abierto
     const modalContactos = document.getElementById("modal-seleccionar-contacto");
     if (modalContactos) {
       modalContactos.classList.add("oculto");
-      
+
       // ✨ CLONACIÓN PREVENTIVA: Limpiamos los eventos acumulados en el modal de contactos
       const listaContactosModal = document.getElementById("lista-contactos-modal-adjuntar") || document.getElementById("modal-seleccionar-contacto");
       if (listaContactosModal && listaContactosModal.parentNode) {
@@ -9961,7 +9966,7 @@ async function detenerYEnviarGrabacionAudio() {
     clearInterval(temporizadorGrabacion);
     temporizadorGrabacion = null;
   }
-  
+
   const duracionFinal = segundosGrabados;
   const panelGrabacion = document.getElementById('panel-grabacion');
 
@@ -9987,12 +9992,12 @@ async function detenerYEnviarGrabacionAudio() {
     // 2. Guardar el enlace en Firebase Realtime Database
     if (audioUrl) {
       await enviarMensaje(audioUrl, "audio", duracionFinal);
-      
+
       // Reproducir sonido de éxito
       const sonidoEnviado = document.getElementById('sonido-enviado');
       if (sonidoEnviado) {
         sonidoEnviado.currentTime = 0;
-        sonidoEnviado.play().catch(() => {});
+        sonidoEnviado.play().catch(() => { });
       }
     } else {
       alert('Error al subir la nota de voz. Inténtalo de nuevo.');
@@ -10014,13 +10019,13 @@ function cancelarGrabacionAudio() {
     };
     mediaRecorderAudio.stop();
   }
-  
+
   fragmentosAudio = [];
   if (temporizadorGrabacion) {
     clearInterval(temporizadorGrabacion);
     temporizadorGrabacion = null;
   }
-  
+
   const panelGrabacion = document.getElementById('panel-grabacion');
   if (panelGrabacion) panelGrabacion.classList.add('oculto');
 }
