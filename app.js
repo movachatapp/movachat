@@ -2266,58 +2266,13 @@ function finalizarToque(e) {
   }
 }
 
-function cancelarGrabacion() {
-  // 1. Desactivamos los estados lógicos
-  grabacionActiva = false;
-  candadoActivado = false;
-  window.grabacionCancelada = true; // ⚠️ Marca de agua para evitar que el onstop envíe nada
-
-  // 2. Restauramos los elementos visuales del DOM
-  const btnAccionChat = document.getElementById('btn-accion-chat');
-  const panelGrabacion = document.getElementById('panel-grabacion');
-  const candado = document.getElementById('contenedor-candado-manoslibres');
-  const cajaInputNormal = document.getElementById('caja-input-normal');
-
-  if (btnAccionChat) btnAccionChat.style.transform = 'translate(0px, 0px)';
-  if (panelGrabacion) panelGrabacion.classList.add('oculto');
-  if (candado) candado.classList.add('oculto');
-  if (cajaInputNormal) cajaInputNormal.classList.remove('oculto');
-
-  // 3. Frenamos el cronómetro
-  if (typeof frenarCronometroAudio === "function") {
-    frenarCronometroAudio();
-  }
-
-  // 4. Detenemos la grabación física
-  if (typeof mediaRecorderAudio !== "undefined" && mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
-    mediaRecorderAudio.stop();
-  }
-
-  // 5. Apagamos el micrófono (liberamos el hardware)
-  if (typeof streamAudioLive !== "undefined" && streamAudioLive) {
-    streamAudioLive.getTracks().forEach(pista => pista.stop());
-    streamAudioLive = null;
-  }
-
-  // 6. Limpiamos la RAM
-  fragmentosAudio = [];
-  console.log("🚫 Grabación cancelada y descartada.");
-}
-
-function activarManosLibres() {
-  candadoActivado = true;
-
-  const btnAccionChat = document.getElementById('btn-accion-chat');
-  const candado = document.getElementById('contenedor-candado-manoslibres');
-
-  if (btnAccionChat) btnAccionChat.style.transform = 'translate(0px, 0px)';
-  if (candado) candado.classList.add('candado-fijo');
-
-  console.log("🔒 Modo manos libres activado.");
-}
+// ========================================================
+// 🎙️ SISTEMA DE GRABACIÓN DE VOZ (COMPATIBLE IOS/ANDROID + SUPABASE)
+// ========================================================
 
 async function iniciarGrabacionVoz(e) {
   window.grabacionCancelada = false;
+
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
   if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0) || (cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))) {
     return;
@@ -2334,7 +2289,7 @@ async function iniciarGrabacionVoz(e) {
     streamAudioLive = await navigator.mediaDevices.getUserMedia({ audio: true });
     fragmentosAudio = [];
 
-    // ⚡ Selección dinámica segura de formato de audio (Compatible con iOS Safari y Android)
+    // ⚡ Selección dinámica segura de formato (iOS Safari, Android, Web)
     let mimeAudio = '';
     if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
       mimeAudio = 'audio/webm;codecs=opus';
@@ -2357,16 +2312,23 @@ async function iniciarGrabacionVoz(e) {
 
     // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA DIRECTA A SUPABASE
     mediaRecorderAudio.onstop = async () => {
+      // 1. Si fue cancelado, ignoramos el proceso y apagamos hardware
       if (window.grabacionCancelada) {
-        console.log("Onstop ignorado por cancelación.");
+        console.log("🚫 Onstop ignorado por cancelación del usuario.");
+        if (streamAudioLive) {
+          streamAudioLive.getTracks().forEach(track => track.stop());
+          streamAudioLive = null;
+        }
         return;
       }
 
+      // 2. Apagar micrófono físico inmediatamente al cortar
       if (streamAudioLive) {
         streamAudioLive.getTracks().forEach(track => track.stop());
         streamAudioLive = null;
       }
 
+      // 3. Procesar y subir audio a Supabase
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
         const tipoFinal = mimeAudio || 'audio/webm';
         const blobAudio = new Blob(fragmentosAudio, { type: tipoFinal });
@@ -2412,110 +2374,154 @@ async function iniciarGrabacionVoz(e) {
 }
 
 function finalizarGrabacionVoz() {
-  if (!estaGrabandoAudio) return;
+  if (!estaGrabandoAudio && !grabacionActiva) return;
+
   estaGrabandoAudio = false;
-  frenarCronometroAudio();
+  grabacionActiva = false;
 
-  btnAccionChat.classList.remove("grabando-activo");
-  panelGrabacion.classList.add("oculto");
-  cajaInputNormal.classList.remove("oculto");
+  if (typeof frenarCronometroAudio === "function") frenarCronometroAudio();
 
-  if (mediaRecorderAudio && mediaRecorderAudio.state === "recording") {
+  if (btnAccionChat) btnAccionChat.classList.remove("grabando-activo");
+  if (panelGrabacion) panelGrabacion.classList.add("oculto");
+  if (cajaInputNormal) cajaInputNormal.classList.remove("oculto");
+
+  // Detener el recorder (esto dispara el .onstop que sube a Supabase y apaga el micrófono)
+  if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
     mediaRecorderAudio.stop();
+  } else if (streamAudioLive) {
+    // Si la grabadora no estaba activa pero el micro físico seguía abierto, lo apagamos
+    streamAudioLive.getTracks().forEach(track => track.stop());
+    streamAudioLive = null;
   }
 }
 
-// ========================================================
-// 🎙️ MOTOR TÁCTIL AVANZADO PARA NOTAS DE VOZ (MOVACHAT PRO)
+// ================================================= realm
+// 🎙️ MOTOR TÁCTIL UNIFICADO (WhatsApp Style)
 // ========================================================
 
 function iniciarControlTactilMic(e) {
-  // 1. Evitar que grabe si el botón está en modo "Enviar" (tiene icono de flecha)
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
   if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0)) {
-    return; // Deja que el evento 'click' normal envíe el texto
+    return;
   }
 
   if (e && e.preventDefault) e.preventDefault();
 
-  // 2. Capturar coordenadas iniciales asignándolas a las variables globales de arriba
   inicioX = e.touches ? e.touches[0].clientX : e.clientX;
   inicioY = e.touches ? e.touches[0].clientY : e.clientY;
 
-  grabacionActiva = true;
+  grabacionActiva = false;
   candadoActivado = false;
 
-  // 3. Pequeño retraso (200ms) para evitar activaciones por roces accidentales
+  // Retraso de 180ms para confirmar pulsar
   temporizadorToque = setTimeout(() => {
+    grabacionActiva = true;
     iniciarGrabacionVoz(e);
 
-    // Estado Activo: Animación en el botón
     if (btnAccionChat) {
       btnAccionChat.style.transition = "none";
       btnAccionChat.style.transform = "scale(1.2)";
     }
-  }, 200);
+  }, 180);
 }
 
 function moverControlTactilMic(e) {
   if (!grabacionActiva || candadoActivado) return;
 
-  const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
-  const clienteY = e.touches ? e.touches[0].clientY : e.clientY;
+  const actualX = e.touches ? e.touches[0].clientX : e.clientX;
+  const actualY = e.touches ? e.touches[0].clientY : e.clientY;
 
-  let deltaX = clienteX - inicioX;
-  let deltaY = inicioY - clienteY; // Positivo hacia arriba
+  let deltaX = actualX - inicioX;
+  let deltaY = inicioY - actualY; // Positivo hacia arriba
 
   if (deltaX > 0) deltaX = 0;
   if (deltaY < 0) deltaY = 0;
 
   if (btnAccionChat) {
-    btnAccionChat.style.transform = `translate(${deltaX}px, -${deltaY}px)`;
+    btnAccionChat.style.transform = `translate(${deltaX}px, -${deltaY}px) scale(1.2)`;
   }
 
-  // 1. Umbral de Cancelación (Deslizar izquierda)
-  if (deltaX <= UMBRAL_CANCELAR) {
+  // 1. Umbral de Cancelar: Ajustado a -50px (más sensible)
+  if (deltaX <= -50) {
     cancelarGrabacion();
     return;
   }
 
-  // 2. Umbral de Candado (Deslizar arriba)
-  if (deltaY >= UMBRAL_CANDADO) {
+  // 2. Umbral de Candado: Subir +60px mientras graba
+  if (deltaY >= 60) {
     activarManosLibres();
   }
 }
 
 function finalizarControlTactilMic(e) {
-  if (temporizadorToque) {
-    clearTimeout(temporizadorToque);
+  if (temporizadorToque) clearTimeout(temporizadorToque);
+
+  if (btnAccionChat) {
+    btnAccionChat.style.transition = "transform 0.2s ease";
+    btnAccionChat.style.transform = "translate(0px, 0px) scale(1)";
   }
 
+  // Si no llegó a iniciar la grabación o ya activó el candado, no detiene el audio aquí
   if (!grabacionActiva || candadoActivado) {
-    if (btnAccionChat && !candadoActivado) {
-      btnAccionChat.style.transform = 'translate(0px, 0px)';
-    }
     return;
   }
 
-  grabacionActiva = false;
-
-  if (btnAccionChat) {
-    btnAccionChat.style.transform = 'translate(0px, 0px)';
-  }
-
-  if (typeof finalizarGrabacionVoz === "function") {
-    finalizarGrabacionVoz();
-  }
+  // Si estaba grabando en modo normal y soltó el dedo, procesa y envía
+  finalizarGrabacionVoz();
 }
 
-function resetearBotonMic(mantieneCandado = false) {
-  botonGrabando = false;
-  btnAccionChat.style.transition = "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
-  btnAccionChat.style.transform = "";
+function cancelarGrabacion() {
+  if (temporizadorToque) clearTimeout(temporizadorToque);
+  
+  // Reseteo de estados de control
+  estaGrabandoAudio = false; // 👈 Agregamos esto para sincronizar
+  grabacionActiva = false;
+  candadoActivado = false;
+  window.grabacionCancelada = true; // Bloquea la subida en el event onstop
 
-  if (!mantieneCandado) {
-    btnAccionChat.classList.remove("grabando-activo");
+  // Restaurar animación del botón
+  if (btnAccionChat) {
+    btnAccionChat.style.transition = "transform 0.2s ease";
+    btnAccionChat.style.transform = "translate(0px, 0px) scale(1)";
   }
+
+  if (typeof frenarCronometroAudio === "function") frenarCronometroAudio();
+
+  // Ocultar elementos de la interfaz de grabación
+  const panelGrabacion = document.getElementById('panel-grabacion');
+  const candado = document.getElementById('contenedor-candado-manoslibres');
+  const cajaInputNormal = document.getElementById('caja-input-normal');
+
+  if (panelGrabacion) panelGrabacion.classList.add('oculto');
+  if (candado) candado.classList.add('oculto');
+  if (cajaInputNormal) cajaInputNormal.classList.remove('oculto');
+
+  // Detener grabadora y apagar hardware físicamente
+  if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
+    mediaRecorderAudio.stop();
+  }
+
+  if (streamAudioLive) {
+    streamAudioLive.getTracks().forEach(track => track.stop());
+    streamAudioLive = null;
+  }
+
+  fragmentosAudio = [];
+  console.log("🚫 Grabación cancelada con éxito y micrófono liberado.");
+}
+
+function activarManosLibres() {
+  candadoActivado = true;
+
+  if (btnAccionChat) {
+    btnAccionChat.style.transition = "transform 0.2s ease";
+    btnAccionChat.style.transform = "translate(0px, 0px) scale(1)";
+  }
+
+  const candado = document.getElementById('contenedor-candado-manoslibres');
+  if (candado) candado.classList.remove('oculto');
+
+  console.log("🔒 Candado enganchado (Manos libres). Puedes soltar el dedo.");
 }
 
 // ========================================================
@@ -10133,16 +10139,16 @@ window.abrirChatDesdeContacto = function (uidContacto, nombreContacto = "", foto
 };
 
 // ========================================================
-// 🎧 LISTENERS MULTIDISPOSITIVO PARA TU BOTÓN REAL
+// 🎧 LISTENERS FINALES PARA EL BOTÓN DE ACCIÓN
 // ========================================================
 if (btnAccionChat) {
-    // Eventos Táctiles (Móviles / Tablets)
-    btnAccionChat.addEventListener('touchstart', iniciarToque, { passive: false });
-    document.addEventListener('touchmove', moverDedo, { passive: false });
-    document.addEventListener('touchend', finalizarToque);
+  // Eventos para Celular/Tablet
+  btnAccionChat.addEventListener('touchstart', iniciarControlTactilMic, { passive: false });
+  document.addEventListener('touchmove', moverControlTactilMic, { passive: false });
+  document.addEventListener('touchend', finalizarControlTactilMic);
 
-    // Eventos Ratón (PC)
-    btnAccionChat.addEventListener('mousedown', iniciarToque);
-    document.addEventListener('mousemove', moverDedo);
-    document.addEventListener('mouseup', finalizarToque);
+  // Eventos para Computadora (Ratón)
+  btnAccionChat.addEventListener('mousedown', iniciarControlTactilMic);
+  document.addEventListener('mousemove', moverControlTactilMic);
+  document.addEventListener('mouseup', finalizarControlTactilMic);
 }
