@@ -2268,20 +2268,20 @@ async function iniciarGrabacionVoz(e) {
     fragmentosAudio = [];
 
     // ⚡ Selección dinámica segura de formato de audio (Compatible con iOS Safari y Android)
-    let mimeAudio = '';
+    window.mimeAudio = '';
     if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-      mimeAudio = 'audio/webm;codecs=opus';
+      window.mimeAudio = 'audio/webm;codecs=opus';
     } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-      mimeAudio = 'audio/mp4';
+      window.mimeAudio = 'audio/mp4';
     } else if (MediaRecorder.isTypeSupported('audio/aac')) {
-      mimeAudio = 'audio/aac';
+      window.mimeAudio = 'audio/aac';
     } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-      mimeAudio = 'audio/ogg';
+      window.mimeAudio = 'audio/ogg';
     } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-      mimeAudio = 'audio/webm';
+      window.mimeAudio = 'audio/webm';
     }
 
-    const opcionesAudio = mimeAudio ? { mimeType: mimeAudio } : {};
+    const opcionesAudio = window.mimeAudio ? { mimeType: window.mimeAudio } : {};
     mediaRecorderAudio = new MediaRecorder(streamAudioLive, opcionesAudio);
 
     mediaRecorderAudio.ondataavailable = (event) => {
@@ -2296,7 +2296,7 @@ async function iniciarGrabacionVoz(e) {
       }
 
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
-        const tipoFinal = mimeAudio || 'audio/webm';
+        const tipoFinal = window.mimeAudio || 'audio/webm';
         const blobAudio = new Blob(fragmentosAudio, { type: tipoFinal });
 
         // Crear archivo File listo para Supabase
