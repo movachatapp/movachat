@@ -2373,34 +2373,18 @@ async function iniciarGrabacionVoz(e) {
   }
 }
 
-function finalizarGrabacionVoz() {
-  if (!estaGrabandoAudio && !grabacionActiva) return;
-
-  estaGrabandoAudio = false;
-  grabacionActiva = false;
-
-  if (typeof frenarCronometroAudio === "function") frenarCronometroAudio();
-
-  if (btnAccionChat) btnAccionChat.classList.remove("grabando-activo");
-  if (panelGrabacion) panelGrabacion.classList.add("oculto");
-  if (cajaInputNormal) cajaInputNormal.classList.remove("oculto");
-
-  // Detener el recorder (esto dispara el .onstop que sube a Supabase y apaga el micrófono)
-  if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
-    mediaRecorderAudio.stop();
-  } else if (streamAudioLive) {
-    // Si la grabadora no estaba activa pero el micro físico seguía abierto, lo apagamos
-    streamAudioLive.getTracks().forEach(track => track.stop());
-    streamAudioLive = null;
-  }
-}
-
-// ================================================= realm
-// 🎙️ MOTOR TÁCTIL UNIFICADO (WhatsApp Style)
+// ========================================================
+// 🎙️ MOTOR TÁCTIL Y MANOS LIBRES MEJORADO (MOVACHAT PRO)
 // ========================================================
 
 function iniciarControlTactilMic(e) {
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
+  
+  if (candadoActivado) {
+    finalizarGrabacionVoz();
+    return;
+  }
+
   if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0)) {
     return;
   }
@@ -2411,9 +2395,9 @@ function iniciarControlTactilMic(e) {
   inicioY = e.touches ? e.touches[0].clientY : e.clientY;
 
   grabacionActiva = false;
-  candadoActivado = false;
 
-  // Retraso de 180ms para confirmar pulsar
+  if (temporizadorToque) clearTimeout(temporizadorToque);
+
   temporizadorToque = setTimeout(() => {
     grabacionActiva = true;
     iniciarGrabacionVoz(e);
@@ -2426,7 +2410,10 @@ function iniciarControlTactilMic(e) {
 }
 
 function moverControlTactilMic(e) {
-  if (!grabacionActiva || candadoActivado) return;
+  // 🛡️ BLOQUEO: Si la grabación no está activa o si ya se enganchó el candado, no mueve el botón ni evalúa gestos
+  if (!grabacionActiva || !estaGrabandoAudio || candadoActivado) {
+    return;
+  }
 
   const actualX = e.touches ? e.touches[0].clientX : e.clientX;
   const actualY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -2437,91 +2424,147 @@ function moverControlTactilMic(e) {
   if (deltaX > 0) deltaX = 0;
   if (deltaY < 0) deltaY = 0;
 
+  // Solo desplaza visualmente el botón si la grabación ya está en curso
   if (btnAccionChat) {
     btnAccionChat.style.transform = `translate(${deltaX}px, -${deltaY}px) scale(1.2)`;
   }
 
-  // 1. Umbral de Cancelar: Ajustado a -50px (más sensible)
-  if (deltaX <= -50) {
+  // 1. Umbral para Cancelar (Solo funciona con grabación activa)
+  if (deltaX <= -40) {
     cancelarGrabacion();
     return;
   }
 
-  // 2. Umbral de Candado: Subir +60px mientras graba
+  // 2. Umbral para activar Candado (Solo funciona con grabación activa)
   if (deltaY >= 60) {
     activarManosLibres();
   }
 }
 
 function finalizarControlTactilMic(e) {
-  if (temporizadorToque) clearTimeout(temporizadorToque);
-
-  if (btnAccionChat) {
-    btnAccionChat.style.transition = "transform 0.2s ease";
-    btnAccionChat.style.transform = "translate(0px, 0px) scale(1)";
+  if (temporizadorToque) {
+    clearTimeout(temporizadorToque);
+    temporizadorToque = null;
   }
 
-  // Si no llegó a iniciar la grabación o ya activó el candado, no detiene el audio aquí
-  if (!grabacionActiva || candadoActivado) {
+  // 🛡️ SI NO HABÍA GRABACIÓN ACTIVA NI CANDADO, NO HACE NADA NI DISPARA CANCELACIONES
+  if (!grabacionActiva && !estaGrabandoAudio) {
     return;
   }
 
-  // Si estaba grabando en modo normal y soltó el dedo, procesa y envía
+  if (candadoActivado) return;
+
   finalizarGrabacionVoz();
-}
-
-function cancelarGrabacion() {
-  if (temporizadorToque) clearTimeout(temporizadorToque);
-  
-  // Reseteo de estados de control
-  estaGrabandoAudio = false; // 👈 Agregamos esto para sincronizar
-  grabacionActiva = false;
-  candadoActivado = false;
-  window.grabacionCancelada = true; // Bloquea la subida en el event onstop
-
-  // Restaurar animación del botón
-  if (btnAccionChat) {
-    btnAccionChat.style.transition = "transform 0.2s ease";
-    btnAccionChat.style.transform = "translate(0px, 0px) scale(1)";
-  }
-
-  if (typeof frenarCronometroAudio === "function") frenarCronometroAudio();
-
-  // Ocultar elementos de la interfaz de grabación
-  const panelGrabacion = document.getElementById('panel-grabacion');
-  const candado = document.getElementById('contenedor-candado-manoslibres');
-  const cajaInputNormal = document.getElementById('caja-input-normal');
-
-  if (panelGrabacion) panelGrabacion.classList.add('oculto');
-  if (candado) candado.classList.add('oculto');
-  if (cajaInputNormal) cajaInputNormal.classList.remove('oculto');
-
-  // Detener grabadora y apagar hardware físicamente
-  if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
-    mediaRecorderAudio.stop();
-  }
-
-  if (streamAudioLive) {
-    streamAudioLive.getTracks().forEach(track => track.stop());
-    streamAudioLive = null;
-  }
-
-  fragmentosAudio = [];
-  console.log("🚫 Grabación cancelada con éxito y micrófono liberado.");
 }
 
 function activarManosLibres() {
   candadoActivado = true;
 
+  // 1. Restaurar posición del botón y cambiar icono a enviar ("avioncito")
   if (btnAccionChat) {
     btnAccionChat.style.transition = "transform 0.2s ease";
     btnAccionChat.style.transform = "translate(0px, 0px) scale(1)";
+    btnAccionChat.classList.remove("grabando-activo");
+    btnAccionChat.setAttribute("data-modo", "enviar-manoslibres");
+
+    btnAccionChat.innerHTML = '<i data-lucide="send"></i>';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  // 2. Iluminar candado en modo bloqueado
+  const candado = document.getElementById('contenedor-candado-manoslibres');
+  if (candado) {
+    candado.classList.remove('oculto');
+    candado.classList.add('candado-bloqueado');
+  }
+
+  // 3. Garantizar que el panel con el cronómetro siga visible
+  const panelGrabacion = document.getElementById('panel-grabacion');
+  if (panelGrabacion) panelGrabacion.classList.remove('oculto');
+
+  console.log("🔒 Manos libres activado. El usuario ya puede soltar el dedo.");
+}
+
+function restaurarBotonUI() {
+  if (btnAccionChat) {
+    btnAccionChat.style.transition = "transform 0.2s ease";
+    btnAccionChat.style.transform = "translate(0px, 0px) scale(1)";
+    btnAccionChat.classList.remove("grabando-activo");
+    btnAccionChat.removeAttribute("data-modo");
+
+    // Devolver el icono original de micrófono
+    btnAccionChat.innerHTML = '<i data-lucide="mic"></i>';
+    if (window.lucide) lucide.createIcons();
   }
 
   const candado = document.getElementById('contenedor-candado-manoslibres');
-  if (candado) candado.classList.remove('oculto');
+  if (candado) {
+    candado.classList.remove('candado-bloqueado');
+    candado.classList.add('oculto');
+  }
+}
 
-  console.log("🔒 Candado enganchado (Manos libres). Puedes soltar el dedo.");
+function finalizarGrabacionVoz() {
+  if (!estaGrabandoAudio && !grabacionActiva && !candadoActivado) return;
+
+  estaGrabandoAudio = false;
+  grabacionActiva = false;
+  candadoActivado = false;
+
+  if (typeof frenarCronometroAudio === "function") frenarCronometroAudio();
+
+  // Limpiar interfaz visual inmediatamente
+  if (panelGrabacion) panelGrabacion.classList.add("oculto");
+  if (cajaInputNormal) cajaInputNormal.classList.remove("oculto");
+
+  restaurarBotonUI();
+
+  // Detener MediaRecorder
+  if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
+    mediaRecorderAudio.stop();
+  }
+
+  // Apagado forzado e inmediato del micrófono físico
+  apagarMicrofonoFisico();
+}
+
+function cancelarGrabacion() {
+  if (temporizadorToque) {
+    clearTimeout(temporizadorToque);
+    temporizadorToque = null;
+  }
+
+  estaGrabandoAudio = false;
+  grabacionActiva = false;
+  candadoActivado = false;
+  window.grabacionCancelada = true;
+
+  if (typeof frenarCronometroAudio === "function") frenarCronometroAudio();
+
+  restaurarBotonUI();
+
+  if (panelGrabacion) panelGrabacion.classList.add('oculto');
+  if (cajaInputNormal) cajaInputNormal.classList.remove('oculto');
+
+  if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
+    mediaRecorderAudio.stop();
+  }
+
+  // 🛡️ Apagado forzado e inmediato del micrófono físico
+  apagarMicrofonoFisico();
+
+  fragmentosAudio = [];
+  console.log("🚫 Grabación cancelada y micrófono liberado por completo.");
+}
+
+function apagarMicrofonoFisico() {
+  if (streamAudioLive) {
+    streamAudioLive.getTracks().forEach(pista => {
+      pista.stop();
+      pista.enabled = false;
+    });
+    streamAudioLive = null;
+  }
 }
 
 // ========================================================
@@ -7517,22 +7560,42 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// ==========================================================
-// 🔙 RESTAURAR ELEMENTOS AL REGRESAR A LA LISTA DE CHATS
-// ==========================================================
+// ========================================================
+// 🔙 RESTAURAR ELEMENTOS Y REGRESAR A LA LISTA DE CHATS
+// ========================================================
 document.addEventListener("click", (e) => {
   // Si presiona el botón de flecha atrás en el chat privado
   if (e.target.closest("#pantalla-chat-privado .btn-volver") || e.target.closest("#btn-volver-chats")) {
+    
+    // 1. Ocultar la pantalla de chat privado
+    const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
+    if (pantallaChatPrivado) {
+      pantallaChatPrivado.style.display = "none";
+      pantallaChatPrivado.classList.remove("pantalla-completa");
+    }
+
+    // 2. Mostrar la lista de chats principal
+    const pantallaChats = document.getElementById("pantalla-chats");
+    if (pantallaChats) {
+      pantallaChats.style.display = "flex";
+    }
+
+    // 3. Restaurar encabezado, menú inferior y botón flotante (+)
     const encabezadoInicio = document.querySelector(".encabezado-inicio");
     const menuFlotante = document.querySelector(".menu-flotante");
     const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto") || document.getElementById("btn-abrir-contactos");
 
-    // Restaurar encabezado, menú inferior y remover la clase que oculta el botón (+)
     if (encabezadoInicio) encabezadoInicio.style.display = "flex";
     if (menuFlotante) menuFlotante.style.display = "flex";
+
     if (btnFlotanteContacto) {
       btnFlotanteContacto.style.display = "flex";
       btnFlotanteContacto.classList.remove("oculto");
+    }
+
+    // 4. Limpiar cualquier grabación que haya quedado pendiente
+    if (typeof cancelarGrabacion === "function" && (typeof grabacionActiva !== "undefined" && grabacionActiva)) {
+      cancelarGrabacion();
     }
   }
 });
