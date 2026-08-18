@@ -444,6 +444,11 @@
             placeholder="Escribe un mensaje privado...">
         </div>
 
+        <div id="contenedor-candado-manoslibres" class="contenedor-candado oculto">
+          <div class="linea-guia-candado"></div>
+          <i data-lucide="lock" id="icono-candado"></i>
+        </div>
+
         <button type="button" class="btn-enviar-mensaje" id="btn-accion-chat">
           <i data-lucide="mic"></i>
         </button>
@@ -931,15 +936,12 @@
     </div>
   </div>
 
-  <!-- AUDIOS DEL SISTEMA -->
   <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
   <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
 
-  <!-- LIBRERÍAS EXTERNAS (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
 
-  <!-- SCRIPTS PRINCIPALES DE LA APP -->
   <script type="module" src="app.js?v=2"></script>
 
   <script>

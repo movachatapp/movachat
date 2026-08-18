@@ -68,39 +68,6 @@ const SUPABASE_ANON_KEY = "sb_publishable_wLeldDB6ZazOpVq21_cg1A_P1ndcD-N";
 // Inicializamos el cliente global de Supabase
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// --- BUCKET Y SUBIDA DE AUDIO A SUPABASE ---
-const BUCKET_NAME = 'movachat-adjuntos';
-
-async function subirAudioASupabase(audioBlob) {
-  try {
-    const fileName = `audios/nota_voz_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.webm`;
-
-    const { data, error } = await clienteSupabase
-      .storage
-      .from(BUCKET_NAME)
-      .upload(fileName, audioBlob, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: 'audio/webm'
-      });
-
-    if (error) {
-      console.error('Error al subir el audio a Supabase:', error);
-      return null;
-    }
-
-    const { data: publicUrlData } = clienteSupabase
-      .storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(fileName);
-
-    return publicUrlData.publicUrl;
-  } catch (err) {
-    console.error('Excepción al subir audio:', err);
-    return null;
-  }
-}
-
 /**
  * Sube un archivo a Supabase Storage y retorna la URL pública.
  * @param {File} archivo - El archivo File/Blob obtenido del input.
@@ -116,16 +83,13 @@ async function subirArchivoSupabase(archivo, bucket = "movachat-adjuntos") {
     const nombreUnico = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${extension}`;
     const rutaArchivo = `adjuntos/${nombreUnico}`;
 
-    // 2. Subir archivo a Supabase Storage asegurando el tipo de contenido (contentType)
-    const tipoContenido = archivo.type || (rutaArchivo.endsWith('.m4a') ? 'audio/mp4' : 'audio/webm');
-
+    // 2. Subir archivo a Supabase Storage
     const { data, error } = await supabaseClient
       .storage
       .from(bucket)
       .upload(rutaArchivo, archivo, {
         cacheControl: '3600',
-        upsert: false,
-        contentType: tipoContenido
+        upsert: false
       });
 
     if (error) {
@@ -446,6 +410,17 @@ let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
 let archivoAdjuntoPendiente = null;
 let ultimoArchivoFallido = null;
+
+// --- ESTADOS Y UMBRALES DEL MICRÓFONO ---
+let inicioX = 0;
+let inicioY = 0;
+let grabacionActiva = false;
+let candadoActivado = false;
+let temporizadorToque = null;
+
+// Umbrales matemáticos (píxeles)
+const UMBRAL_CANCELAR = -80; // Hacia la izquierda
+const UMBRAL_CANDADO = 80;   // Hacia arriba
 
 // Configuración de constantes
 const TIEMPO_MAXIMO_MS = 10000; // 10 segundos
@@ -875,47 +850,6 @@ async function ejecutarAutolimpieza12Dias(idChat) {
 
 // Objeto global de respaldo para mensajes efímeros temporales
 window.chatsTemporalesBD = window.chatsTemporalesBD || {};
-
-// ========================================================
-// 🛑 PASO 2: CONTROL Y LIMPIEZA DE AUDIO Y CÁMARA (SIN DUPLICADOS)
-// ========================================================
-
-/**
- * Detiene y libera de forma segura todos los streams de hardware activos (micrófono y cámara).
- */
-function detenerHardwareActivo() {
-  // Apagar stream de cámara en vivo
-  if (typeof streamCamaraLive !== "undefined" && streamCamaraLive) {
-    streamCamaraLive.getTracks().forEach(track => track.stop());
-    streamCamaraLive = null;
-  }
-
-  // Apagar stream de cámara estándar
-  if (typeof streamCamara !== "undefined" && streamCamara) {
-    streamCamara.getTracks().forEach(track => track.stop());
-    streamCamara = null;
-  }
-
-  // Apagar stream de audio
-  if (typeof streamAudioLive !== "undefined" && streamAudioLive) {
-    streamAudioLive.getTracks().forEach(track => track.stop());
-    streamAudioLive = null;
-  }
-
-  // Detener grabadores activos
-  if (typeof mediaRecorder !== "undefined" && mediaRecorder && mediaRecorder.state !== "inactive") {
-    mediaRecorder.stop();
-  }
-  if (typeof mediaRecorderAudio !== "undefined" && mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
-    mediaRecorderAudio.stop();
-  }
-
-  // Limpiar temporizadores activos
-  if (typeof temporizadorGrabacion !== "undefined" && temporizadorGrabacion) {
-    clearTimeout(temporizadorGrabacion);
-    temporizadorGrabacion = null;
-  }
-}
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -2253,7 +2187,137 @@ function frenarCronometroAudio() {
   if (timerGrabacionAudio) clearInterval(timerGrabacionAudio);
 }
 
+// ========================================================
+// 🎙️ LÓGICA TÁCTIL Y MATEMÁTICA ADAPTADA A TU HTML
+// ========================================================
+
+function iniciarToque(e) {
+  if (candadoActivado) return;
+
+  const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clienteY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  inicioX = clienteX;
+  inicioY = clienteY;
+
+  const btnAccionChat = document.getElementById('btn-accion-chat');
+  if (btnAccionChat) btnAccionChat.style.transform = 'translate(0px, 0px)';
+
+  temporizadorToque = setTimeout(() => {
+    grabacionActiva = true;
+
+    if (typeof iniciarGrabacionVoz === "function") {
+      iniciarGrabacionVoz(e);
+    }
+
+    const panelGrabacion = document.getElementById('panel-grabacion');
+    const candado = document.getElementById('contenedor-candado-manoslibres');
+    if (panelGrabacion) panelGrabacion.classList.remove('oculto');
+    if (candado) candado.classList.remove('oculto');
+  }, 200);
+}
+
+function moverDedo(e) {
+  if (!grabacionActiva || candadoActivado) return;
+
+  const actualX = e.touches ? e.touches[0].clientX : e.clientX;
+  const actualY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  let deltaX = actualX - inicioX;
+  let deltaY = inicioY - actualY; // Positivo hacia arriba
+
+  if (deltaX > 0) deltaX = 0;
+  if (deltaY < 0) deltaY = 0;
+
+  const btnAccionChat = document.getElementById('btn-accion-chat');
+  if (btnAccionChat) {
+    btnAccionChat.style.transform = `translate(${deltaX}px, -${deltaY}px)`;
+  }
+
+  // 1. Umbral de Cancelación (Deslizar izquierda)
+  if (deltaX <= UMBRAL_CANCELAR) {
+    cancelarGrabacion();
+    return;
+  }
+
+  // 2. Umbral de Candado (Deslizar arriba)
+  if (deltaY >= UMBRAL_CANDADO) {
+    activarManosLibres();
+  }
+}
+
+function finalizarToque(e) {
+  clearTimeout(temporizadorToque);
+
+  const btnAccionChat = document.getElementById('btn-accion-chat');
+
+  if (!grabacionActiva || candadoActivado) {
+    if (btnAccionChat && !candadoActivado) {
+      btnAccionChat.style.transform = 'translate(0px, 0px)';
+    }
+    return;
+  }
+
+  grabacionActiva = false;
+  if (btnAccionChat) btnAccionChat.style.transform = 'translate(0px, 0px)';
+
+  if (typeof finalizarGrabacionVoz === "function") {
+    finalizarGrabacionVoz();
+  }
+}
+
+function cancelarGrabacion() {
+  // 1. Desactivamos los estados lógicos
+  grabacionActiva = false;
+  candadoActivado = false;
+  window.grabacionCancelada = true; // ⚠️ Marca de agua para evitar que el onstop envíe nada
+
+  // 2. Restauramos los elementos visuales del DOM
+  const btnAccionChat = document.getElementById('btn-accion-chat');
+  const panelGrabacion = document.getElementById('panel-grabacion');
+  const candado = document.getElementById('contenedor-candado-manoslibres');
+  const cajaInputNormal = document.getElementById('caja-input-normal');
+
+  if (btnAccionChat) btnAccionChat.style.transform = 'translate(0px, 0px)';
+  if (panelGrabacion) panelGrabacion.classList.add('oculto');
+  if (candado) candado.classList.add('oculto');
+  if (cajaInputNormal) cajaInputNormal.classList.remove('oculto');
+
+  // 3. Frenamos el cronómetro
+  if (typeof frenarCronometroAudio === "function") {
+    frenarCronometroAudio();
+  }
+
+  // 4. Detenemos la grabación física
+  if (typeof mediaRecorderAudio !== "undefined" && mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
+    mediaRecorderAudio.stop();
+  }
+
+  // 5. Apagamos el micrófono (liberamos el hardware)
+  if (typeof streamAudioLive !== "undefined" && streamAudioLive) {
+    streamAudioLive.getTracks().forEach(pista => pista.stop());
+    streamAudioLive = null;
+  }
+
+  // 6. Limpiamos la RAM
+  fragmentosAudio = [];
+  console.log("🚫 Grabación cancelada y descartada.");
+}
+
+function activarManosLibres() {
+  candadoActivado = true;
+
+  const btnAccionChat = document.getElementById('btn-accion-chat');
+  const candado = document.getElementById('contenedor-candado-manoslibres');
+
+  if (btnAccionChat) btnAccionChat.style.transform = 'translate(0px, 0px)';
+  if (candado) candado.classList.add('candado-fijo');
+
+  console.log("🔒 Modo manos libres activado.");
+}
+
 async function iniciarGrabacionVoz(e) {
+  window.grabacionCancelada = false;
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
   if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0) || (cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))) {
     return;
@@ -2291,67 +2355,40 @@ async function iniciarGrabacionVoz(e) {
       if (event.data && event.data.size > 0) fragmentosAudio.push(event.data);
     };
 
-    // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA A SUPABASE Y ENVÍO A FIREBASE
+    // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA DIRECTA A SUPABASE
     mediaRecorderAudio.onstop = async () => {
+      if (window.grabacionCancelada) {
+        console.log("Onstop ignorado por cancelación.");
+        return;
+      }
+
       if (streamAudioLive) {
         streamAudioLive.getTracks().forEach(track => track.stop());
         streamAudioLive = null;
       }
 
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
-        // Detectar formato real utilizado por el navegador
-        const tipoFinal = mediaRecorderAudio.mimeType || window.mimeAudio || 'audio/webm';
-
-        // Determinar la extensión adecuada (m4a/mp4 para iOS/Safari, webm/ogg para Android/Chrome)
-        const ext = (tipoFinal.includes('mp4') || tipoFinal.includes('aac')) ? 'm4a' : (tipoFinal.includes('ogg') ? 'ogg' : 'webm');
-
+        const tipoFinal = mimeAudio || 'audio/webm';
         const blobAudio = new Blob(fragmentosAudio, { type: tipoFinal });
-        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${ext}`, { type: tipoFinal });
+
+        // Crear archivo File listo para Supabase
+        const extensionAudio = tipoFinal.includes('mp4') || tipoFinal.includes('aac') ? 'm4a' : 'webm';
+        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${extensionAudio}`, { type: tipoFinal });
 
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Subiendo nota de voz... 🎙️", "☁️", "#00f2fe");
+          mostrarAvisoPremium("Subiendo nota de voz a Supabase... 🎙️", "☁️", "#00f2fe");
         }
 
-        // 1. Subir archivo a Supabase Storage
+        // Subir nota de voz a Supabase Storage
         let urlAudioSupabase = null;
         if (typeof subirArchivoSupabase === "function") {
           urlAudioSupabase = await subirArchivoSupabase(archivoAudio, "movachat-adjuntos");
         }
 
+        // Si la subida fue exitosa usa la URL fija de Supabase, si no usa la local de respaldo
         const urlFinalAudio = urlAudioSupabase || URL.createObjectURL(blobAudio);
 
-        // 2. Guardar registro en Firebase Realtime Database para enviar al contacto
-        const usuarioActual = auth.currentUser;
-        const miUid = usuarioActual ? usuarioActual.uid : null;
-        const contactoUid = window.contactoActivoUid;
-
-        if (miUid && contactoUid && urlAudioSupabase) {
-          const chatId = typeof obtenerChatId === "function" 
-            ? obtenerChatId(miUid, contactoUid) 
-            : [miUid, contactoUid].sort().join("_");
-
-          const ahora = new Date();
-          const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-          const mensajeAudio = {
-            emisor: miUid,
-            receptor: contactoUid,
-            tipoAdjunto: 'audio',
-            urlAdjunto: urlAudioSupabase,
-            duracion: contadorAudio ? contadorAudio.textContent : "0:01",
-            texto: "",
-            hora: horaFormateada,
-            timestamp: Date.now()
-          };
-
-          const nuevoRef = push(ref(db, `chats/${chatId}/mensajes`));
-          await set(nuevoRef, mensajeAudio);
-
-          if (typeof reproducirSonidoEnviado === "function") {
-            reproducirSonidoEnviado();
-          }
-        } else if (typeof inyectarNotaDeVozBurbuja === "function") {
-          // Vista previa local si no hay conexión o falla la subida
+        if (typeof inyectarNotaDeVozBurbuja === "function") {
           inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlFinalAudio);
         }
       }
@@ -2388,9 +2425,149 @@ function finalizarGrabacionVoz() {
   }
 }
 
+// ========================================================
+// 🎙️ MOTOR TÁCTIL AVANZADO PARA NOTAS DE VOZ (MOVACHAT PRO)
+// ========================================================
+
+function iniciarControlTactilMic(e) {
+  // 1. Evitar que grabe si el botón está en modo "Enviar" (tiene icono de flecha)
+  const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
+  if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0)) {
+    return; // Deja que el evento 'click' normal envíe el texto
+  }
+
+  if (e && e.preventDefault) e.preventDefault();
+
+  // 2. Capturar coordenadas iniciales asignándolas a las variables globales de arriba
+  inicioX = e.touches ? e.touches[0].clientX : e.clientX;
+  inicioY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  grabacionActiva = true;
+  candadoActivado = false;
+
+  // 3. Pequeño retraso (200ms) para evitar activaciones por roces accidentales
+  temporizadorToque = setTimeout(() => {
+    iniciarGrabacionVoz(e);
+
+    // Estado Activo: Animación en el botón
+    if (btnAccionChat) {
+      btnAccionChat.style.transition = "none";
+      btnAccionChat.style.transform = "scale(1.2)";
+    }
+  }, 200);
+}
+
+function moverControlTactilMic(e) {
+  if (!grabacionActiva || candadoActivado) return;
+
+  const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clienteY = e.touches ? e.touches[0].clientY : e.clientY;
+
+  let deltaX = clienteX - inicioX;
+  let deltaY = inicioY - clienteY; // Positivo hacia arriba
+
+  if (deltaX > 0) deltaX = 0;
+  if (deltaY < 0) deltaY = 0;
+
+  if (btnAccionChat) {
+    btnAccionChat.style.transform = `translate(${deltaX}px, -${deltaY}px)`;
+  }
+
+  // 1. Umbral de Cancelación (Deslizar izquierda)
+  if (deltaX <= UMBRAL_CANCELAR) {
+    cancelarGrabacion();
+    return;
+  }
+
+  // 2. Umbral de Candado (Deslizar arriba)
+  if (deltaY >= UMBRAL_CANDADO) {
+    activarManosLibres();
+  }
+}
+
+function finalizarControlTactilMic(e) {
+  if (temporizadorToque) {
+    clearTimeout(temporizadorToque);
+  }
+
+  if (!grabacionActiva || candadoActivado) {
+    if (btnAccionChat && !candadoActivado) {
+      btnAccionChat.style.transform = 'translate(0px, 0px)';
+    }
+    return;
+  }
+
+  grabacionActiva = false;
+
+  if (btnAccionChat) {
+    btnAccionChat.style.transform = 'translate(0px, 0px)';
+  }
+
+  if (typeof finalizarGrabacionVoz === "function") {
+    finalizarGrabacionVoz();
+  }
+}
+
+function resetearBotonMic(mantieneCandado = false) {
+  botonGrabando = false;
+  btnAccionChat.style.transition = "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+  btnAccionChat.style.transform = "";
+
+  if (!mantieneCandado) {
+    btnAccionChat.classList.remove("grabando-activo");
+  }
+}
+
+// ========================================================
+// ASIGNACIÓN DE EVENTOS (Reemplaza los antiguos)
+// ========================================================
 if (btnAccionChat) {
-  btnAccionChat.addEventListener("mousedown", iniciarGrabacionVoz);
-  btnAccionChat.addEventListener("touchstart", iniciarGrabacionVoz, { passive: false });
+  // Remover eventos anteriores por si acaso
+  btnAccionChat.removeEventListener("mousedown", iniciarGrabacionVoz);
+  btnAccionChat.removeEventListener("touchstart", iniciarGrabacionVoz);
+
+  // Agregar los nuevos eventos táctiles
+  btnAccionChat.addEventListener("mousedown", iniciarControlTactilMic);
+  btnAccionChat.addEventListener("touchstart", iniciarControlTactilMic, { passive: false });
+}
+
+// Escuchar movimiento y liberación de forma global para no perder el rastro del dedo
+window.addEventListener("mousemove", moverControlTactilMic);
+window.addEventListener("touchmove", moverControlTactilMic, { passive: false });
+window.addEventListener("mouseup", finalizarControlTactilMic);
+window.addEventListener("touchend", finalizarControlTactilMic);
+
+// Agrega esto justo debajo del bloque anterior
+
+function cancelarGrabacionVozTotal() {
+  if (timerGrabacionAudio) clearInterval(timerGrabacionAudio);
+  estaGrabandoAudio = false;
+
+  if (mediaRecorderAudio && mediaRecorderAudio.state === "recording") {
+    mediaRecorderAudio.stop();
+  }
+
+  // Vaciamos el array de fragmentos para evitar envíos fantasmas
+  fragmentosAudio = [];
+
+  // Restaurar UI
+  if (panelGrabacion) panelGrabacion.classList.add("oculto");
+  if (cajaInputNormal) cajaInputNormal.classList.remove("oculto");
+
+  if (typeof mostrarAvisoPremium === "function") {
+    mostrarAvisoPremium("Nota de voz cancelada 🗑️", "🗑️", "#ff4b2b");
+  }
+}
+
+function activarCandadoManosLibres() {
+  grabacionBloqueada = true;
+
+  // Aquí puedes agregar lógica UI para mostrar que está bloqueado
+  // Ej: Cambiar el botón del micrófono por un icono de "Enviar" y mostrar un botón de "Eliminar" rojo al lado del tiempo.
+
+  if (typeof mostrarAvisoPremium === "function") {
+    mostrarAvisoPremium("Manos libres activado 🔓", "🔒", "#00f2fe");
+  }
 }
 
 window.addEventListener("mouseup", finalizarGrabacionVoz);
@@ -9956,87 +10133,16 @@ window.abrirChatDesdeContacto = function (uidContacto, nombreContacto = "", foto
 };
 
 // ========================================================
-// 🎤 FUNCIONES DE GRABACIÓN DE AUDIO (SUPABASE + FIREBASE)
+// 🎧 LISTENERS MULTIDISPOSITIVO PARA TU BOTÓN REAL
 // ========================================================
+if (btnAccionChat) {
+    // Eventos Táctiles (Móviles / Tablets)
+    btnAccionChat.addEventListener('touchstart', iniciarToque, { passive: false });
+    document.addEventListener('touchmove', moverDedo, { passive: false });
+    document.addEventListener('touchend', finalizarToque);
 
-async function detenerYEnviarGrabacionAudio() {
-  if (!mediaRecorderAudio || mediaRecorderAudio.state === 'inactive') return;
-
-  if (temporizadorGrabacion) {
-    clearInterval(temporizadorGrabacion);
-    temporizadorGrabacion = null;
-  }
-
-  const duracionFinal = segundosGrabados;
-  const panelGrabacion = document.getElementById('panel-grabacion');
-
-  mediaRecorderAudio.onstop = async () => {
-    // Apagar micrófono de forma segura
-    if (streamAudioLive) {
-      streamAudioLive.getTracks().forEach(track => track.stop());
-      streamAudioLive = null;
-    }
-
-    // Crear el archivo con los fragmentos grabados
-    const audioBlob = new Blob(fragmentosAudio, { type: 'audio/webm' });
-
-    // Cancelar si la nota dura menos de 1 segundo
-    if (duracionFinal < 1) {
-      if (panelGrabacion) panelGrabacion.classList.add('oculto');
-      return;
-    }
-
-    // 1. Subir audio a tu bucket de Supabase
-    const audioUrl = await subirAudioASupabase(audioBlob);
-
-    // 2. Guardar el enlace en Firebase Realtime Database
-    if (audioUrl) {
-      await enviarMensaje(audioUrl, "audio", duracionFinal);
-
-      // Reproducir sonido de éxito
-      const sonidoEnviado = document.getElementById('sonido-enviado');
-      if (sonidoEnviado) {
-        sonidoEnviado.currentTime = 0;
-        sonidoEnviado.play().catch(() => { });
-      }
-    } else {
-      alert('Error al subir la nota de voz. Inténtalo de nuevo.');
-    }
-
-    if (panelGrabacion) panelGrabacion.classList.add('oculto');
-  };
-
-  mediaRecorderAudio.stop();
-}
-
-function cancelarGrabacionAudio() {
-  if (mediaRecorderAudio && mediaRecorderAudio.state !== 'inactive') {
-    mediaRecorderAudio.onstop = () => {
-      if (streamAudioLive) {
-        streamAudioLive.getTracks().forEach(track => track.stop());
-        streamAudioLive = null;
-      }
-    };
-    mediaRecorderAudio.stop();
-  }
-
-  fragmentosAudio = [];
-  if (temporizadorGrabacion) {
-    clearInterval(temporizadorGrabacion);
-    temporizadorGrabacion = null;
-  }
-
-  const panelGrabacion = document.getElementById('panel-grabacion');
-  if (panelGrabacion) panelGrabacion.classList.add('oculto');
-}
-
-// ========================================================
-// 🔊 REPRODUCCIÓN DE EFECTOS DE SONIDO DEL SISTEMA
-// ========================================================
-function reproducirSonido(idElemento) {
-  const audioEl = document.getElementById(idElemento);
-  if (audioEl) {
-    audioEl.currentTime = 0;
-    audioEl.play().catch(e => console.log('Autoplay bloqueado por el navegador:', e));
-  }
+    // Eventos Ratón (PC)
+    btnAccionChat.addEventListener('mousedown', iniciarToque);
+    document.addEventListener('mousemove', moverDedo);
+    document.addEventListener('mouseup', finalizarToque);
 }
