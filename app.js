@@ -68,6 +68,39 @@ const SUPABASE_ANON_KEY = "sb_publishable_wLeldDB6ZazOpVq21_cg1A_P1ndcD-N";
 // Inicializamos el cliente global de Supabase
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// --- BUCKET Y SUBIDA DE AUDIO A SUPABASE ---
+const BUCKET_NAME = 'movachat-adjuntos';
+
+async function subirAudioASupabase(audioBlob) {
+  try {
+    const fileName = `audios/nota_voz_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.webm`;
+
+    const { data, error } = await clienteSupabase
+      .storage
+      .from(BUCKET_NAME)
+      .upload(fileName, audioBlob, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: 'audio/webm'
+      });
+
+    if (error) {
+      console.error('Error al subir el audio a Supabase:', error);
+      return null;
+    }
+
+    const { data: publicUrlData } = clienteSupabase
+      .storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(fileName);
+
+    return publicUrlData.publicUrl;
+  } catch (err) {
+    console.error('Excepción al subir audio:', err);
+    return null;
+  }
+}
+
 /**
  * Sube un archivo a Supabase Storage y retorna la URL pública.
  * @param {File} archivo - El archivo File/Blob obtenido del input.
@@ -405,14 +438,481 @@ auth.languageCode = 'es';
 // --- DECLARACIÓN DE VARIABLES GLOBALES DE ESTADO ---
 let streamCamaraLive = null;
 let segundosRestantes = 10;
-let contactoActivoUid = null;
+window.contactoActivoUid = null;
 let burbujaEnEdicion = null;
 let mensajeEnEdicionId = null;
 let archivoAdjuntoPendiente = null;
 let ultimoArchivoFallido = null;
 
+// Configuración de constantes
+const TIEMPO_MAXIMO_MS = 10000; // 10 segundos
+const DIAS_EXPIRACION = 12;
+
+// Variables globales de grabación
+let mediaRecorder = null;
+let fragmentosVideo = [];
+let streamCamara = null;
+let temporizadorGrabacion = null;
+
+// 🔍 Verificar si le quedan envíos disponibles hoy (máximo 5)
+function puedeEnviarVideoCircular(uidUsuario) {
+  if (!uidUsuario) return true;
+  const hoy = new Date().toISOString().split("T")[0];
+  const clave = `videos_circulares_${uidUsuario}_${hoy}`;
+  const contadorActual = parseInt(localStorage.getItem(clave) || "0", 10);
+  return contadorActual < 5;
+}
+
+// 📈 Registrar envío exitoso
+function registrarEnvioVideoCircular(uidUsuario) {
+  if (!uidUsuario) return;
+  const hoy = new Date().toISOString().split("T")[0];
+  const clave = `videos_circulares_${uidUsuario}_${hoy}`;
+  const contadorActual = parseInt(localStorage.getItem(clave) || "0", 10);
+  localStorage.setItem(clave, contadorActual + 1);
+}
+
+// ========================================================
+// 🎬 FUNCIONES DE VIDEO CIRCULAR (SIN FUNCIONES DUPLICADAS)
+// ========================================================
+
+// 1. Iniciar cámara frontal y grabación con modal/preview
+async function abrirCamaraYGrabar() {
+  try {
+    const uidActual = typeof window.contactoActivoUid !== "undefined" ? window.contactoActivoUid : null;
+    if (typeof puedeEnviarVideoCircular === "function" && !puedeEnviarVideoCircular(uidActual)) {
+      alert("Has alcanzado el límite máximo de 5 videos circulares por día.");
+      return;
+    }
+
+    fragmentosVideo = [];
+    streamCamara = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 480 } },
+      audio: true
+    });
+
+    const videoPreview = document.querySelector('#modal-camara-circular video');
+    if (videoPreview) {
+      videoPreview.srcObject = streamCamara;
+      videoPreview.play().catch(err => console.error("Error al reproducir preview:", err));
+    }
+
+    let opcionesRecorder = {};
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      opcionesRecorder = { mimeType: 'video/webm;codecs=vp8,opus' };
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+      opcionesRecorder = { mimeType: 'video/mp4' };
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+      opcionesRecorder = { mimeType: 'video/webm' };
+    }
+
+    mediaRecorder = new MediaRecorder(streamCamara, opcionesRecorder);
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) fragmentosVideo.push(e.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      if (temporizadorGrabacion) clearTimeout(temporizadorGrabacion);
+
+      // Apagar pistas de cámara directamente
+      if (streamCamara) {
+        streamCamara.getTracks().forEach((pista) => pista.stop());
+        streamCamara = null;
+      }
+
+      const blobVideo = new Blob(fragmentosVideo, { type: mediaRecorder.mimeType || 'video/webm' });
+      if (typeof registrarEnvioVideoCircular === "function") {
+        registrarEnvioVideoCircular(uidActual);
+      }
+
+      if (typeof previsualizarOProcesarVideo === "function") {
+        previsualizarOProcesarVideo(blobVideo);
+      } else if (typeof finalizarYEnviarVideoCircular === "function") {
+        finalizarYEnviarVideoCircular(blobVideo);
+      }
+    };
+
+    mediaRecorder.start();
+
+    if (temporizadorGrabacion) clearTimeout(temporizadorGrabacion);
+    temporizadorGrabacion = setTimeout(() => {
+      detenerGrabacionCircular();
+    }, TIEMPO_MAXIMO_MS);
+
+  } catch (error) {
+    console.error("Error al acceder a la cámara/micrófono:", error);
+  }
+}
+
+// 2. Iniciar grabación si la cámara ya estaba activa
+function iniciarGrabacionCircular() {
+  if (!streamCamara) return;
+  fragmentosVideo = [];
+  let opcionesRecorder = {};
+  if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+    opcionesRecorder = { mimeType: 'video/webm;codecs=vp8,opus' };
+  } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+    opcionesRecorder = { mimeType: 'video/mp4' };
+  } else if (MediaRecorder.isTypeSupported('video/webm')) {
+    opcionesRecorder = { mimeType: 'video/webm' };
+  }
+
+  mediaRecorder = new MediaRecorder(streamCamara, opcionesRecorder);
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) fragmentosVideo.push(e.data);
+  };
+
+  mediaRecorder.onstop = () => {
+    if (typeof finalizarYEnviarVideoCircular === "function") {
+      finalizarYEnviarVideoCircular();
+    }
+  };
+
+  mediaRecorder.start();
+
+  if (temporizadorGrabacion) clearTimeout(temporizadorGrabacion);
+  temporizadorGrabacion = setTimeout(() => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      detenerGrabacionCircular();
+    }
+  }, TIEMPO_MAXIMO_MS);
+}
+
+// 🛑 3. Detener grabación y apagar cámara
+function detenerGrabacionCircular() {
+  if (temporizadorGrabacion) {
+    clearTimeout(temporizadorGrabacion);
+    temporizadorGrabacion = null;
+  }
+
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+
+  if (streamCamara) {
+    streamCamara.getTracks().forEach((pista) => pista.stop());
+    streamCamara = null;
+  }
+}
+
+// Apagar hardware de cámara y micrófono
+function detenerTracksCamara() {
+  if (streamCamara) {
+    streamCamara.getTracks().forEach(track => track.stop());
+    streamCamara = null;
+  }
+}
+
+// Subir video a Supabase Storage con Timestamp de expiración
+async function subirVideoCircularASupabase(blobVideo, idChat) {
+  const nombreArchivo = `video_circular_${Date.now()}_${Math.random().toString(36).substring(7)}.webm`;
+  const rutaArchivo = `chats/${idChat}/videos_circulares/${nombreArchivo}`;
+
+  const { data, error } = await supabaseClient.storage
+    .from('movachat-archivos')
+    .upload(rutaArchivo, blobVideo, { contentType: 'video/webm' });
+
+  if (error) throw error;
+
+  const { data: urlData } = supabaseClient.storage
+    .from('movachat-archivos')
+    .getPublicUrl(rutaArchivo);
+
+  return {
+    urlPublica: urlData.publicUrl,
+    rutaAlmacenamiento: rutaArchivo
+  };
+}
+
+// Guardar mensaje en Firebase con cálculo de fecha límite (12 días)
+async function enviarMensajeVideoCircular(idChat, idEmisor, blobVideo) {
+  const datosNube = await subirVideoCircularASupabase(blobVideo, idChat);
+
+  const fechaActual = Date.now();
+  const fechaExpiracion = fechaActual + (DIAS_EXPIRACION * 24 * 60 * 60 * 1000); // +12 días en ms
+
+  const nuevoMensaje = {
+    emisorId: idEmisor,
+    tipoAdjunto: 'video_circular',
+    archivoUrl: datosNube.urlPublica,
+    archivoRuta: datosNube.rutaAlmacenamiento,
+    creadoEn: fechaActual,
+    expiraEn: fechaExpiracion,
+    eliminadoPara: [] // Array de IDs de usuarios
+  };
+
+  return await push(ref(db, `chats/${idChat}/mensajes`), nuevoMensaje);
+}
+
+// Generar DOM para la burbuja circular (Con SVG e inline-styles garantizados)
+function crearElementoVideoCircular(mensaje) {
+  const contenedor = document.createElement('div');
+  contenedor.className = 'contenedor-video-circular-burbuja';
+  contenedor.dataset.mensajeId = mensaje.id;
+
+  // ⚡ Atributos stroke, stroke-width y fill integrados para asegurar visibilidad
+  contenedor.innerHTML = `
+    <div class="marco-video-redondo">
+      <video src="${mensaje.archivoUrl}" playsinline webkit-playsinline preload="metadata" muted></video>
+    </div>
+    
+    <!-- Anillo SVG Centrado con estilos forzados -->
+    <svg class="anillo-progreso-svg" viewBox="0 0 150 150" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+      <circle class="anillo-fondo" cx="75" cy="75" r="71" fill="none" stroke="rgba(255, 255, 255, 0.2)" stroke-width="4"></circle>
+      <circle class="anillo-progreso progreso-anillo-nodo" cx="75" cy="75" r="71" fill="none" stroke="#00f2fe" stroke-width="4" stroke-linecap="round"></circle>
+    </svg>
+    
+    <!-- Capa Play/Pausa -->
+    <div class="capa-play-video-sim">
+      <i class="icono-play">▶</i>
+    </div>
+  `;
+
+  const video = contenedor.querySelector('video');
+  const anilloProgreso = contenedor.querySelector('.anillo-progreso');
+  const capaPlay = contenedor.querySelector('.capa-play-video-sim');
+
+  const radio = 71;
+  const circunferencia = 2 * Math.PI * radio; // ~446.11px
+
+  if (anilloProgreso) {
+    anilloProgreso.style.strokeDasharray = `${circunferencia}`;
+    anilloProgreso.style.strokeDashoffset = `${circunferencia}`;
+  }
+
+  let animFrameId = null;
+
+  // Función de actualización de progreso con protección NaN / Infinity
+  const actualizarProgreso = () => {
+    if (video && anilloProgreso && Number.isFinite(video.duration) && video.duration > 0) {
+      const porcentaje = video.currentTime / video.duration;
+      const offset = circunferencia - (porcentaje * circunferencia);
+      anilloProgreso.style.strokeDashoffset = `${offset}`;
+    }
+  };
+
+  const animarBucle = () => {
+    if (!video.paused && !video.ended) {
+      actualizarProgreso();
+      animFrameId = requestAnimationFrame(animarBucle);
+    }
+  };
+
+  const ocultarPlay = () => {
+    if (capaPlay) capaPlay.style.setProperty('display', 'none', 'important');
+  };
+
+  const mostrarPlay = () => {
+    if (capaPlay) capaPlay.style.setProperty('display', 'flex', 'important');
+  };
+
+  // Eventos de reproducción y tiempo
+  video.addEventListener('timeupdate', actualizarProgreso);
+
+  video.addEventListener('play', () => {
+    ocultarPlay();
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    animFrameId = requestAnimationFrame(animarBucle);
+  });
+
+  video.addEventListener('playing', () => {
+    ocultarPlay();
+  });
+
+  video.addEventListener('pause', () => {
+    mostrarPlay();
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+  });
+
+  video.addEventListener('ended', () => {
+    video.currentTime = 0;
+    if (anilloProgreso) anilloProgreso.style.strokeDashoffset = `${circunferencia}`;
+    mostrarPlay();
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+  });
+
+  // Evento Clic
+  contenedor.addEventListener('click', (e) => {
+    e.stopPropagation();
+
+    if (typeof pausarOtrosAudiosYVideos === 'function') {
+      pausarOtrosAudiosYVideos(video);
+    } else {
+      document.querySelectorAll('audio, video').forEach(m => {
+        if (m !== video && !m.paused) m.pause();
+      });
+    }
+
+    if (video.paused) {
+      video.muted = false;
+      video.play().then(() => {
+        ocultarPlay();
+      }).catch(err => console.error('Error al reproducir video circular:', err));
+    } else {
+      video.pause();
+    }
+  });
+
+  return contenedor;
+}
+
+// Pausar cualquier otro elemento multimedia activo en el chat
+function pausarOtrosAudiosYVideos(multimediaActual) {
+  document.querySelectorAll('audio, video').forEach(media => {
+    if (media !== multimediaActual && !media.paused) {
+      media.pause();
+    }
+  });
+}
+
+// Función central para borrar físicamente el archivo en Supabase Storage
+async function borrarArchivoDeSupabase(rutaArchivo) {
+  if (!rutaArchivo) return;
+  const { error } = await supabaseClient.storage
+    .from('movachat-archivos')
+    .remove([rutaArchivo]);
+
+  if (error) console.error("Error al eliminar archivo de Supabase:", error);
+}
+
+// 1. Eliminar mensaje individual ("Eliminar para todos")
+async function eliminarMensajeParaTodos(idChat, idMensaje, rutaArchivo) {
+  await borrarArchivoDeSupabase(rutaArchivo);
+  await remove(ref(db, `chats/${idChat}/mensajes/${idMensaje}`));
+}
+
+// 2. Eliminar para mí
+async function eliminarMensajeParaMi(idChat, idMensaje, idUsuarioActual, rutaArchivo) {
+  const refMensaje = ref(db, `chats/${idChat}/mensajes/${idMensaje}`);
+  const snapshot = await refMensaje.once('value');
+  const mensaje = snapshot.val();
+
+  if (!mensaje) return;
+
+  let eliminados = mensaje.eliminadoPara || [];
+  if (!eliminados.includes(idUsuarioActual)) {
+    eliminados.push(idUsuarioActual);
+  }
+
+  // Si ambos participantes lo eliminaron para sí mismos, borrar de Supabase y DB
+  if (eliminados.length >= 2) {
+    await borrarArchivoDeSupabase(rutaArchivo);
+    await refMensaje.remove();
+  } else {
+    await refMensaje.update({ eliminadoPara: eliminados });
+  }
+}
+
+// 3. Vaciar Chat
+async function vaciarChat(idChat) {
+  const refMensajes = ref(db, `chats/${idChat}/mensajes`);
+  const snapshot = await refMensajes.once('value');
+  const mensajes = snapshot.val() || {};
+
+  const promesasBorradoFisico = [];
+
+  Object.keys(mensajes).forEach(key => {
+    const msg = mensajes[key];
+    if (msg.tipoAdjunto === 'video_circular' && msg.archivoRuta) {
+      promesasBorradoFisico.push(borrarArchivoDeSupabase(msg.archivoRuta));
+    }
+  });
+
+  await Promise.all(promesasBorradoFisico);
+  await refMensajes.remove();
+}
+
+// 4. Eliminar Chat completo
+async function eliminarChat(idChat) {
+  await vaciarChat(idChat);
+  await remove(ref(db, `chats/${idChat}`));
+}
+
+// 5. Autolimpieza programada / rutina de 12 Días (Versión Optimizada v10)
+async function ejecutarAutolimpieza12Dias(idChat) {
+  if (!idChat) return;
+
+  const ahora = Date.now();
+  const refMensajes = ref(db, `chats/${idChat}/mensajes`);
+
+  try {
+    const snapshot = await get(refMensajes);
+    if (!snapshot.exists()) return;
+
+    const mensajes = snapshot.val();
+    const promesasBorrado = [];
+
+    for (const [idMensaje, msg] of Object.entries(mensajes)) {
+      // Verifica si tiene fecha de expiración configurada y ya se cumplió el plazo
+      if (msg.expiraEn && ahora >= msg.expiraEn) {
+
+        // 1. Limpieza de archivos físicos en Supabase Storage
+        if (msg.tipoAdjunto === 'video_circular' && msg.archivoRuta) {
+          promesasBorrado.push(borrarArchivoDeSupabase(msg.archivoRuta));
+        } else if (msg.urlAdjunto && msg.urlAdjunto.includes("supabase.co")) {
+          promesasBorrado.push(eliminarArchivoSupabase(msg.urlAdjunto, "movachat-adjuntos"));
+        }
+
+        // 2. Eliminación del nodo en Firebase Realtime Database
+        const msgRef = ref(db, `chats/${idChat}/mensajes/${idMensaje}`);
+        promesasBorrado.push(remove(msgRef));
+      }
+    }
+
+    // Ejecutar todas las eliminaciones en paralelo para no bloquear el hilo de ejecución
+    await Promise.all(promesasBorrado);
+    console.log(`🧹 Autolimpieza de 12 días ejecutada en chat: ${idChat}`);
+
+  } catch (error) {
+    console.error("❌ Error al ejecutar autolimpieza de 12 días:", error);
+  }
+}
+
 // Objeto global de respaldo para mensajes efímeros temporales
 window.chatsTemporalesBD = window.chatsTemporalesBD || {};
+
+// ========================================================
+// 🛑 PASO 2: CONTROL Y LIMPIEZA DE AUDIO Y CÁMARA (SIN DUPLICADOS)
+// ========================================================
+
+/**
+ * Detiene y libera de forma segura todos los streams de hardware activos (micrófono y cámara).
+ */
+function detenerHardwareActivo() {
+  // Apagar stream de cámara en vivo
+  if (typeof streamCamaraLive !== "undefined" && streamCamaraLive) {
+    streamCamaraLive.getTracks().forEach(track => track.stop());
+    streamCamaraLive = null;
+  }
+
+  // Apagar stream de cámara estándar
+  if (typeof streamCamara !== "undefined" && streamCamara) {
+    streamCamara.getTracks().forEach(track => track.stop());
+    streamCamara = null;
+  }
+
+  // Apagar stream de audio
+  if (typeof streamAudioLive !== "undefined" && streamAudioLive) {
+    streamAudioLive.getTracks().forEach(track => track.stop());
+    streamAudioLive = null;
+  }
+
+  // Detener grabadores activos
+  if (typeof mediaRecorder !== "undefined" && mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+  if (typeof mediaRecorderAudio !== "undefined" && mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
+    mediaRecorderAudio.stop();
+  }
+
+  // Limpiar temporizadores activos
+  if (typeof temporizadorGrabacion !== "undefined" && temporizadorGrabacion) {
+    clearTimeout(temporizadorGrabacion);
+    temporizadorGrabacion = null;
+  }
+}
 
 // --- MANEJO DE PANTALLA DE AUTENTICACIÓN ---
 const authPantalla = document.getElementById("pantalla-auth");
@@ -1169,7 +1669,7 @@ async function activarCamaraMovaPro(tipoMedia) {
   // 📸 FOTO (Cámara frontal limpia sin duplicación de espejo)
   if (tipoMedia === "foto") {
     // 🛡️ 1. Verificar límite diario
-    const usuarioActual = auth.currentUser;
+    const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
     if (usuarioActual && typeof verificarLimiteDiarioFotos === "function") {
       const chequeoDiario = await verificarLimiteDiarioFotos(usuarioActual.uid);
       if (!chequeoDiario.permitido) {
@@ -1183,14 +1683,11 @@ async function activarCamaraMovaPro(tipoMedia) {
     const inputCamara = document.createElement("input");
     inputCamara.type = "file";
     inputCamara.accept = "image/*";
-
-    // 🤳 Cambia a "user" si quieres frontal o a "environment" para trasera
     inputCamara.setAttribute("capture", "user");
 
     inputCamara.onchange = async (evt) => {
       let archivo = evt.target.files && evt.target.files[0];
       if (archivo) {
-        // 🔄 Procesar el archivo con la función de corrección antes de usarlo
         if (typeof corregirEfectoEspejo === "function") {
           archivo = await corregirEfectoEspejo(archivo);
         }
@@ -1198,28 +1695,28 @@ async function activarCamaraMovaPro(tipoMedia) {
         archivoAdjuntoPendiente = archivo;
         tipoAdjuntoActivo = 'foto';
 
-        if (imgMiniaturaAdjunto) {
-          if (imgMiniaturaAdjunto.src.startsWith("blob:")) {
+        if (typeof imgMiniaturaAdjunto !== "undefined" && imgMiniaturaAdjunto) {
+          if (imgMiniaturaAdjunto.src && imgMiniaturaAdjunto.src.startsWith("blob:")) {
             URL.revokeObjectURL(imgMiniaturaAdjunto.src);
           }
           imgMiniaturaAdjunto.style.display = "block";
           imgMiniaturaAdjunto.src = URL.createObjectURL(archivo);
-
-          // ⚡ MANTENER ORIENTACIÓN NORMAL
           imgMiniaturaAdjunto.style.transform = "none";
         }
 
         const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
         if (iconoPrevio) iconoPrevio.remove();
 
-        if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
+        if (typeof cajaVistaPrevia !== "undefined" && cajaVistaPrevia) {
+          cajaVistaPrevia.classList.remove("oculto");
+        }
 
-        if (inputChat) {
+        if (typeof inputChat !== "undefined" && inputChat) {
           inputChat.placeholder = "Añade un comentario a la imagen...";
           inputChat.focus();
         }
 
-        if (btnAccionChat) {
+        if (typeof btnAccionChat !== "undefined" && btnAccionChat) {
           btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
           if (window.lucide) {
             window.lucide.createIcons({ targets: [btnAccionChat] });
@@ -1234,31 +1731,45 @@ async function activarCamaraMovaPro(tipoMedia) {
     return;
   }
 
-  // 🎥 VIDEO CIRCULAR: Intento de Modal
+  // 🎥 VIDEO CIRCULAR: Modal en vivo
   const modalCamara = document.getElementById("modal-camara-circular");
   const videoVisor = document.getElementById("video-visor-camara");
   const btnGrabar = document.getElementById("btn-iniciar-grabar-live");
   const txtContador = document.getElementById("contador-camara-10s");
 
   if (modalCamara && videoVisor) {
-    txtContador.textContent = "00:10";
-    segundosRestantes = 10;
-    btnGrabar.textContent = "● Grabar";
-    btnGrabar.disabled = false;
+    if (txtContador) txtContador.textContent = "00:10";
+    if (btnGrabar) {
+      btnGrabar.textContent = "● Grabar";
+      btnGrabar.disabled = false;
+      btnGrabar.style.opacity = "1";
+    }
     modalCamara.classList.remove("oculto");
   }
 
   try {
-    if (streamCamaraLive) {
+    // Apagar streams previos de hardware si estuvieran abiertos
+    if (typeof detenerTracksCamara === "function") {
+      detenerTracksCamara();
+    } else if (typeof streamCamaraLive !== "undefined" && streamCamaraLive) {
       streamCamaraLive.getTracks().forEach(track => track.stop());
+      streamCamaraLive = null;
     }
 
-    streamCamaraLive = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" },
+    // Iniciar flujo de cámara frontal en tiempo real
+    const streamObtenido = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 480 } },
       audio: true
     });
 
-    if (videoVisor) videoVisor.srcObject = streamCamaraLive;
+    // Sincronizar referencia global de hardware
+    if (typeof streamCamaraLive !== "undefined") streamCamaraLive = streamObtenido;
+    if (typeof streamCamara !== "undefined") streamCamara = streamObtenido;
+
+    if (videoVisor) {
+      videoVisor.srcObject = streamObtenido;
+      videoVisor.play();
+    }
 
   } catch (e) {
     console.warn("Entorno sin cámara directa o permisos. Usando captura con recorte físico:", e);
@@ -1268,17 +1779,17 @@ async function activarCamaraMovaPro(tipoMedia) {
     const inputVideoDirecto = document.createElement("input");
     inputVideoDirecto.type = "file";
     inputVideoDirecto.accept = "video/*";
-    inputVideoDirecto.capture = "user";
+    inputVideoDirecto.setAttribute("capture", "user");
 
     inputVideoDirecto.onchange = async (evt) => {
-      const archivo = evt.target.files[0];
+      const archivo = evt.target.files && evt.target.files[0];
       if (!archivo) return;
 
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Optimizando y recortando video a 10s... ⚡", "✂️", "#00f2fe");
       }
 
-      // 1. Cargamos el video capturado en memoria
+      // Cargamos el video capturado en memoria
       const videoTemp = document.createElement("video");
       videoTemp.src = URL.createObjectURL(archivo);
       videoTemp.muted = true;
@@ -1286,23 +1797,34 @@ async function activarCamaraMovaPro(tipoMedia) {
 
       videoTemp.onloadedmetadata = async () => {
         if (videoTemp.duration <= 10.5) {
-          asignarPreviewVideoCircular(videoTemp.src);
+          if (typeof asignarPreviewVideoCircular === "function") {
+            asignarPreviewVideoCircular(videoTemp.src);
+          }
           return;
         }
 
         try {
-          const urlCortada = await recortarVideoA10Segundos(videoTemp);
-          asignarPreviewVideoCircular(urlCortada);
+          if (typeof recortarVideoA10Segundos === "function") {
+            const urlCortada = await recortarVideoA10Segundos(videoTemp);
+            if (typeof asignarPreviewVideoCircular === "function") {
+              asignarPreviewVideoCircular(urlCortada);
+            }
+          }
           if (typeof mostrarAvisoPremium === "function") {
             mostrarAvisoPremium("Video recortado a 10s para ahorrar datos en la nube 🛡️", "🎬", "#00f2fe");
           }
         } catch (err) {
           console.warn("No se pudo re-codificar, asignando original con tope:", err);
-          asignarPreviewVideoCircular(videoTemp.src);
+          if (typeof asignarPreviewVideoCircular === "function") {
+            asignarPreviewVideoCircular(videoTemp.src);
+          }
         }
       };
     };
+
+    document.body.appendChild(inputVideoDirecto);
     inputVideoDirecto.click();
+    document.body.removeChild(inputVideoDirecto);
   }
 }
 
@@ -1316,48 +1838,63 @@ let timerCamara10s = null;
 
 if (btnGrabarLive) {
   btnGrabarLive.addEventListener("click", async () => {
-    // Si no hay stream activo, salir
-    if (!streamCamaraLive) return;
+    const streamActivo = typeof streamCamaraLive !== "undefined" && streamCamaraLive ? streamCamaraLive : streamCamara;
+    if (!streamActivo) return;
 
-    // Si ya está grabando y presiona de nuevo, detener antes de tiempo
     if (mediaRecorderCamara && mediaRecorderCamara.state === "recording") {
       detenerGrabacionVideoCircular();
       return;
     }
 
     fragmentosVideoCamara = [];
-    let mimeElegido = 'video/webm';
-    if (MediaRecorder.isTypeSupported('video/mp4')) mimeElegido = 'video/mp4';
+
+    // Validación segura de formatos compatibles (Android, Web, iOS/Safari)
+    let mimeElegido = '';
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      mimeElegido = 'video/webm;codecs=vp8,opus';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+      mimeElegido = 'video/mp4';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+      mimeElegido = 'video/webm';
+    }
+
+    const opcionesGrabacion = mimeElegido ? {
+      mimeType: mimeElegido,
+      videoBitsPerSecond: 1000000,
+      audioBitsPerSecond: 64000
+    } : {};
 
     try {
-      mediaRecorderCamara = new MediaRecorder(streamCamaraLive, { mimeType: mimeElegido });
+      mediaRecorderCamara = new MediaRecorder(streamActivo, opcionesGrabacion);
 
       mediaRecorderCamara.ondataavailable = (e) => {
-        if (e.data.size > 0) fragmentosVideoCamara.push(e.data);
+        if (e.data && e.data.size > 0) fragmentosVideoCamara.push(e.data);
       };
 
       mediaRecorderCamara.onstop = () => {
-        const blobVideo = new Blob(fragmentosVideoCamara, { type: mimeElegido });
+        const tipoFinal = mimeElegido || 'video/webm';
+        const blobVideo = new Blob(fragmentosVideoCamara, { type: tipoFinal });
         const urlVideo = URL.createObjectURL(blobVideo);
 
-        // Guardar archivo File para la subida posterior a Supabase
         const ext = mimeElegido.includes('mp4') ? 'mp4' : 'webm';
-        archivoAdjuntoPendiente = new File([blobVideo], `video_circular_${Date.now()}.${ext}`, { type: mimeElegido });
+        archivoAdjuntoPendiente = new File([blobVideo], `video_circular_${Date.now()}.${ext}`, { type: tipoFinal });
 
-        // Apagar la cámara activa y cerrar modal
-        if (streamCamaraLive) {
+        if (typeof streamCamaraLive !== "undefined" && streamCamaraLive) {
           streamCamaraLive.getTracks().forEach(track => track.stop());
           streamCamaraLive = null;
         }
+        if (typeof streamCamara !== "undefined" && streamCamara) {
+          streamCamara.getTracks().forEach(track => track.stop());
+          streamCamara = null;
+        }
+
         const modalCamara = document.getElementById("modal-camara-circular");
         if (modalCamara) modalCamara.classList.add("oculto");
 
-        // Asignar la vista previa del video en la caja del chat
         asignarPreviewVideoCircular(urlVideo);
       };
 
-      // Iniciar grabación
-      mediaRecorderCamara.start();
+      mediaRecorderCamara.start(100);
       btnGrabarLive.textContent = "■ Detener";
       btnGrabarLive.style.background = "#ff4b2b";
 
@@ -1365,7 +1902,6 @@ if (btnGrabarLive) {
       const txtContador = document.getElementById("contador-camara-10s");
       if (txtContador) txtContador.textContent = "00:10";
 
-      // Cuenta regresiva de 10s
       if (timerCamara10s) clearInterval(timerCamara10s);
       timerCamara10s = setInterval(() => {
         segundosRestantes--;
@@ -1387,8 +1923,11 @@ if (btnGrabarLive) {
 }
 
 function detenerGrabacionVideoCircular() {
-  if (timerCamara10s) clearInterval(timerCamara10s);
-  if (mediaRecorderCamara && mediaRecorderCamara.state === "recording") {
+  if (timerCamara10s) {
+    clearInterval(timerCamara10s);
+    timerCamara10s = null;
+  }
+  if (mediaRecorderCamara && mediaRecorderCamara.state !== "inactive") {
     mediaRecorderCamara.stop();
   }
   if (btnGrabarLive) {
@@ -1404,44 +1943,86 @@ function recortarVideoA10Segundos(videoElem) {
     canvas.height = 480;
     const ctx = canvas.getContext("2d");
 
-    const streamCanvas = canvas.captureStream(30);
-
-    if (videoElem.captureStream || videoElem.mozCaptureStream) {
-      const streamOriginal = (videoElem.captureStream || videoElem.mozCaptureStream).call(videoElem);
-      const audioTracks = streamOriginal.getAudioTracks();
-      if (audioTracks.length > 0) streamCanvas.addTrack(audioTracks[0]);
+    // ⚡ Intentar capturar el stream del canvas de forma segura
+    let streamCanvas = null;
+    if (typeof canvas.captureStream === "function") {
+      streamCanvas = canvas.captureStream(30);
+    } else if (typeof canvas.mozCaptureStream === "function") {
+      streamCanvas = canvas.mozCaptureStream(30);
     }
 
-    let mimeElegido = 'video/webm';
-    if (MediaRecorder.isTypeSupported('video/mp4')) mimeElegido = 'video/mp4';
+    // 🍎 Si el navegador no soporta captura de streams de Canvas (como Safari/iOS móvil), resolvemos con el video original sin recortar para evitar romper la app
+    if (!streamCanvas) {
+      console.warn("⚠️ captureStream no soportado en este navegador. Devolviendo video original.");
+      resolve(videoElem.src);
+      return;
+    }
 
-    const recorder = new MediaRecorder(streamCanvas, { mimeType: mimeElegido });
+    // Intentar pasar las pistas de audio originales al nuevo stream
+    try {
+      const capturadorOriginal = videoElem.captureStream || videoElem.mozCaptureStream;
+      if (capturadorOriginal) {
+        const streamOriginal = capturadorOriginal.call(videoElem);
+        const audioTracks = streamOriginal.getAudioTracks();
+        if (audioTracks.length > 0) streamCanvas.addTrack(audioTracks[0]);
+      }
+    } catch (e) {
+      console.warn("⚠️ No se pudo clonar la pista de audio:", e);
+    }
+
+    // Detección dinámica y segura de formatos (MP4 fallback para iOS/Safari)
+    let mimeElegido = '';
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      mimeElegido = 'video/webm;codecs=vp8,opus';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+      mimeElegido = 'video/mp4';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+      mimeElegido = 'video/webm';
+    }
+
+    const opcionesRecorder = mimeElegido ? {
+      mimeType: mimeElegido,
+      videoBitsPerSecond: 1000000
+    } : {};
+
+    let recorder = null;
+    try {
+      recorder = new MediaRecorder(streamCanvas, opcionesRecorder);
+    } catch (err) {
+      console.error("❌ Falló la inicialización del MediaRecorder:", err);
+      resolve(videoElem.src); // Fallback si falla el grabador
+      return;
+    }
+
     const chunks = [];
-
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
-      const blobCortado = new Blob(chunks, { type: mimeElegido });
+      const tipoFinal = mimeElegido || 'video/webm';
+      const blobCortado = new Blob(chunks, { type: tipoFinal });
       resolve(URL.createObjectURL(blobCortado));
     };
 
-    recorder.start();
+    recorder.start(100);
     videoElem.currentTime = 0;
-    videoElem.play();
+    videoElem.play().catch(e => console.warn("Error auto-play en recorte:", e));
 
+    let animFrame = null;
     function renderFrame() {
       if (videoElem.currentTime < 10 && !videoElem.paused && !videoElem.ended) {
         ctx.drawImage(videoElem, 0, 0, canvas.width, canvas.height);
-        requestAnimationFrame(renderFrame);
+        animFrame = requestAnimationFrame(renderFrame);
       } else {
         videoElem.pause();
-        if (recorder.state === "recording") recorder.stop();
+        if (animFrame) cancelAnimationFrame(animFrame);
+        if (recorder && recorder.state !== "inactive") recorder.stop();
       }
     }
     renderFrame();
 
     setTimeout(() => {
       videoElem.pause();
-      if (recorder.state === "recording") recorder.stop();
+      if (animFrame) cancelAnimationFrame(animFrame);
+      if (recorder && recorder.state !== "inactive") recorder.stop();
     }, 10200);
   });
 }
@@ -1449,44 +2030,38 @@ function recortarVideoA10Segundos(videoElem) {
 function asignarPreviewVideoCircular(urlFinal) {
   tipoAdjuntoActivo = 'video';
 
-  if (imgMiniaturaAdjunto) {
+  if (typeof imgMiniaturaAdjunto !== "undefined" && imgMiniaturaAdjunto) {
     imgMiniaturaAdjunto.src = urlFinal;
     imgMiniaturaAdjunto.style.display = "none";
   }
 
   const wrapper = document.querySelector(".wrapper-miniatura");
-  const iconoPrevio = wrapper ? wrapper.querySelector(".icono-doc-preview") : null;
-  if (iconoPrevio) iconoPrevio.remove();
-
   if (wrapper) {
+    const iconoPrevio = wrapper.querySelector(".icono-doc-preview");
+    if (iconoPrevio) iconoPrevio.remove();
+
     wrapper.insertAdjacentHTML("beforeend", `
       <div class="icono-doc-preview" style="background: rgba(255, 75, 43, 0.15); color: #ff4b2b;">
         <i data-lucide="video" style="width: 28px; height: 28px;"></i>
       </div>
     `);
-
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar solo el icono recién inyectado
-    if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [wrapper]
-      });
-    }
   }
 
-  if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
+  if (typeof cajaVistaPrevia !== "undefined" && cajaVistaPrevia) {
+    cajaVistaPrevia.classList.remove("oculto");
+  }
 
-  if (inputChat) {
+  if (typeof inputChat !== "undefined" && inputChat) {
     inputChat.placeholder = "Comentar video circular (Máx 10s)...";
     inputChat.focus();
   }
 
-  // ⚡ OPTIMIZACIÓN CPU: Cambiar icono del botón y renderizar solo ese botón
-  if (btnAccionChat) {
+  if (typeof btnAccionChat !== "undefined" && btnAccionChat) {
     btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
     if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [btnAccionChat]
-      });
+      // Filtrar elementos válidos para evitar errores si wrapper es null
+      const objetivos = [btnAccionChat, wrapper].filter(Boolean);
+      window.lucide.createIcons({ targets: objetivos });
     }
   }
 }
@@ -1692,33 +2267,51 @@ async function iniciarGrabacionVoz(e) {
     streamAudioLive = await navigator.mediaDevices.getUserMedia({ audio: true });
     fragmentosAudio = [];
 
-    let mimeAudio = 'audio/webm';
-    if (MediaRecorder.isTypeSupported('audio/mp4')) mimeAudio = 'audio/mp4';
-    if (MediaRecorder.isTypeSupported('audio/ogg')) mimeAudio = 'audio/ogg';
+    // ⚡ Selección dinámica segura de formato de audio (Compatible con iOS Safari y Android)
+    let mimeAudio = '';
+    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      mimeAudio = 'audio/webm;codecs=opus';
+    } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+      mimeAudio = 'audio/mp4';
+    } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+      mimeAudio = 'audio/aac';
+    } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+      mimeAudio = 'audio/ogg';
+    } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+      mimeAudio = 'audio/webm';
+    }
 
-    mediaRecorderAudio = new MediaRecorder(streamAudioLive, { mimeType: mimeAudio });
+    const opcionesAudio = mimeAudio ? { mimeType: mimeAudio } : {};
+    mediaRecorderAudio = new MediaRecorder(streamAudioLive, opcionesAudio);
 
     mediaRecorderAudio.ondataavailable = (event) => {
-      if (event.data.size > 0) fragmentosAudio.push(event.data);
+      if (event.data && event.data.size > 0) fragmentosAudio.push(event.data);
     };
 
     // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA DIRECTA A SUPABASE
     mediaRecorderAudio.onstop = async () => {
-      if (streamAudioLive) streamAudioLive.getTracks().forEach(track => track.stop());
+      if (streamAudioLive) {
+        streamAudioLive.getTracks().forEach(track => track.stop());
+        streamAudioLive = null;
+      }
 
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
-        const blobAudio = new Blob(fragmentosAudio, { type: mimeAudio });
+        const tipoFinal = mimeAudio || 'audio/webm';
+        const blobAudio = new Blob(fragmentosAudio, { type: tipoFinal });
 
         // Crear archivo File listo para Supabase
-        const extensionAudio = mimeAudio.includes('mp4') ? 'm4a' : 'webm';
-        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${extensionAudio}`, { type: mimeAudio });
+        const extensionAudio = tipoFinal.includes('mp4') || tipoFinal.includes('aac') ? 'm4a' : 'webm';
+        const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${extensionAudio}`, { type: tipoFinal });
 
         if (typeof mostrarAvisoPremium === "function") {
           mostrarAvisoPremium("Subiendo nota de voz a Supabase... 🎙️", "☁️", "#00f2fe");
         }
 
         // Subir nota de voz a Supabase Storage
-        const urlAudioSupabase = await subirArchivoSupabase(archivoAudio, "movachat-adjuntos");
+        let urlAudioSupabase = null;
+        if (typeof subirArchivoSupabase === "function") {
+          urlAudioSupabase = await subirArchivoSupabase(archivoAudio, "movachat-adjuntos");
+        }
 
         // Si la subida fue exitosa usa la URL fija de Supabase, si no usa la local de respaldo
         const urlFinalAudio = urlAudioSupabase || URL.createObjectURL(blobAudio);
@@ -1975,7 +2568,7 @@ async function purgarFotosAntiguasGaleria(uid) {
       if (foto.fechaSubida && (ahora - foto.fechaSubida > SIETE_DIAS_MS)) {
         // 1. Borrar archivo físico de Supabase Storage
         if (foto.pathSupabase) {
-          supabase.storage.from('galeria').remove([foto.pathSupabase]);
+          supabaseClient.storage.from('galeria').remove([foto.pathSupabase]);
         }
         // 2. Borrar registro en Firebase Realtime Database
         remove(ref(db, `galeria/${uid}/${child.key}`));
@@ -2095,6 +2688,7 @@ async function enviarMensajeNuevo() {
     texto: texto,
     hora: horaFormateada,
     timestamp: Date.now(),
+    expiraEn: Date.now() + (12 * 24 * 60 * 60 * 1000), // 👈 Campo clave: 12 días en milisegundos
     esEfimero: duracionEfimeraMs > 0,
     duracionEfimeraMs: duracionEfimeraMs,
     // ↪️ METADATOS DE REENVÍO
@@ -2321,12 +2915,86 @@ if (historialMensajes) {
   historialMensajes.addEventListener("contextmenu", (e) => e.preventDefault());
 }
 
-// 📸 ESCUCHADOR DE CLICS Y TOQUES EN FOTOS (COMPATIBLE CON MÓVILES Y PC)
+// 📸 ESCUCHADOR DE CLICS EN HISTORIAL (VIDEOS CIRCULARES, CONTACTOS Y FOTOS)
 if (historialMensajes) {
   historialMensajes.addEventListener("click", (e) => {
     if (isLongPress) return;
 
-    // 📇 Clic en el botón de la tarjeta de contacto
+    // 🎥 1. Clic en Video Circular (Reproducir / Pausar / Control de Anillo y Botón Play)
+    const contenedorVideo = e.target.closest(".contenedor-video-circular-burbuja");
+    if (contenedorVideo) {
+      e.stopPropagation();
+      const video = contenedorVideo.querySelector("video");
+      const capaPlay = contenedorVideo.querySelector(".capa-play-video-sim");
+      const anilloProgreso = contenedorVideo.querySelector(".progreso-anillo-nodo");
+
+      if (!video) return;
+
+      const radio = 71;
+      const circunferencia = 2 * Math.PI * radio; // ~446.11px
+
+      // Configurar trazo inicial del anillo SVG
+      if (anilloProgreso && !anilloProgreso.style.strokeDasharray) {
+        anilloProgreso.style.strokeDasharray = `${circunferencia}`;
+        anilloProgreso.style.strokeDashoffset = `${circunferencia}`;
+      }
+
+      // Enlazar eventos dinámicos al video una sola vez
+      if (!video.dataset.eventosConectados) {
+        video.dataset.eventosConectados = "true";
+
+        // 1. Avance continuo de la barra circular
+        video.addEventListener("timeupdate", () => {
+          if (anilloProgreso && Number.isFinite(video.duration) && video.duration > 0) {
+            const porcentaje = video.currentTime / video.duration;
+            const offset = circunferencia - (porcentaje * circunferencia);
+            anilloProgreso.style.strokeDashoffset = `${offset}`;
+          }
+        });
+
+        // 2. Ocultar el botón Play cuando el video arranca
+        video.addEventListener("play", () => {
+          if (capaPlay) capaPlay.style.setProperty("display", "none", "important");
+        });
+
+        // 3. Mostrar el botón Play si se pausa
+        video.addEventListener("pause", () => {
+          if (capaPlay) capaPlay.style.setProperty("display", "flex", "important");
+        });
+
+        // 4. Reiniciar al finalizar para permitir reproducir de nuevo
+        video.addEventListener("ended", () => {
+          video.currentTime = 0;
+          if (anilloProgreso) anilloProgreso.style.strokeDashoffset = `${circunferencia}`;
+          if (capaPlay) capaPlay.style.setProperty("display", "flex", "important");
+        });
+      }
+
+      // Pausar cualquier otro audio o video activo
+      if (typeof pausarOtrosAudiosYVideos === "function") {
+        pausarOtrosAudiosYVideos(video);
+      } else {
+        document.querySelectorAll("audio, video").forEach(m => {
+          if (m !== video && !m.paused) m.pause();
+        });
+      }
+
+      // Si el video llegó al final antes de presionar play, forzar reinicio a 0
+      if (video.ended) {
+        video.currentTime = 0;
+      }
+
+      // Alternar reproducción y activar sonido
+      if (video.paused) {
+        video.muted = false; // 🔊 Activar sonido
+        video.play().catch(err => console.error("Error al reproducir video circular:", err));
+      } else {
+        video.pause();
+      }
+      return;
+    }
+
+    // 📇 2. Clic en la tarjeta de contacto
     const btnContacto = e.target.closest(".btn-mensaje-contacto, .btn-accion-contacto-card");
     if (btnContacto) {
       e.stopPropagation();
@@ -2338,6 +3006,7 @@ if (historialMensajes) {
       return;
     }
 
+    // 📸 3. Clic en la foto enviada
     const contenedorFoto = e.target.closest(".contenedor-foto-enviada");
     if (contenedorFoto) {
       e.stopPropagation();
@@ -2857,9 +3526,22 @@ function switchPantalla(mostrar, ocultar1, ocultar2, ocultar3) {
   ocultar3.style.display = "none";
 
   mostrar.style.display = "flex";
+
+  // Captura del menú inferior y la cabecera
+  const menuFlotante = document.querySelector(".menu-flotante");
+  const encabezado = document.querySelector(".encabezado-inicio");
+
   if (mostrar === pantallaChats || mostrar === pantallaPerfil) {
     mostrar.style.flexDirection = "column";
     mostrar.style.alignItems = "stretch";
+
+    // 🟢 Restaura la barra de navegación y cabecera en vistas principales
+    if (menuFlotante) menuFlotante.style.display = "flex";
+    if (encabezado) encabezado.style.display = "flex";
+  } else if (mostrar === pantallaChatPrivado) {
+    // 🔴 Oculta la barra de navegación y cabecera dentro de un chat individual
+    if (menuFlotante) menuFlotante.style.display = "none";
+    if (encabezado) encabezado.style.display = "none";
   }
 
   // 3. CONTROL DE BOTÓN FLOTANTE (Actualizado)
@@ -3120,7 +3802,7 @@ if (btnVolver) {
   btnVolver.addEventListener("click", () => {
     // ⚠️ Limpiar contacto activo
     window.contactoActivoUid = null;
-    if (typeof contactoActivoUid !== "undefined") contactoActivoUid = null;
+    if (typeof window.contactoActivoUid !== "undefined") window.contactoActivoUid = null;
 
     // 🧹 APAGADO TOTAL DE ESCUCHADORES EN SEGUNDO PLANO
     if (typeof listenerChatActivo === "function") { listenerChatActivo(); listenerChatActivo = null; }
@@ -3400,6 +4082,10 @@ let likesSimulados = 0;
 
 function abrirEstadoAmigo(urlFoto, fraseInicial, uidAutor = null) {
   if (!visorEstados) return;
+  if (lineaProgreso && lineaProgreso.parentNode) {
+    lineaProgreso.parentNode.style.visibility = "visible";
+  }
+
   imgEstadoRender.src = urlFoto;
   textoEstadoRender.textContent = fraseInicial;
 
@@ -3447,9 +4133,13 @@ function cerrarEstadoMova() {
   if (visorEstados) visorEstados.classList.add("oculto");
   if (temporizadorEstado) clearTimeout(temporizadorEstado);
   if (intervaloBarraProgreso) clearInterval(intervaloBarraProgreso);
-  if (lineaProgreso) lineaProgreso.style.width = "0%";
 
-  // Limpiamos el ID activo y apagamos la escucha en Firebase
+  // 🟢 RESTAURAR VISIBILIDAD DE LA BARRA
+  if (lineaProgreso && lineaProgreso.parentNode) {
+    lineaProgreso.parentNode.style.visibility = "visible";
+    lineaProgreso.style.width = "0%";
+  }
+
   window.autorHistoriaActivaUid = null;
   if (typeof desuscribirLikesHistoria === "function" && desuscribirLikesHistoria) {
     desuscribirLikesHistoria();
@@ -7287,10 +7977,19 @@ window.actualizarTarjetaContactoUI = function (uid, usuario) {
   }
 };
 
+// Variable global o fuera de la función para almacenar la desuscripción y evitar duplicados
+let desuscribirContactosAprobados = null;
+
 // 🟢 CARGAR CONTACTOS Y SINCRONIZAR HISTORIAS (24H) EN TIEMPO REAL
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
+
+  // 🧹 Si ya existía un escuchador activo previo, lo apagamos para evitar duplicados en memoria
+  if (typeof desuscribirContactosAprobados === "function") {
+    desuscribirContactosAprobados();
+    desuscribirContactosAprobados = null;
+  }
 
   const usuariosRef = ref(db, 'usuarios');
   const fijadosRef = ref(db, `fijados/${usuarioActualUid}`);
@@ -7298,8 +7997,8 @@ function cargarContactosAprobados(usuarioActualUid) {
   get(fijadosRef).then((snapFijados) => {
     const fijadosBD = snapFijados.exists() ? snapFijados.val() : {};
 
-    // Escuchamos la tabla de usuarios en tiempo real
-    onValue(usuariosRef, (snapshot) => {
+    // Almacenamos el método de apagado devuelto por onValue
+    desuscribirContactosAprobados = onValue(usuariosRef, (snapshot) => {
       try {
         if (snapshot.exists()) {
           const usuarios = snapshot.val();
@@ -7309,7 +8008,7 @@ function cargarContactosAprobados(usuarioActualUid) {
             const usuario = usuarios[uid];
 
             if (usuario && uid !== usuarioActualUid && usuario.estadoAcceso === "aprobado") {
-              if (!contactosRegistradosSet.has(uid)) {
+              if (typeof contactosRegistradosSet !== "undefined" && !contactosRegistradosSet.has(uid)) {
                 contactosRegistradosSet.add(uid);
 
                 if (typeof escucharUltimoMensajeContacto === "function") {
@@ -7317,8 +8016,10 @@ function cargarContactosAprobados(usuarioActualUid) {
                 }
               }
 
-              // Intentar actualizar la tarjeta
-              window.actualizarTarjetaContactoUI(uid, usuario);
+              // Intentar actualizar la tarjeta en la interfaz
+              if (typeof window.actualizarTarjetaContactoUI === "function") {
+                window.actualizarTarjetaContactoUI(uid, usuario);
+              }
             }
           });
         }
@@ -7438,6 +8139,11 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
   if (miUid && uidTarget) {
     const chatId = obtenerChatId(miUid, uidTarget);
+
+    // 🧹 EJECUTAR LIMPIEZA AUTOMÁTICA DE MENSAJES VIEJOS EN ESTE CHAT
+    if (typeof ejecutarAutolimpieza12Dias === "function") {
+      ejecutarAutolimpieza12Dias(chatId);
+    }
 
     // ☁️ REGISTRAR EN FIREBASE EL ÚLTIMO MENSAJE VISTO
     const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -8010,9 +8716,10 @@ function escucharMensajesChat(chatId) {
               contenidoBurbuja = `
                 ${htmlReenviado}
                 <div class="contenedor-video-circular-burbuja" style="cursor: pointer; position: relative; width: 140px; height: 140px; margin: 0 auto; display: block;">
-                  <svg class="anillo-progreso-video" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
-                    <circle cx="70" cy="70" r="66" class="progreso-anillo-nodo" stroke="#00f2fe" stroke-width="4" fill="none" stroke-dasharray="414" stroke-dashoffset="414"></circle>
-                  </svg>
+                  <svg class="anillo-progreso-svg" viewBox="0 0 150 150" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: rotate(-90deg); z-index: 3;">
+                     <circle cx="75" cy="75" r="71" class="anillo-fondo"></circle>
+                       <circle cx="75" cy="75" r="71" class="anillo-progreso progreso-anillo-nodo" stroke-dasharray="446.1" stroke-dashoffset="446.1"></circle>
+                   </svg>
                   <div class="capa-play-video-sim" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 2; background: rgba(0,0,0,0.35); border-radius: 50%;">
                     <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
                   </div>
@@ -8174,6 +8881,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 🌐 Enlazar los botones de redes sociales del perfil
   conectarRedesSociales();
+
+  const btnCamaraVideo = document.querySelector('[data-camara="video"]');
+  const btnCamaraFoto = document.querySelector('[data-camara="foto"]');
+
+  if (btnCamaraVideo) {
+    btnCamaraVideo.addEventListener('click', () => abrirCamaraYGrabar('video'));
+  }
+
+  if (btnCamaraFoto) {
+    btnCamaraFoto.addEventListener('click', () => abrirCamaraYGrabar('foto'));
+  }
 
   // 2️⃣ Botón 'Buscar amigo' de la pantalla de bienvenida vacía
   const btnBuscarVacio = document.getElementById("btn-vacio-buscar-amigo");
@@ -9153,12 +9871,28 @@ function enviarContactoAlChat(contacto) {
     leido: false
   };
 
-  // Guardar mensaje en base de datos (Firebase)
-  const rutaMensaje = database.ref(`chats/${obtenerIdChatCombinado(usuarioActual.uid, chatActualId)}/${idMensaje}`);
-  rutaMensaje.set(nuevoMensaje).then(() => {
+  // ========================================================
+  // 📱 ENVÍO SEGURO DE CONTACTO ADJUNTO (SIN DUPLICADOS)
+  // ========================================================
+  
+  // Guardar mensaje en la base de datos usando la sintaxis modular de Firebase v10
+  const rutaMensaje = ref(db, `chats/${obtenerIdChatCombinado(usuarioActual.uid, chatActualId)}/${idMensaje}`);
+  
+  set(rutaMensaje, nuevoMensaje).then(() => {
     // Cerrar modal de selección si está abierto
     const modalContactos = document.getElementById("modal-seleccionar-contacto");
-    if (modalContactos) modalContactos.classList.add("oculto");
+    if (modalContactos) {
+      modalContactos.classList.add("oculto");
+      
+      // ✨ CLONACIÓN PREVENTIVA: Limpiamos los eventos acumulados en el modal de contactos
+      const listaContactosModal = document.getElementById("lista-contactos-modal-adjuntar") || document.getElementById("modal-seleccionar-contacto");
+      if (listaContactosModal && listaContactosModal.parentNode) {
+        const listaLimpia = listaContactosModal.cloneNode(true);
+        listaContactosModal.parentNode.replaceChild(listaLimpia, listaContactosModal);
+      }
+    }
+  }).catch((error) => {
+    console.error("❌ Error al compartir el contacto:", error);
   });
 }
 
@@ -9186,4 +9920,92 @@ window.abrirChatDesdeContacto = function (uidContacto, nombreContacto = "", foto
   }
 };
 
+// ========================================================
+// 🎤 FUNCIONES DE GRABACIÓN DE AUDIO (SUPABASE + FIREBASE)
+// ========================================================
 
+async function detenerYEnviarGrabacionAudio() {
+  if (!mediaRecorderAudio || mediaRecorderAudio.state === 'inactive') return;
+
+  if (temporizadorGrabacion) {
+    clearInterval(temporizadorGrabacion);
+    temporizadorGrabacion = null;
+  }
+  
+  const duracionFinal = segundosGrabados;
+  const panelGrabacion = document.getElementById('panel-grabacion');
+
+  mediaRecorderAudio.onstop = async () => {
+    // Apagar micrófono de forma segura
+    if (streamAudioLive) {
+      streamAudioLive.getTracks().forEach(track => track.stop());
+      streamAudioLive = null;
+    }
+
+    // Crear el archivo con los fragmentos grabados
+    const audioBlob = new Blob(fragmentosAudio, { type: 'audio/webm' });
+
+    // Cancelar si la nota dura menos de 1 segundo
+    if (duracionFinal < 1) {
+      if (panelGrabacion) panelGrabacion.classList.add('oculto');
+      return;
+    }
+
+    // 1. Subir audio a tu bucket de Supabase
+    const audioUrl = await subirAudioASupabase(audioBlob);
+
+    // 2. Guardar el enlace en Firebase Realtime Database
+    if (audioUrl) {
+      if (typeof enviarMensajePrivado === 'function') {
+        await enviarMensajePrivado(audioUrl, 'audio', duracionFinal);
+      } else if (typeof enviarMensajeAudioFirebase === 'function') {
+        await enviarMensajeAudioFirebase(audioUrl, duracionFinal);
+      }
+      
+      // Reproducir sonido de éxito
+      const sonidoEnviado = document.getElementById('sonido-enviado');
+      if (sonidoEnviado) {
+        sonidoEnviado.currentTime = 0;
+        sonidoEnviado.play().catch(() => {});
+      }
+    } else {
+      alert('Error al subir la nota de voz. Inténtalo de nuevo.');
+    }
+
+    if (panelGrabacion) panelGrabacion.classList.add('oculto');
+  };
+
+  mediaRecorderAudio.stop();
+}
+
+function cancelarGrabacionAudio() {
+  if (mediaRecorderAudio && mediaRecorderAudio.state !== 'inactive') {
+    mediaRecorderAudio.onstop = () => {
+      if (streamAudioLive) {
+        streamAudioLive.getTracks().forEach(track => track.stop());
+        streamAudioLive = null;
+      }
+    };
+    mediaRecorderAudio.stop();
+  }
+  
+  fragmentosAudio = [];
+  if (temporizadorGrabacion) {
+    clearInterval(temporizadorGrabacion);
+    temporizadorGrabacion = null;
+  }
+  
+  const panelGrabacion = document.getElementById('panel-grabacion');
+  if (panelGrabacion) panelGrabacion.classList.add('oculto');
+}
+
+// ========================================================
+// 🔊 REPRODUCCIÓN DE EFECTOS DE SONIDO DEL SISTEMA
+// ========================================================
+function reproducirSonido(idElemento) {
+  const audioEl = document.getElementById(idElemento);
+  if (audioEl) {
+    audioEl.currentTime = 0;
+    audioEl.play().catch(e => console.log('Autoplay bloqueado por el navegador:', e));
+  }
+}

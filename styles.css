@@ -1706,15 +1706,16 @@ body {
 /* --- REPRODUCTOR DE VIDEO CIRCULAR --- */
 .contenedor-video-circular-burbuja {
   position: relative !important;
-  width: 140px !important;
-  height: 140px !important;
-  margin: 0 auto 4px auto !important;
+  width: 150px !important;
+  height: 150px !important;
+  margin: 4px auto !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   border-radius: 50% !important;
   cursor: pointer;
   background-color: #000000 !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5), 0 0 12px rgba(0, 242, 254, 0.2);
 }
 
 .marco-video-redondo {
@@ -1732,10 +1733,14 @@ body {
   height: 100% !important;
   object-fit: cover !important;
   display: block !important;
-  border-radius: 50% !important;
+  /* ⚡ Optimización GPU: eliminamos border-radius duplicado y forzamos renderizado fluido */
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
-.anillo-progreso-video {
+/* Anillo SVG de progreso */
+.anillo-progreso-svg {
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
@@ -1746,16 +1751,22 @@ body {
   pointer-events: none !important;
 }
 
-.anillo-progreso-video circle {
-  fill: none;
-  stroke: #00f2fe;
-  stroke-width: 4;
-  stroke-dasharray: 414.6;
-  stroke-dashoffset: 414.6;
-  transition: stroke-dashoffset 0.1s linear;
-  stroke-linecap: round;
+.anillo-fondo {
+  fill: none !important;
+  stroke: rgba(255, 255, 255, 0.15) !important;
+  stroke-width: 4 !important;
 }
 
+.anillo-progreso {
+  fill: none !important;
+  stroke: #00f2fe !important;
+  stroke-width: 4 !important;
+  stroke-linecap: round !important;
+  transition: stroke-dashoffset 0.1s linear !important;
+  filter: drop-shadow(0 0 4px #00f2fe);
+}
+
+/* Capa de Play / Pausa */
 .capa-play-video-sim {
   position: absolute !important;
   top: 0 !important;
@@ -1772,17 +1783,13 @@ body {
   transition: opacity 0.2s ease;
 }
 
-.capa-play-video-sim i,
-.capa-play-video-sim svg {
-  width: 28px !important;
-  height: 28px !important;
-  fill: #ffffff !important;
+.capa-play-video-sim .icono-play {
+  font-style: normal !important;
+  font-size: 22px !important;
   color: #ffffff !important;
-  pointer-events: none !important;
-}
-
-.contenedor-video-circular-burbuja.reproduciendo .capa-play-video-sim {
-  opacity: 0 !important;
+  line-height: 1 !important;
+  margin-left: 3px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
 }
 
 /* ========================================================
@@ -4057,4 +4064,12 @@ body.tema-claro .btn-accion-contacto-card:hover {
   bottom: 85px !important;
   right: 20px !important;
   z-index: 999 !important;
+}
+
+.contenedor-video-circular-burbuja,
+.marco-video-redondo video {
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }

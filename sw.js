@@ -1,8 +1,8 @@
 // ========================================================
-// 📱 SERVICE WORKER MOVACHAT (Versión Corregida)
+// 📱 SERVICE WORKER MOVACHAT (Versión Corregida v1.0.0.7)
 // ========================================================
 
-const CACHE_NAME = 'movachat-v1.0.0.6';
+const CACHE_NAME = 'movachat-v1.0.0.7';
 
 const ASSETS_TO_CACHE = [
   './',
@@ -37,7 +37,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activación y limpieza
+// 2. Activación y limpieza de cachés antiguas
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -55,11 +55,25 @@ self.addEventListener('activate', (event) => {
 
 // 3. Estrategias de Intercepción
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
-    return;
+  const url = event.request.url;
+
+  // 🚫 OMITIR INTERCEPCIÓN:
+  // Evita el error ERR_CACHE_OPERATION_NOT_SUPPORTED en videos por streaming (HTTP 206 / Range)
+  if (
+    event.request.method !== 'GET' ||
+    event.request.headers.has('range') ||
+    url.includes('/storage/v1/object/public/') ||
+    url.endsWith('.mp4') ||
+    url.endsWith('.webm') ||
+    url.endsWith('.m4a')
+  ) {
+    return; // Permite que el navegador descargue el video de red directamente sin pasar por CacheStorage
   }
 
-  const url = event.request.url;
+  // Omitir peticiones externas que no pertenezcan al dominio de la app
+  if (!url.startsWith(self.location.origin)) {
+    return;
+  }
 
   // JS y HTML: Network-first + Actualización de Caché
   if (url.endsWith('.js') || url.includes('.html') || event.request.mode === 'navigate') {
@@ -81,7 +95,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Estáticos (Imágenes, Audios, CSS): Cache-first
+  // Estáticos locales (Imágenes, Audios, CSS): Cache-first
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) return cachedResponse;
