@@ -2288,7 +2288,7 @@ async function iniciarGrabacionVoz(e) {
       if (event.data && event.data.size > 0) fragmentosAudio.push(event.data);
     };
 
-    // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA DIRECTA A SUPABASE
+    // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA A SUPABASE Y ENVÍO A FIREBASE
     mediaRecorderAudio.onstop = async () => {
       if (streamAudioLive) {
         streamAudioLive.getTracks().forEach(track => track.stop());
@@ -2307,16 +2307,46 @@ async function iniciarGrabacionVoz(e) {
           mostrarAvisoPremium("Subiendo nota de voz a Supabase... 🎙️", "☁️", "#00f2fe");
         }
 
-        // Subir nota de voz a Supabase Storage
+        // 1. Subir nota de voz a Supabase Storage
         let urlAudioSupabase = null;
         if (typeof subirArchivoSupabase === "function") {
           urlAudioSupabase = await subirArchivoSupabase(archivoAudio, "movachat-adjuntos");
         }
 
-        // Si la subida fue exitosa usa la URL fija de Supabase, si no usa la local de respaldo
         const urlFinalAudio = urlAudioSupabase || URL.createObjectURL(blobAudio);
 
-        if (typeof inyectarNotaDeVozBurbuja === "function") {
+        // 2. Guardar en Firebase Realtime Database para que le llegue al contacto
+        const usuarioActual = auth.currentUser;
+        const miUid = usuarioActual ? usuarioActual.uid : null;
+        const contactoUid = window.contactoActivoUid;
+
+        if (miUid && contactoUid && urlAudioSupabase) {
+          const chatId = typeof obtenerChatId === "function" 
+            ? obtenerChatId(miUid, contactoUid) 
+            : [miUid, contactoUid].sort().join("_");
+
+          const ahora = new Date();
+          const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+          const mensajeAudio = {
+            emisor: miUid,
+            receptor: contactoUid,
+            tipoAdjunto: 'audio',
+            urlAdjunto: urlAudioSupabase,
+            duracion: contadorAudio ? contadorAudio.textContent : "0:01",
+            texto: "",
+            hora: horaFormateada,
+            timestamp: Date.now()
+          };
+
+          const nuevoRef = push(ref(db, `chats/${chatId}/mensajes`));
+          await set(nuevoRef, mensajeAudio);
+
+          if (typeof reproducirSonidoEnviado === "function") {
+            reproducirSonidoEnviado();
+          }
+        } else if (typeof inyectarNotaDeVozBurbuja === "function") {
+          // Vista previa local de respaldo si falla la red
           inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlFinalAudio);
         }
       }
@@ -9956,11 +9986,7 @@ async function detenerYEnviarGrabacionAudio() {
 
     // 2. Guardar el enlace en Firebase Realtime Database
     if (audioUrl) {
-      if (typeof enviarMensajePrivado === 'function') {
-        await enviarMensajePrivado(audioUrl, 'audio', duracionFinal);
-      } else if (typeof enviarMensajeAudioFirebase === 'function') {
-        await enviarMensajeAudioFirebase(audioUrl, duracionFinal);
-      }
+      await enviarMensaje(audioUrl, "audio", duracionFinal);
       
       // Reproducir sonido de éxito
       const sonidoEnviado = document.getElementById('sonido-enviado');
