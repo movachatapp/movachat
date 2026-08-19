@@ -4701,7 +4701,10 @@ function actualizarDobleLedCabecera(pantallaActual) {
   }
 }
 
-// 📡 1. GESTIÓN AUTOMÁTICA DEL LED SUPERIOR (PRESENCIA REAL / SISTEMA)
+let unsubscribeConnected = null;
+let funcionVisibility = null;
+
+// 📡 1. GESTIÓN AUTOMÁTICA DEL LED SUPERIOR (PRESENCIA REAL)
 function iniciarControlPresenciaReal() {
   const usuarioActual = auth.currentUser;
   if (!usuarioActual) return;
@@ -4709,29 +4712,53 @@ function iniciarControlPresenciaReal() {
   const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
   const connectedRef = ref(db, ".info/connected");
 
-  // Al desconectarse de Firebase, apagar el LED superior automáticamente
+  // Al desconectarse bruscamente, apagar el LED superior
   onDisconnect(userRef).update({ presenciaReal: false });
 
-  // Escuchar si hay conexión activa a Internet
-  onValue(connectedRef, (snap) => {
-    if (snap.val() === true && !document.hidden) {
+  // Guardar listener de conexión para poder destruirlo al salir
+  unsubscribeConnected = onValue(connectedRef, (snap) => {
+    if (snap.val() === true && !document.hidden && auth.currentUser) {
       update(userRef, { presenciaReal: true });
-    } else {
-      update(userRef, { presenciaReal: false });
     }
   });
 
-  // Escuchar cuando el usuario minimiza o vuelve a abrir la app
-  document.addEventListener("visibilitychange", () => {
+  // Listener para cuando minimiza o maximiza la app
+  funcionVisibility = () => {
     if (document.hidden) {
       update(userRef, { presenciaReal: false });
     } else if (auth.currentUser) {
       update(userRef, { presenciaReal: true });
     }
-  });
+  };
 
-  // 👁️ Re-evaluar la historia y el badge de vistas al iniciar la presencia
-  iniciarEscuchaMiEstado();
+  document.addEventListener("visibilitychange", funcionVisibility);
+
+  if (typeof iniciarEscuchaMiEstado === "function") {
+    iniciarEscuchaMiEstado();
+  }
+}
+
+// 🛑 DETENER DETECCIÓN Y APAGAR LED AL CERRAR SESIÓN
+async function detenerControlPresenciaReal() {
+  const usuarioActual = auth.currentUser;
+
+  // 1. Remover escuchador del ciclo de vida de la ventana
+  if (funcionVisibility) {
+    document.removeEventListener("visibilitychange", funcionVisibility);
+    funcionVisibility = null;
+  }
+
+  // 2. Apagar escuchador de conexión Firebase
+  if (unsubscribeConnected) {
+    unsubscribeConnected();
+    unsubscribeConnected = null;
+  }
+
+  // 3. Forzar apagado de presencia en la BD
+  if (usuarioActual) {
+    const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
+    await update(userRef, { presenciaReal: false });
+  }
 }
 
 // 💡 2. RENDERIZAR LOS 2 LEDS DE CUALQUIER CONTACTO EN TIEMPO REAL
@@ -8076,23 +8103,32 @@ document.addEventListener("click", (e) => {
 // 🔙 RESTAURAR ELEMENTOS Y REGRESAR A LA LISTA DE CHATS
 // ========================================================
 document.addEventListener("click", (e) => {
-  // Si presiona el botón de flecha atrás en el chat privado
+  // 1. Si se presiona regresar desde el Perfil de usuario hacia el Chat Privado
+  if (e.target.closest("#vista-perfil-usuario .btn-volver") || e.target.closest("#btn-volver-al-chat")) {
+    const encabezadoInicio = document.querySelector(".encabezado-inicio");
+    if (encabezadoInicio) {
+      encabezadoInicio.style.display = "none"; // 🚨 Mantiene oculto el header superior en el chat
+    }
+    return;
+  }
+
+  // 2. Si presiona el botón de flecha atrás en el chat privado para ir a la LISTA GENERAL
   if (e.target.closest("#pantalla-chat-privado .btn-volver") || e.target.closest("#btn-volver-chats")) {
 
-    // 1. Ocultar la pantalla de chat privado
+    // Ocultar la pantalla de chat privado
     const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
     if (pantallaChatPrivado) {
       pantallaChatPrivado.style.display = "none";
       pantallaChatPrivado.classList.remove("pantalla-completa");
     }
 
-    // 2. Mostrar la lista de chats principal
+    // Mostrar la lista de chats principal
     const pantallaChats = document.getElementById("pantalla-chats");
     if (pantallaChats) {
       pantallaChats.style.display = "flex";
     }
 
-    // 3. Restaurar encabezado, menú inferior y botón flotante (+)
+    // Restaurar encabezado global, menú inferior y botón flotante solo al estar en la lista principal
     const encabezadoInicio = document.querySelector(".encabezado-inicio");
     const menuFlotante = document.querySelector(".menu-flotante");
     const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto") || document.getElementById("btn-abrir-contactos");
@@ -8105,7 +8141,7 @@ document.addEventListener("click", (e) => {
       btnFlotanteContacto.classList.remove("oculto");
     }
 
-    // 4. Limpiar cualquier grabación que haya quedado pendiente
+    // Limpiar cualquier grabación pendiente
     if (typeof cancelarGrabacion === "function" && (typeof grabacionActiva !== "undefined" && grabacionActiva)) {
       cancelarGrabacion();
     }
@@ -9959,7 +9995,19 @@ document.addEventListener("DOMContentLoaded", () => {
       modalLogout.classList.add("oculto");
 
       try {
-        // 🚀 Cierre de sesión directo usando la función global ya importada
+        const usuarioActual = auth.currentUser;
+
+        // 🛑 1. Detener listeners y apagar el LED de presencia en Firebase antes de salir
+        if (usuarioActual) {
+          const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
+          await update(userRef, { presenciaReal: false });
+        }
+
+        if (typeof detenerControlPresenciaReal === "function") {
+          await detenerControlPresenciaReal();
+        }
+
+        // 🚀 2. Cierre de sesión directo usando la función global ya importada
         await signOut(auth);
 
         // 🧹 FIX DE PRIVACIDAD: Borra inmediatamente correo y contraseña del formulario
@@ -10938,3 +10986,48 @@ document.addEventListener("ended", (e) => {
   if (barras) barras.forEach(b => b.classList.remove("activa"));
   if (btnPlay) btnPlay.classList.remove("reproduciendo");
 }, true);
+
+// 🚪 FUNCIÓN GLOBAL PARA CERRAR SESIÓN LIMPIANDO LA PRESENCIA REAL
+async function cerrarSesionLimpia() {
+  const usuarioActual = auth.currentUser;
+
+  if (usuarioActual) {
+    try {
+      // 1. Apagamos explícitamente el LED 2 en Firebase
+      const userRef = ref(db, `usuarios/${usuarioActual.uid}`);
+      await update(userRef, { presenciaReal: false });
+    } catch (error) {
+      console.error("Error al apagar presencia al cerrar sesión:", error);
+    }
+  }
+
+  try {
+    // 2. Cerramos la sesión en Firebase
+    await signOut(auth);
+
+    // 3. Ocultamos el modal y reiniciamos
+    const modalLogout = document.getElementById("modal-confirmar-cerrar-sesion");
+    if (modalLogout) modalLogout.classList.add("oculto");
+
+    window.location.reload(); 
+  } catch (error) {
+    console.error("Error al cerrar sesión:", error);
+  }
+}
+
+// Hacerla accesible globalmente
+window.cerrarSesionLimpia = cerrarSesionLimpia;
+
+// 🎯 VINCULAR LOS BOTONES DEL MODAL AL CARGAR EL SCRIPT
+const btnAceptarLogout = document.getElementById("btn-aceptar-logout-modal");
+if (btnAceptarLogout) {
+  btnAceptarLogout.addEventListener("click", cerrarSesionLimpia);
+}
+
+const btnCancelarLogout = document.getElementById("btn-cancelar-logout-modal");
+if (btnCancelarLogout) {
+  btnCancelarLogout.addEventListener("click", () => {
+    const modalLogout = document.getElementById("modal-confirmar-cerrar-sesion");
+    if (modalLogout) modalLogout.classList.add("oculto");
+  });
+}

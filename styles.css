@@ -4375,3 +4375,8 @@ body.tema-claro .btn-accion-contacto-card:hover {
 .preview-adjunto i {
   color: #00f2fe; /* El color de acento de tu app para el icono */
 }
+
+/* 🚫 Oculta el encabezado superior automáticamente si el chat privado está abierto */
+body:has(#pantalla-chat-privado:not([style*="display: none"])) .encabezado-inicio {
+  display: none !important;
+}
