@@ -113,6 +113,109 @@ async function subirArchivoSupabase(archivo, bucket = "movachat-adjuntos") {
 }
 
 /**
+ * Borra un archivo físicamente de Supabase Storage usando su URL pública.
+ * @param {string} urlPublica - La URL pública del archivo en Supabase.
+ * @returns {Promise<boolean>} Devuelve true si se eliminó correctamente.
+ */
+async function borrarArchivoDeSupabase(urlPublica) {
+  if (!urlPublica || typeof urlPublica !== "string" || !urlPublica.includes("supabase.co")) {
+    return false;
+  }
+
+  try {
+    // Extrae la ruta interna (ejemplo: "adjuntos/1723000000_abc123.m4a") desde la URL pública
+    const urlObj = new URL(urlPublica);
+    const partesPath = urlObj.pathname.split("/movachat-adjuntos/");
+
+    if (partesPath.length < 2) return false;
+
+    const rutaInternaArchivo = decodeURIComponent(partesPath[1]);
+
+    // Usamos 'supabaseClient' igual que en tu función subirArchivoSupabase
+    const { data, error } = await supabaseClient
+      .storage
+      .from("movachat-adjuntos")
+      .remove([rutaInternaArchivo]);
+
+    if (error) {
+      console.error("❌ Error eliminando archivo de Supabase Storage:", error.message);
+      return false;
+    }
+
+    console.log("🔥 Archivo eliminado físicamente de Supabase:", rutaInternaArchivo);
+    return true;
+
+  } catch (err) {
+    console.error("❌ Excepción al procesar borrado en Supabase:", err);
+    return false;
+  }
+}
+
+/**
+ * ⏱️ Verificador de caducidad para notas de voz
+ * Si pasaron 12 días, destruye el archivo en Supabase y actualiza la BD.
+ */
+async function procesarCaducidadNotaVoz(idChat, idMensaje, msg) {
+  if (!msg || msg.tipoAdjunto !== "audio") return false;
+
+  const ahora = Date.now();
+  const haCaducado = msg.caducado || (msg.expiraEn && ahora >= msg.expiraEn);
+
+  if (haCaducado) {
+    // 1. Si aún conserva la URL en Supabase, destruimos el archivo físico
+    if (msg.urlAdjunto && msg.urlAdjunto.includes("supabase.co")) {
+      await borrarArchivoDeSupabase(msg.urlAdjunto);
+
+      // 2. Actualizamos el registro en la BD para eliminar la URL y marcar como caducado
+      try {
+        const msgRef = ref(db, `chats/${idChat}/mensajes/${idMensaje}`);
+        await update(msgRef, {
+          caducado: true,
+          urlAdjunto: null // Remueve la URL para liberar memoria
+        });
+      } catch (err) {
+        console.error("❌ Error al actualizar estado caducado en Firebase:", err);
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+// ⏱️ RUTINA DE PURGA DE MENSAJES TEMPORALES / EFÍMEROS
+async function procesarLimpiezaMensajesTemporales(idChat) {
+  if (!idChat) return;
+
+  const mensajesRef = ref(db, `chats/${idChat}/mensajes`);
+  const snap = await get(mensajesRef);
+
+  if (!snap.exists()) return;
+
+  const mensajes = snap.val();
+  const ahora = Date.now();
+
+  for (const idMensaje in mensajes) {
+    const msg = mensajes[idMensaje];
+
+    // Verificar si el mensaje ya expiró por tiempo temporal o caducidad
+    if (msg.expiraEn && ahora >= msg.expiraEn) {
+
+      // 💣 1. Destrucción física en Supabase si es nota de voz o adjunto
+      if (msg.urlAdjunto && msg.urlAdjunto.includes("supabase.co")) {
+        await borrarArchivoDeSupabase(msg.urlAdjunto);
+      }
+
+      // 🗑️ 2. Eliminar el nodo por completo de Firebase Realtime Database
+      const msgEspecificoRef = ref(db, `chats/${idChat}/mensajes/${idMensaje}`);
+      await remove(msgEspecificoRef);
+
+      console.log(`🔥 Mensaje temporal/audio ${idMensaje} eliminado de Supabase y Firebase.`);
+    }
+  }
+}
+
+/**
  * 🗜️ COMPRESOR GRADUADO DE IMÁGENES A WEBP (SIN RECORTES AGRESIVOS)
  * @param {File} archivoImagen - Archivo original.
  * @param {Object} opciones - Configuración de dimensiones y calidad.
@@ -411,6 +514,8 @@ let mensajeEnEdicionId = null;
 let archivoAdjuntoPendiente = null;
 let ultimoArchivoFallido = null;
 
+let bloquarClickFantasma = false;
+
 // --- ESTADOS Y UMBRALES DEL MICRÓFONO ---
 let inicioX = 0;
 let inicioY = 0;
@@ -475,15 +580,19 @@ async function abrirCamaraYGrabar() {
       videoPreview.play().catch(err => console.error("Error al reproducir preview:", err));
     }
 
-    let opcionesRecorder = {};
-    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-      opcionesRecorder = { mimeType: 'video/webm;codecs=vp8,opus' };
+    // Detección Inteligente de MIME Type (Priorizando MP4 para compatibilidad en Safari/iOS)
+    let mimeElegido = '';
+    if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')) {
+      mimeElegido = 'video/mp4;codecs=avc1,mp4a.40.2';
     } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-      opcionesRecorder = { mimeType: 'video/mp4' };
+      mimeElegido = 'video/mp4';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      mimeElegido = 'video/webm;codecs=vp8,opus';
     } else if (MediaRecorder.isTypeSupported('video/webm')) {
-      opcionesRecorder = { mimeType: 'video/webm' };
+      mimeElegido = 'video/webm';
     }
 
+    const opcionesRecorder = mimeElegido ? { mimeType: mimeElegido } : {};
     mediaRecorder = new MediaRecorder(streamCamara, opcionesRecorder);
 
     mediaRecorder.ondataavailable = (e) => {
@@ -499,7 +608,10 @@ async function abrirCamaraYGrabar() {
         streamCamara = null;
       }
 
-      const blobVideo = new Blob(fragmentosVideo, { type: mediaRecorder.mimeType || 'video/webm' });
+      // Se usa el MIME exacto negociado por el reproductor
+      const tipoFinal = mediaRecorder.mimeType || mimeElegido || 'video/mp4';
+      const blobVideo = new Blob(fragmentosVideo, { type: tipoFinal });
+
       if (typeof registrarEnvioVideoCircular === "function") {
         registrarEnvioVideoCircular(uidActual);
       }
@@ -527,15 +639,20 @@ async function abrirCamaraYGrabar() {
 function iniciarGrabacionCircular() {
   if (!streamCamara) return;
   fragmentosVideo = [];
-  let opcionesRecorder = {};
-  if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-    opcionesRecorder = { mimeType: 'video/webm;codecs=vp8,opus' };
+
+  // Detección Inteligente de MIME Type (Priorizando MP4 para compatibilidad en Safari/iOS)
+  let mimeElegido = '';
+  if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')) {
+    mimeElegido = 'video/mp4;codecs=avc1,mp4a.40.2';
   } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-    opcionesRecorder = { mimeType: 'video/mp4' };
+    mimeElegido = 'video/mp4';
+  } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+    mimeElegido = 'video/webm;codecs=vp8,opus';
   } else if (MediaRecorder.isTypeSupported('video/webm')) {
-    opcionesRecorder = { mimeType: 'video/webm' };
+    mimeElegido = 'video/webm';
   }
 
+  const opcionesRecorder = mimeElegido ? { mimeType: mimeElegido } : {};
   mediaRecorder = new MediaRecorder(streamCamara, opcionesRecorder);
 
   mediaRecorder.ondataavailable = (e) => {
@@ -543,8 +660,12 @@ function iniciarGrabacionCircular() {
   };
 
   mediaRecorder.onstop = () => {
+    // Generación segura del Blob de video con el MIME negociado
+    const tipoFinal = mediaRecorder.mimeType || mimeElegido || 'video/mp4';
+    const blobVideo = new Blob(fragmentosVideo, { type: tipoFinal });
+
     if (typeof finalizarYEnviarVideoCircular === "function") {
-      finalizarYEnviarVideoCircular();
+      finalizarYEnviarVideoCircular(blobVideo);
     }
   };
 
@@ -745,41 +866,51 @@ function pausarOtrosAudiosYVideos(multimediaActual) {
   });
 }
 
-// Función central para borrar físicamente el archivo en Supabase Storage
-async function borrarArchivoDeSupabase(rutaArchivo) {
-  if (!rutaArchivo) return;
-  const { error } = await supabaseClient.storage
-    .from('movachat-archivos')
-    .remove([rutaArchivo]);
-
-  if (error) console.error("Error al eliminar archivo de Supabase:", error);
-}
-
 // 1. Eliminar mensaje individual ("Eliminar para todos")
-async function eliminarMensajeParaTodos(idChat, idMensaje, rutaArchivo) {
-  await borrarArchivoDeSupabase(rutaArchivo);
-  await remove(ref(db, `chats/${idChat}/mensajes/${idMensaje}`));
+async function eliminarMensajeParaTodos(idChat, idMensaje, rutaArchivo = null) {
+  try {
+    const msgRef = ref(db, `chats/${idChat}/mensajes/${idMensaje}`);
+
+    // Si no se pasó la ruta o URL por parámetro, la buscamos en Firebase
+    if (!rutaArchivo) {
+      const snap = await get(msgRef);
+      if (snap.exists()) {
+        const msg = snap.val();
+        rutaArchivo = msg.urlAdjunto || null;
+      }
+    }
+
+    // Si existe un archivo adjunto (audio, imagen, etc.), lo borramos físicamente de Supabase Storage
+    if (rutaArchivo) {
+      await borrarArchivoDeSupabase(rutaArchivo);
+    }
+
+    // Eliminamos el nodo del mensaje en Firebase Realtime Database
+    await remove(msgRef);
+    console.log("✅ Mensaje eliminado para todos correctamente.");
+
+  } catch (error) {
+    console.error("❌ Error al eliminar mensaje para todos:", error);
+  }
 }
 
 // 2. Eliminar para mí
 async function eliminarMensajeParaMi(idChat, idMensaje, idUsuarioActual, rutaArchivo) {
   const refMensaje = ref(db, `chats/${idChat}/mensajes/${idMensaje}`);
-  const snapshot = await refMensaje.once('value');
+  const snapshot = await get(refMensaje); // <- Cambiado a v10
+  if (!snapshot.exists()) return;
+
   const mensaje = snapshot.val();
-
-  if (!mensaje) return;
-
   let eliminados = mensaje.eliminadoPara || [];
   if (!eliminados.includes(idUsuarioActual)) {
     eliminados.push(idUsuarioActual);
   }
 
-  // Si ambos participantes lo eliminaron para sí mismos, borrar de Supabase y DB
   if (eliminados.length >= 2) {
-    await borrarArchivoDeSupabase(rutaArchivo);
-    await refMensaje.remove();
+    if (rutaArchivo) await borrarArchivoDeSupabase(rutaArchivo);
+    await remove(refMensaje); // <- Cambiado a v10
   } else {
-    await refMensaje.update({ eliminadoPara: eliminados });
+    await update(refMensaje, { eliminadoPara: eliminados }); // <- Cambiado a v10
   }
 }
 
@@ -1210,8 +1341,10 @@ document.addEventListener("click", (e) => {
   const icono = btn.querySelector("[data-lucide]");
   if (icono) {
     icono.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
+
+    // ⚡ Optimización: Pasamos ÚNICAMENTE el botón afectado en los targets
     if (window.lucide) {
-      window.lucide.createIcons();
+      window.lucide.createIcons({ targets: [btn] });
     }
   }
 });
@@ -1785,12 +1918,14 @@ if (btnGrabarLive) {
 
     fragmentosVideoCamara = [];
 
-    // Validación segura de formatos compatibles (Android, Web, iOS/Safari)
+    // 1. Detección Inteligente de MIME (Damos prioridad a MP4 para compatibilidad universal)
     let mimeElegido = '';
-    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-      mimeElegido = 'video/webm;codecs=vp8,opus';
+    if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')) {
+      mimeElegido = 'video/mp4;codecs=avc1,mp4a.40.2';
     } else if (MediaRecorder.isTypeSupported('video/mp4')) {
       mimeElegido = 'video/mp4';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      mimeElegido = 'video/webm;codecs=vp8,opus';
     } else if (MediaRecorder.isTypeSupported('video/webm')) {
       mimeElegido = 'video/webm';
     }
@@ -1809,11 +1944,12 @@ if (btnGrabarLive) {
       };
 
       mediaRecorderCamara.onstop = () => {
-        const tipoFinal = mimeElegido || 'video/webm';
+        // 2. Extraer el MIME real negociado por la instancia de MediaRecorder
+        const tipoFinal = mediaRecorderCamara.mimeType || mimeElegido || 'video/mp4';
         const blobVideo = new Blob(fragmentosVideoCamara, { type: tipoFinal });
         const urlVideo = URL.createObjectURL(blobVideo);
 
-        const ext = mimeElegido.includes('mp4') ? 'mp4' : 'webm';
+        const ext = tipoFinal.includes('mp4') ? 'mp4' : 'webm';
         archivoAdjuntoPendiente = new File([blobVideo], `video_circular_${Date.now()}.${ext}`, { type: tipoFinal });
 
         if (typeof streamCamaraLive !== "undefined" && streamCamaraLive) {
@@ -1888,7 +2024,7 @@ function recortarVideoA10Segundos(videoElem) {
       streamCanvas = canvas.mozCaptureStream(30);
     }
 
-    // 🍎 Si el navegador no soporta captura de streams de Canvas (como Safari/iOS móvil), resolvemos con el video original sin recortar para evitar romper la app
+    // 🍎 Fallback para navegadores sin soporte de captureStream
     if (!streamCanvas) {
       console.warn("⚠️ captureStream no soportado en este navegador. Devolviendo video original.");
       resolve(videoElem.src);
@@ -1907,12 +2043,14 @@ function recortarVideoA10Segundos(videoElem) {
       console.warn("⚠️ No se pudo clonar la pista de audio:", e);
     }
 
-    // Detección dinámica y segura de formatos (MP4 fallback para iOS/Safari)
+    // Detección Inteligente de MIME Type (Priorizando MP4 para mayor compatibilidad)
     let mimeElegido = '';
-    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-      mimeElegido = 'video/webm;codecs=vp8,opus';
+    if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')) {
+      mimeElegido = 'video/mp4;codecs=avc1,mp4a.40.2';
     } else if (MediaRecorder.isTypeSupported('video/mp4')) {
       mimeElegido = 'video/mp4';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      mimeElegido = 'video/webm;codecs=vp8,opus';
     } else if (MediaRecorder.isTypeSupported('video/webm')) {
       mimeElegido = 'video/webm';
     }
@@ -1934,7 +2072,8 @@ function recortarVideoA10Segundos(videoElem) {
     const chunks = [];
     recorder.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
-      const tipoFinal = mimeElegido || 'video/webm';
+      // Usar el MIME real asignado dinámicamente por la instancia de MediaRecorder
+      const tipoFinal = recorder.mimeType || mimeElegido || 'video/mp4';
       const blobCortado = new Blob(chunks, { type: tipoFinal });
       resolve(URL.createObjectURL(blobCortado));
     };
@@ -2118,12 +2257,14 @@ if (inputRealDocumento) {
 
       if (wrapper) {
         wrapper.insertAdjacentHTML("beforeend", `
-          <div class="icono-doc-preview">
-            <i data-lucide="file-text" style="width: 30px; height: 30px;"></i>
-          </div>
-        `);
+    <div class="icono-doc-preview">
+      <i data-lucide="file-text" style="width: 30px; height: 30px;"></i>
+    </div>
+  `);
+
+        // ⚡ Optimización: Se especifica 'wrapper' como target para renderizar solo el nuevo icono de documento
+        if (window.lucide) window.lucide.createIcons({ targets: [wrapper] });
       }
-      if (window.lucide) window.lucide.createIcons();
 
       if (cajaVistaPrevia) cajaVistaPrevia.classList.remove("oculto");
       if (inputChat) {
@@ -2133,6 +2274,7 @@ if (inputRealDocumento) {
 
       if (btnAccionChat) {
         btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+        // ⚡ Esta llamada ya la tenías excelente
         if (window.lucide) window.lucide.createIcons({ targets: [btnAccionChat] });
       }
     }
@@ -2266,12 +2408,71 @@ function finalizarToque(e) {
   }
 }
 
+// 📊 CONSULTAR LÍMITE DIARIO DE NOTAS DE VOZ (MÁXIMO 30)
+async function verificarLimiteDiarioNotasVoz(uid) {
+  if (!uid) return { permitido: false, conteo: 0 };
+
+  const hoy = new Date().toISOString().split('T')[0];
+  const limiteRef = ref(db, `limites_diarios/${uid}/${hoy}/notas_voz`);
+
+  try {
+    const snap = await get(limiteRef);
+    const conteoActual = snap.exists() ? snap.val() : 0;
+    return { permitido: conteoActual < 30, conteo: conteoActual };
+  } catch (err) {
+    console.error("Error consultando límite de notas de voz:", err);
+    // En caso de error de red, permitimos la acción para no bloquear al usuario
+    return { permitido: true, conteo: 0 };
+  }
+}
+
+// 📈 INCREMENTAR CONTADOR DE NOTAS DE VOZ (+1)
+async function incrementarContadorNotasVoz(uid) {
+  if (!uid) return;
+
+  const hoy = new Date().toISOString().split('T')[0];
+  const limiteRef = ref(db, `limites_diarios/${uid}/${hoy}/notas_voz`);
+
+  try {
+    const snap = await get(limiteRef);
+    const conteoActual = snap.exists() ? snap.val() : 0;
+    await set(limiteRef, conteoActual + 1);
+  } catch (err) {
+    console.error("Error incrementando contador de notas de voz:", err);
+  }
+}
+
 // ========================================================
-// 🎙️ SISTEMA DE GRABACIÓN DE VOZ (COMPATIBLE IOS/ANDROID + SUPABASE)
+// 🎙️ SISTEMA DE GRABACIÓN DE VOZ (COMPATIBLE IOS/ANDROID + SUPABASE + LÍMITES + CADUCIDAD)
 // ========================================================
 
+let temporizadorLimiteAudio = null;
+const DURACION_MAXIMA_AUDIO = 180; // 3 minutos en segundos
+
 async function iniciarGrabacionVoz(e) {
+  // 🛡️ ESCUDO ANTI-GRABACIÓN: Si hay un reenvío pendiente, cancela el micrófono y envía el reenvío
+  if (window.objetoPendienteReenviar) {
+    if (typeof enviarMensajeNuevo === "function") {
+      enviarMensajeNuevo();
+    }
+    return; // ⛔ Detiene por completo el inicio de la grabadora
+  }
+
   window.grabacionCancelada = false;
+
+  // 🛑 1. VERIFICAR LÍMITE DIARIO DE NOTAS DE VOZ ANTES DE ABRIR EL MICRÓFONO
+  const usuarioActual = auth ? auth.currentUser : null;
+  if (usuarioActual) {
+    const chequeoDiario = await verificarLimiteDiarioNotasVoz(usuarioActual.uid);
+    if (!chequeoDiario.permitido) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Has alcanzado tu límite diario de 30 notas de voz por hoy 🛑", "⚠️", "#ff4b2b");
+      } else {
+        alert("Has alcanzado tu límite diario de 30 notas de voz por hoy 🛑");
+      }
+      return;
+    }
+  }
 
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
   if (tieneIconoSend || (inputChat && inputChat.value.trim().length > 0) || (cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto"))) {
@@ -2286,35 +2487,50 @@ async function iniciarGrabacionVoz(e) {
       reproducirSonido("grabando");
     }
 
-    streamAudioLive = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // 🎯 Captura de audio optimizada: Mono + Supresión de ruido
+    streamAudioLive = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1 // 👈 Se agrega mono para máxima compresión (32kbps)
+      }
+    });
     fragmentosAudio = [];
 
-    // ⚡ Selección dinámica segura de formato (iOS Safari, Android, Web)
+    // ⚡ Selección de MIME Type priorizando compatibilidad con iOS/Safari y Android
     let mimeAudio = '';
-    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-      mimeAudio = 'audio/webm;codecs=opus';
-    } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+    if (MediaRecorder.isTypeSupported('audio/mp4')) {
       mimeAudio = 'audio/mp4';
     } else if (MediaRecorder.isTypeSupported('audio/aac')) {
       mimeAudio = 'audio/aac';
+    } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      mimeAudio = 'audio/webm;codecs=opus';
     } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
       mimeAudio = 'audio/ogg';
     } else if (MediaRecorder.isTypeSupported('audio/webm')) {
       mimeAudio = 'audio/webm';
     }
 
-    const opcionesAudio = mimeAudio ? { mimeType: mimeAudio } : {};
+    const opcionesAudio = {
+      audioBitsPerSecond: 32000 // 🎯 Compresión ultra liviana (32kbps mono)
+    };
+    if (mimeAudio) opcionesAudio.mimeType = mimeAudio;
+
     mediaRecorderAudio = new MediaRecorder(streamAudioLive, opcionesAudio);
 
     mediaRecorderAudio.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) fragmentosAudio.push(event.data);
     };
 
-    // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA DIRECTA A SUPABASE
+    // 🚀 EVENTO AL DETENER GRABACIÓN: SUBIDA A SUPABASE + GUARDADO EN BD
     mediaRecorderAudio.onstop = async () => {
-      // 1. Si fue cancelado, ignoramos el proceso y apagamos hardware
+      if (temporizadorLimiteAudio) {
+        clearTimeout(temporizadorLimiteAudio);
+        temporizadorLimiteAudio = null;
+      }
+
       if (window.grabacionCancelada) {
-        console.log("🚫 Onstop ignorado por cancelación del usuario.");
         if (streamAudioLive) {
           streamAudioLive.getTracks().forEach(track => track.stop());
           streamAudioLive = null;
@@ -2322,46 +2538,125 @@ async function iniciarGrabacionVoz(e) {
         return;
       }
 
-      // 2. Apagar micrófono físico inmediatamente al cortar
       if (streamAudioLive) {
         streamAudioLive.getTracks().forEach(track => track.stop());
         streamAudioLive = null;
       }
 
-      // 3. Procesar y subir audio a Supabase
       if (typeof segundosGrabados !== 'undefined' && segundosGrabados >= 1 && fragmentosAudio.length > 0) {
-        const tipoFinal = mimeAudio || 'audio/webm';
+        const tipoFinal = mediaRecorderAudio.mimeType || mimeAudio || 'audio/mp4';
         const blobAudio = new Blob(fragmentosAudio, { type: tipoFinal });
 
-        // Crear archivo File listo para Supabase
-        const extensionAudio = tipoFinal.includes('mp4') || tipoFinal.includes('aac') ? 'm4a' : 'webm';
+        const TAMANO_MAX_MB = 5 * 1024 * 1024;
+        if (blobAudio.size > TAMANO_MAX_MB) {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("El audio supera el peso máximo permitido (5MB).", "⚠️", "#ff4b2b");
+          }
+          return;
+        }
+
+        const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+        if (usuarioActual) {
+          await incrementarContadorNotasVoz(usuarioActual.uid);
+        }
+
+        const extensionAudio = tipoFinal.includes('mp4') || tipoFinal.includes('aac') || tipoFinal.includes('m4a') ? 'm4a' : 'webm';
         const archivoAudio = new File([blobAudio], `nota_voz_${Date.now()}.${extensionAudio}`, { type: tipoFinal });
 
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("Subiendo nota de voz a Supabase... 🎙️", "☁️", "#00f2fe");
+          mostrarAvisoPremium("Subiendo nota de voz... 🎙️", "☁️", "#00f2fe");
         }
 
-        // Subir nota de voz a Supabase Storage
+        // 1. Subir nota de voz a Supabase Storage usando tu cliente oficial
         let urlAudioSupabase = null;
         if (typeof subirArchivoSupabase === "function") {
           urlAudioSupabase = await subirArchivoSupabase(archivoAudio, "movachat-adjuntos");
         }
 
-        // Si la subida fue exitosa usa la URL fija de Supabase, si no usa la local de respaldo
         const urlFinalAudio = urlAudioSupabase || URL.createObjectURL(blobAudio);
+        const duracionTexto = contadorAudio ? contadorAudio.textContent : "0:01";
 
+        // 2. Feedback inmediato en pantalla
         if (typeof inyectarNotaDeVozBurbuja === "function") {
-          inyectarNotaDeVozBurbuja(contadorAudio ? contadorAudio.textContent : "0:01", urlFinalAudio);
+          inyectarNotaDeVozBurbuja(duracionTexto, urlFinalAudio);
+        }
+
+        // 3. REGISTRO PERSISTENTE EN FIREBASE REALTIME DATABASE (CON SOPORTE DE MODO TEMPORAL/EFÍMERO)
+        try {
+          const miUid = usuarioActual ? usuarioActual.uid : (window.miUsuarioId || null);
+          const contactoUid = window.contactoActivoUid || null;
+
+          const idChat = (miUid && contactoUid)
+            ? (typeof obtenerChatId === "function" ? obtenerChatId(miUid, contactoUid) : [miUid, contactoUid].sort().join("_"))
+            : (window.chatActivoId || window.idChatActivo || null);
+
+          if (idChat && miUid && urlAudioSupabase) {
+
+            // ⏳ 1. CONSULTAR CONFIGURACIÓN DE MENSAJES TEMPORALES DEL CHAT EN FIREBASE
+            let duracionEfimeraMs = 0;
+            try {
+              const tempSnap = await get(ref(db, `chats/${idChat}/config/temporales`));
+              if (tempSnap.exists()) {
+                const val = tempSnap.val();
+                duracionEfimeraMs = typeof val === 'number' ? val : (val === true ? 10000 : 0);
+              }
+            } catch (errTemp) {
+              console.error("Error al consultar configuración temporal para audio:", errTemp);
+            }
+
+            const ahora = Date.now();
+            const DOCE_DIAS_MS = 12 * 24 * 60 * 60 * 1000;
+
+            // ⏱️ Expiración: Si el modo temporal está activo usa duracionEfimeraMs, sino 12 días
+            const tiempoExpiracionFinal = (duracionEfimeraMs > 0) ? duracionEfimeraMs : DOCE_DIAS_MS;
+
+            const mensajesRef = ref(db, `chats/${idChat}/mensajes`);
+            const nuevoMensajeRef = push(mensajesRef);
+
+            // 🎯 2. GUARDAR CON LAS MISMAS PROPIEDADES QUE LOS MENSAJES DE TEXTO
+            await set(nuevoMensajeRef, {
+              emisor: miUid,
+              emisorUid: miUid,
+              receptor: contactoUid,
+              texto: "",
+              urlAdjunto: urlFinalAudio,
+              tipoAdjunto: "audio",
+              duracion: duracionTexto,
+              creadoEn: ahora,
+              timestamp: ahora,
+              expiraEn: ahora + tiempoExpiracionFinal,
+              caducado: false,
+              // 💣 BANDERAS CLAVE PARA EL MOTOR DE MENSAJES TEMPORALES EN PANTALLA:
+              esEfimero: duracionEfimeraMs > 0,
+              duracionEfimeraMs: duracionEfimeraMs,
+              fecha: new Date(ahora).toISOString()
+            });
+
+            console.log(`✅ Nota de voz registrada. ¿Es efímera?: ${duracionEfimeraMs > 0} (${duracionEfimeraMs}ms)`);
+          }
+        } catch (errorDB) {
+          console.error("❌ Error al registrar el mensaje de audio en la BD:", errorDB);
         }
       }
     };
 
-    mediaRecorderAudio.start();
+    mediaRecorderAudio.start(100);
     estaGrabandoAudio = true;
     if (btnAccionChat) btnAccionChat.classList.add("grabando-activo");
     if (cajaInputNormal) cajaInputNormal.classList.add("oculto");
     if (panelGrabacion) panelGrabacion.classList.remove("oculto");
     if (typeof arrancarCronometroAudio === "function") arrancarCronometroAudio();
+
+    // 🚨 CORTE AUTOMÁTICO AL LLEGAR A 3 MINUTOS (180 segundos)
+    if (temporizadorLimiteAudio) clearTimeout(temporizadorLimiteAudio);
+    temporizadorLimiteAudio = setTimeout(() => {
+      if (estaGrabandoAudio && typeof finalizarGrabacionVoz === "function") {
+        finalizarGrabacionVoz();
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Límite de tiempo alcanzado (3 min). Nota procesada.", "⏱️", "#00f2fe");
+        }
+      }
+    }, DURACION_MAXIMA_AUDIO * 1000);
 
   } catch (err) {
     console.error("Error al acceder al micrófono:", err);
@@ -2379,7 +2674,7 @@ async function iniciarGrabacionVoz(e) {
 
 function iniciarControlTactilMic(e) {
   const tieneIconoSend = btnAccionChat ? btnAccionChat.querySelector("[data-lucide='send']") : null;
-  
+
   if (candadoActivado) {
     finalizarGrabacionVoz();
     return;
@@ -2507,54 +2802,72 @@ function restaurarBotonUI() {
 function finalizarGrabacionVoz() {
   if (!estaGrabandoAudio && !grabacionActiva && !candadoActivado) return;
 
+  // 🛡️ 1. Cancelar el temporizador de 3 minutos para evitar disparos dobles
+  if (typeof temporizadorLimiteAudio !== "undefined" && temporizadorLimiteAudio) {
+    clearTimeout(temporizadorLimiteAudio);
+    temporizadorLimiteAudio = null;
+  }
+
   estaGrabandoAudio = false;
   grabacionActiva = false;
   candadoActivado = false;
 
   if (typeof frenarCronometroAudio === "function") frenarCronometroAudio();
 
-  // Limpiar interfaz visual inmediatamente
+  // 2. Limpiar interfaz visual inmediatamente
   if (panelGrabacion) panelGrabacion.classList.add("oculto");
   if (cajaInputNormal) cajaInputNormal.classList.remove("oculto");
 
-  restaurarBotonUI();
+  if (typeof restaurarBotonUI === "function") restaurarBotonUI();
 
-  // Detener MediaRecorder
+  // 3. Detener MediaRecorder (esto dispara automáticamente el evento .onstop que sube a Supabase)
   if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
     mediaRecorderAudio.stop();
   }
 
-  // Apagado forzado e inmediato del micrófono físico
-  apagarMicrofonoFisico();
+  // 4. Apagado forzado e inmediato del micrófono físico
+  if (typeof apagarMicrofonoFisico === "function") {
+    apagarMicrofonoFisico();
+  }
 }
 
 function cancelarGrabacion() {
-  if (temporizadorToque) {
+  // 🛡️ 1. Cancelar temporizador de pulsación (si existe)
+  if (typeof temporizadorToque !== "undefined" && temporizadorToque) {
     clearTimeout(temporizadorToque);
     temporizadorToque = null;
+  }
+
+  // 🛡️ 2. Cancelar el límite de 3 minutos para que no dispare avisos en segundo plano
+  if (typeof temporizadorLimiteAudio !== "undefined" && temporizadorLimiteAudio) {
+    clearTimeout(temporizadorLimiteAudio);
+    temporizadorLimiteAudio = null;
   }
 
   estaGrabandoAudio = false;
   grabacionActiva = false;
   candadoActivado = false;
-  window.grabacionCancelada = true;
+  window.grabacionCancelada = true; // 🚫 Activa el escudo para ignorar la subida en .onstop
 
   if (typeof frenarCronometroAudio === "function") frenarCronometroAudio();
 
-  restaurarBotonUI();
+  if (typeof restaurarBotonUI === "function") restaurarBotonUI();
 
   if (panelGrabacion) panelGrabacion.classList.add('oculto');
   if (cajaInputNormal) cajaInputNormal.classList.remove('oculto');
 
+  // Detener el grabador (disparará el .onstop, pero al ver grabacionCancelada = true, lo abortará)
   if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
     mediaRecorderAudio.stop();
   }
 
   // 🛡️ Apagado forzado e inmediato del micrófono físico
-  apagarMicrofonoFisico();
+  if (typeof apagarMicrofonoFisico === "function") {
+    apagarMicrofonoFisico();
+  }
 
   fragmentosAudio = [];
-  console.log("🚫 Grabación cancelada y micrófono liberado por completo.");
+  console.log("🚫 Grabación cancelada, temporizadores limpios y micrófono liberado por completo.");
 }
 
 function apagarMicrofonoFisico() {
@@ -2622,17 +2935,41 @@ function activarCandadoManosLibres() {
 window.addEventListener("mouseup", finalizarGrabacionVoz);
 window.addEventListener("touchend", finalizarGrabacionVoz);
 
-function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
+function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idChat = null, idMensaje = null) {
   const ahora = new Date();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
   const nuevaBurbujaHTML = document.createElement("div");
   nuevaBurbujaHTML.className = "mensaje-burbuja enviado";
+
+  // 🚨 1. SI EL MENSAJE YA CADUCÓ
+  if (estaCaducado || !urlAudio) {
+    if (idChat && idMensaje) {
+      // Disparar purga en segundo plano si aún no se había limpiado de Supabase
+      procesarCaducidadNotaVoz(idChat, idMensaje, { tipoAdjunto: "audio", caducado: true, urlAdjunto: urlAudio });
+    }
+
+    nuevaBurbujaHTML.innerHTML = `
+      <div class="reproductor-audio-burbuja caducado" style="display: flex; align-items: center; gap: 8px; opacity: 0.75; padding: 6px 10px;">
+        <span style="font-size: 1.1rem;">⏱️</span>
+        <span style="font-weight: 600; font-size: 0.9rem;">Mensaje Caducado</span>
+      </div>
+      <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}</span>
+    `;
+
+    if (historialMensajes) {
+      historialMensajes.appendChild(nuevaBurbujaHTML);
+      historialMensajes.scrollTop = historialMensajes.scrollHeight;
+    }
+    return; // ⛔ Cancela la creación de controles de audio nativos
+  }
+
+  // 🟢 2. SI EL MENSAJE ES VÁLIDO (REPRODUCTOR NORMAL)
   nuevaBurbujaHTML.innerHTML = `
     <div class="reproductor-audio-burbuja">
       <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
       <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-        <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
+        <div class="aguja-reproduccion-roja"></div>
         <span class="onda-barra"></span><span class="onda-barra"></span>
         <span class="onda-barra"></span><span class="onda-barra"></span>
         <span class="onda-barra"></span><span class="onda-barra"></span>
@@ -2640,6 +2977,7 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
       </div>
       <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${duracion}</span>
       <audio class="audio-elemento-nativo" src="${urlAudio}" preload="metadata"></audio>
+      <button type="button" class="btn-velocidad-audio" data-velocidad="1">1x</button>
     </div>
     <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}</span>
   `;
@@ -2683,7 +3021,6 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
         barras.forEach(b => b.style.backgroundColor = "rgba(255,255,255,0.2)");
       }
 
-      // ⚡ OPTIMIZACIÓN CPU: Redibujar solo el botón de Play/Pause
       if (window.lucide) {
         window.lucide.createIcons({
           targets: [btnPlay]
@@ -2709,7 +3046,6 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
       if (agujaRoja) agujaRoja.style.left = "0%";
       if (nodoTextoTiempo) nodoTextoTiempo.textContent = duracion;
 
-      // ⚡ OPTIMIZACIÓN CPU: Redibujar solo el botón al terminar
       if (window.lucide) {
         window.lucide.createIcons({
           targets: [btnPlay]
@@ -2729,6 +3065,11 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio) {
 
       if (audioElem.duration) {
         audioElem.currentTime = porcentaje * audioElem.duration;
+
+        const btnVelocidad = nuevaBurbujaHTML.querySelector(".btn-velocidad-audio");
+        const velocidadActual = parseFloat(btnVelocidad ? btnVelocidad.getAttribute("data-velocidad") : "1");
+        audioElem.playbackRate = velocidadActual;
+
         if (agujaRoja) agujaRoja.style.left = `${porcentaje * 100}%`;
       }
     });
@@ -2841,16 +3182,11 @@ async function purgarFotosAntiguasGaleria(uid) {
 }
 
 // ========================================================
-// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS + LÍMITE DIARIO + SUPABASE STORAGE)
+// 5. ENVÍO Y EDICIÓN DE MENSAJES (PROTEGIDO ANTI-DUPLICADOS + MODO EFÍMERO + VERIFICACIÓN DE BLOQUEOS + LÍMITE DIARIO + REENVÍO + SUPABASE STORAGE)
 // ========================================================
 async function enviarMensajeNuevo() {
   // 🛡️ CANDADO: Si ya se está procesando un envío, bloquea cualquier intento secundario
   if (estaEnviandoMensaje) return;
-
-  const texto = inputChat ? inputChat.value.trim() : "";
-  const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
-
-  if (texto === "" && !tieneAdjunto) return;
 
   const usuarioActual = auth.currentUser;
   const miUid = usuarioActual ? usuarioActual.uid : null;
@@ -2863,14 +3199,30 @@ async function enviarMensajeNuevo() {
     return;
   }
 
+  // ↪️ CAPTURA DE CONTENIDO PENDIENTE POR REENVIAR (TEXTO O ADJUNTO/AUDIO)
+  let paqueteReenvio = window.objetoPendienteReenviar || window.mensajeReenviadoActivo || null;
+
+  let textoInput = inputChat ? inputChat.value.trim() : "";
+  let tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
+
+  // Si no hay texto digitado, ni adjunto visual, ni paquete de reenvío, cancela el proceso
+  if (textoInput === "" && !tieneAdjunto && !paqueteReenvio) return;
+
   // Activar candado
   estaEnviandoMensaje = true;
 
+  const chatId = typeof obtenerChatId === "function"
+    ? obtenerChatId(miUid, contactoUid)
+    : [miUid, contactoUid].sort().join("_");
+
+  // 🧹 PURGA AUTOMÁTICA DE MENSAJES TEMPORALES Y ADJUNTOS EN SUPABASE ANTES DE ENVIAR
+  if (typeof procesarLimpiezaMensajesTemporales === "function") {
+    procesarLimpiezaMensajesTemporales(chatId);
+  }
+
   // 🛡️ 1. VERIFICACIÓN DE BLOQUEO EN FIREBASE (AMBAS DIRECCIONES)
   try {
-    // ¿El receptor te tiene bloqueado a ti?
     const snapBloqueoReceptor = await get(ref(db, `bloqueos/${contactoUid}/${miUid}`));
-    // ¿Tú tienes bloqueado al receptor?
     const snapBloqueoPropio = await get(ref(db, `bloqueos/${miUid}/${contactoUid}`));
 
     const meTieneBloqueado = snapBloqueoReceptor.exists() && snapBloqueoReceptor.val() === true;
@@ -2885,7 +3237,6 @@ async function enviarMensajeNuevo() {
         mostrarAvisoPremium(mensajeAviso, "🚫", "#ff4b2b");
       }
 
-      // Desactivar candado y salir
       estaEnviandoMensaje = false;
       return;
     }
@@ -2893,11 +3244,8 @@ async function enviarMensajeNuevo() {
     console.error("Error al consultar bloqueos antes de enviar:", errBloqueo);
   }
 
-  const chatId = typeof obtenerChatId === "function"
-    ? obtenerChatId(miUid, contactoUid)
-    : [miUid, contactoUid].sort().join("_");
-
   const ahora = new Date();
+  const timestampAhora = Date.now();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
   // 🔴 CASO: EDICIÓN DE MENSAJE EN FIREBASE
@@ -2905,7 +3253,7 @@ async function enviarMensajeNuevo() {
     const mensajeRef = ref(db, `chats/${chatId}/mensajes/${window.mensajeEnEdicionId}`);
     try {
       await update(mensajeRef, {
-        texto: texto,
+        texto: textoInput,
         editado: true
       });
 
@@ -2919,18 +3267,16 @@ async function enviarMensajeNuevo() {
       }
     }
 
-    // Resetear variables de control de edición
     window.burbujaEnEdicion = null;
     window.mensajeEnEdicionId = null;
     if (inputChat) inputChat.value = "";
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
 
-    // Liberar candado
     estaEnviandoMensaje = false;
     return;
   }
 
-  // ⏳ VERIFICAR DURACIÓN DE MODO TEMPORAL EN ESTE CHAT
+  // ⏳ VERIFICAR DURACIÓN DE MODO TEMPORAL / EFÍMERO EN ESTE CHAT
   let duracionEfimeraMs = 0;
   try {
     const tempSnap = await get(ref(db, `chats/${chatId}/config/temporales`));
@@ -2942,40 +3288,51 @@ async function enviarMensajeNuevo() {
     console.error("Error verificando temporales:", err);
   }
 
-  // 🟢 CASO: NUEVO MENSAJE
+  // 🎯 CALCULAR CADUCIDAD FINAL (Prioridad: Mensajes Temporales > 12 días Estándar)
+  const DOCE_DIAS_MS = 12 * 24 * 60 * 60 * 1000;
+  const expiracionMs = (duracionEfimeraMs > 0) ? duracionEfimeraMs : DOCE_DIAS_MS;
+
+  // 🟢 CASO: NUEVO MENSAJE (INCLUYE SOPORTE DE REENVÍO)
   let objetoMensaje = {
     emisor: miUid,
+    emisorUid: miUid,
     receptor: contactoUid,
-    texto: texto,
+    texto: paqueteReenvio ? (paqueteReenvio.texto || "") : textoInput,
     hora: horaFormateada,
-    timestamp: Date.now(),
-    expiraEn: Date.now() + (12 * 24 * 60 * 60 * 1000), // 👈 Campo clave: 12 días en milisegundos
+    timestamp: timestampAhora,
+    creadoEn: timestampAhora,
+    expiraEn: timestampAhora + expiracionMs, // ⏱️ Asigna fecha de caducidad
     esEfimero: duracionEfimeraMs > 0,
     duracionEfimeraMs: duracionEfimeraMs,
+
     // ↪️ METADATOS DE REENVÍO
-    esReenviado: window.mensajeReenviadoActivo ? true : false,
-    autorOriginal: window.mensajeReenviadoActivo ? window.mensajeReenviadoActivo.autorOriginal : null,
-    tipoAdjunto: null,
-    urlAdjunto: null,
+    esReenviado: paqueteReenvio ? true : false,
+    autorOriginal: paqueteReenvio ? paqueteReenvio.autorOriginal : null,
+
+    // Adjuntos y audios
+    tipoAdjunto: paqueteReenvio ? paqueteReenvio.tipoAdjunto : null,
+    urlAdjunto: paqueteReenvio ? paqueteReenvio.urlAdjunto : null,
+    duracion: paqueteReenvio ? paqueteReenvio.duracion : null,
     nombreDoc: null
   };
 
-  // 🧹 Limpiar la barra visual de reenvío y la variable tras armar el objeto
+  // 🧹 Limpiar la barra/memoria visual de reenvío
+  window.objetoPendienteReenviar = null;
   window.mensajeReenviadoActivo = null;
   const vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
   if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
 
-  // 🔴 Variables globales del ámbito de envío para capturar el archivo sin bloquear el chat
+  // 🔴 Variables globales del ámbito de envío para subida diferida
   let archivoParaSubir = null;
   let tipoAdjuntoParaSubir = null;
 
-  // 📦 SUBIDA DE ARCHIVOS ADJUNTOS EN SEGUNDO PLANO (UI OPTIMISTA)
-  if (tieneAdjunto) {
+  // 📦 SUBIDA DE ARCHIVOS ADJUNTOS DESDE LA CAJA DE ENTRADA
+  if (tieneAdjunto && !paqueteReenvio) {
     objetoMensaje.tipoAdjunto = typeof tipoAdjuntoActivo !== 'undefined' ? tipoAdjuntoActivo : null;
     tipoAdjuntoParaSubir = objetoMensaje.tipoAdjunto;
 
     try {
-      // 📸 1. FOTO (Soporta Cámara mediante 'archivoAdjuntoPendiente' y Galería mediante 'inputRealGaleria')
+      // 📸 1. FOTO
       const archivoFoto = archivoAdjuntoPendiente || (inputRealGaleria && inputRealGaleria.files ? inputRealGaleria.files[0] : null);
 
       if (objetoMensaje.tipoAdjunto === 'foto' && archivoFoto) {
@@ -2992,12 +3349,12 @@ async function enviarMensajeNuevo() {
           maxAncho: 1440,
           maxAlto: 1440,
           calidad: 0.82,
-          esPerfil: false // 👈 DEBE SER 'false' PARA QUE NO HAGA RECORTE CUADRADO 1:1
+          esPerfil: false
         });
 
-        objetoMensaje.urlAdjunto = "subiendo"; // Estado temporal visual
+        objetoMensaje.urlAdjunto = "subiendo";
 
-        // 📄 2. DOCUMENTO (MÁX 15 MB Y 5 DIARIOS)
+        // 📄 2. DOCUMENTO
       } else if (objetoMensaje.tipoAdjunto === 'documento' && inputRealDocumento && inputRealDocumento.files[0]) {
         const chequeoDocs = await verificarLimiteDiarioDocumentos(miUid);
         if (!chequeoDocs.permitido) {
@@ -3010,9 +3367,9 @@ async function enviarMensajeNuevo() {
 
         archivoParaSubir = inputRealDocumento.files[0];
         objetoMensaje.nombreDoc = typeof nombreDocumentoSimulado !== 'undefined' ? nombreDocumentoSimulado : archivoParaSubir.name;
-        objetoMensaje.pesoDoc = pesoDocumentoFormateado;
-        objetoMensaje.extDoc = extensionDocumentoFormateada;
-        objetoMensaje.urlAdjunto = "subiendo"; // Estado temporal visual
+        objetoMensaje.pesoDoc = typeof pesoDocumentoFormateado !== 'undefined' ? pesoDocumentoFormateado : null;
+        objetoMensaje.extDoc = typeof extensionDocumentoFormateada !== 'undefined' ? extensionDocumentoFormateada : null;
+        objetoMensaje.urlAdjunto = "subiendo";
 
         // 🎥 3. VIDEO CIRCULAR
       } else if (objetoMensaje.tipoAdjunto === 'video' && imgMiniaturaAdjunto && imgMiniaturaAdjunto.src) {
@@ -3021,55 +3378,56 @@ async function enviarMensajeNuevo() {
           const blobVideo = await respuestaBlob.blob();
           archivoParaSubir = new File([blobVideo], `video_${Date.now()}.mp4`, { type: blobVideo.type || 'video/mp4' });
         }
-        objetoMensaje.urlAdjunto = "subiendo"; // Estado temporal visual
+        objetoMensaje.urlAdjunto = "subiendo";
       }
     } catch (errSubida) {
       console.error("❌ Error al preparar adjunto para subida:", errSubida);
     }
 
-    // 🧹 Limpieza inmediata de la vista previa en pantalla y variables temporales
+    // Limpieza de vista previa de adjuntos
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
     if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
     if (inputRealGaleria) inputRealGaleria.value = "";
     if (inputRealDocumento) inputRealDocumento.value = "";
-    archivoAdjuntoPendiente = null; // Reset del archivo capturado por la cámara
+    archivoAdjuntoPendiente = null;
 
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
     if (iconoPrevio) iconoPrevio.remove();
     if (typeof tipoAdjuntoActivo !== 'undefined') tipoAdjuntoActivo = null;
     if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
-  } // 👈 CIERRA 'if (tieneAdjunto)'
+  }
 
-  // 💬 LIMPIEZA DE ENTRADA Y ENVÍO A FIREBASE (Aplica para texto normal Y con adjuntos)
+  // 💬 LIMPIEZA DE ENTRADA EN PANTALLA (Restaura opacidad y estilo normal)
   if (inputChat) {
     inputChat.value = "";
-    inputChat.readOnly = false; // 🔓 DESBLOQUEAR CAJA PARA MENSAJES FUTUROS
+    inputChat.style.opacity = "1";
+    inputChat.style.fontStyle = "normal";
+    inputChat.readOnly = false;
   }
 
   if (miUid && contactoUid) {
     set(ref(db, `escribiendo/${chatId}/${miUid}`), false);
   }
 
-  // 🚀 SUBIR A FIREBASE Y DISPARAR SUBIDA CON PROGRESO EN TIEMPO REAL
+  // 🚀 REGISTRO EN FIREBASE REALTIME DATABASE
   try {
     const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
     const nuevoMensajeRef = push(listaMensajesRef);
     const mensajeKey = nuevoMensajeRef.key;
 
-    // 1. Guardar mensaje provisional de inmediato (Aparece en la pantalla en 0s)
+    // 1. Guardar mensaje en la BD
     await set(nuevoMensajeRef, objetoMensaje);
 
-    // 🔊 Sonido e icono de enviado
-    reproducirSonidoEnviado();
+    // Sonido e icono
+    if (typeof reproducirSonidoEnviado === "function") reproducirSonidoEnviado();
     if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
 
-    // 2. Subida en segundo plano con actualización de porcentaje
+    // 2. Subida en segundo plano si hay un archivo físico adjunto nuevo
     if (archivoParaSubir) {
       subirArchivoSupabaseConProgreso(
         archivoParaSubir,
         "movachat-adjuntos",
         async (porcentaje, subidoMB, totalMB) => {
-          // 🔄 Actualizar el porcentaje y texto en la base de datos en tiempo real
           await update(ref(db, `chats/${chatId}/mensajes/${mensajeKey}`), {
             progresoSubida: porcentaje,
             textoSubida: `${subidoMB} MB / ${totalMB} MB`
@@ -3077,21 +3435,18 @@ async function enviarMensajeNuevo() {
         }
       ).then(async (urlPublica) => {
         if (urlPublica) {
-          // 🟢 Subida completada: Asignar URL pública final y limpiar variables de progreso
           await update(ref(db, `chats/${chatId}/mensajes/${mensajeKey}`), {
             urlAdjunto: urlPublica,
             progresoSubida: null,
             textoSubida: null
           });
 
-          // Incrementar contadores correspondientes
           if (tipoAdjuntoParaSubir === 'documento') {
             await incrementarContadorDocumentos(miUid);
           } else if (tipoAdjuntoParaSubir === 'foto') {
             await incrementarContadorFotos(miUid);
           }
         } else {
-          // 🔴 Si la subida falló sin arrojar excepción
           await update(ref(db, `chats/${chatId}/mensajes/${mensajeKey}`), {
             urlAdjunto: "error"
           });
@@ -3099,7 +3454,6 @@ async function enviarMensajeNuevo() {
       }).catch(async (err) => {
         console.error("❌ Error en subida con progreso:", err);
 
-        // 🔄 Guardar datos en memoria para reintentar la subida
         window.ultimoArchivoFallido = {
           archivo: archivoParaSubir,
           chatId: chatId,
@@ -3130,12 +3484,12 @@ async function enviarMensajeNuevo() {
 }
 
 // ========================================================
-// 🧹 LIMPIEZA DE ADJUNTOS PENDIENTES CON LIBERACIÓN DE MEMORIA
+// 🧹 LIMPIEZA DE ADJUNTOS PENDIENTES CON LIBERACIÓN DE MEMORIA RAM
 // ========================================================
 function limpiarAdjuntoPendiente() {
   archivoAdjuntoPendiente = null;
 
-  // 1. Liberar memoria RAM del Blob generado para la vista previa
+  // 1. 🚀 Liberar memoria RAM de vista previa de imágenes
   if (typeof imgMiniaturaAdjunto !== 'undefined' && imgMiniaturaAdjunto && imgMiniaturaAdjunto.src) {
     if (imgMiniaturaAdjunto.src.startsWith("blob:")) {
       URL.revokeObjectURL(imgMiniaturaAdjunto.src);
@@ -3144,15 +3498,25 @@ function limpiarAdjuntoPendiente() {
     imgMiniaturaAdjunto.style.display = 'none';
   }
 
-  // 2. Limpiar inputs de archivos
+  // 2. 🚀 Liberar memoria RAM de previsualizaciones de Audio o Video
+  const reproductoresPrevios = document.querySelectorAll('.wrapper-miniatura video, .wrapper-miniatura audio');
+  reproductoresPrevios.forEach((elem) => {
+    if (elem.src && elem.src.startsWith("blob:")) {
+      URL.revokeObjectURL(elem.src);
+      elem.src = '';
+    }
+    elem.remove();
+  });
+
+  // 3. Limpiar inputs de archivos
   if (typeof inputRealGaleria !== 'undefined' && inputRealGaleria) inputRealGaleria.value = '';
   if (typeof inputRealDocumento !== 'undefined' && inputRealDocumento) inputRealDocumento.value = '';
 
-  // 3. Ocultar contenedor y restablecer placeholder
+  // 4. Ocultar contenedor y restablecer placeholder
   if (typeof cajaVistaPrevia !== 'undefined' && cajaVistaPrevia) cajaVistaPrevia.classList.add('oculto');
   if (typeof inputChat !== 'undefined' && inputChat) inputChat.placeholder = 'Escribe un mensaje privado...';
 
-  // 4. Remover elementos de preview secundarios
+  // 5. Remover elementos de preview secundarios e íconos de documentos
   const iconoPrevio = document.querySelector('.wrapper-miniatura .icono-doc-preview');
   if (iconoPrevio) iconoPrevio.remove();
 }
@@ -3432,32 +3796,100 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
       }
     }
 
-    // ↪️ OPCIÓN 3: REENVIAR MENSAJE (Captura el nombre exacto del autor)
+    // ↪️ OPCIÓN 3: REENVIAR MENSAJE (SOPORTE MULTI-VARIABLE + DISPARO DE EVENTO VISUAL)
     else if (accion === "reenviar") {
-      if (textoMensaje) {
-        const esMio = nodoMensaje ? nodoMensaje.classList.contains("enviado") : false;
+      try {
+        const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
+        const contactoUid = window.contactoActivoUid;
+        const idChat = (miUid && contactoUid)
+          ? (typeof obtenerChatId === "function" ? obtenerChatId(miUid, contactoUid) : [miUid, contactoUid].sort().join("_"))
+          : (window.chatActivoId || null);
 
-        // 1. Si el mensaje YA venía reenviado, conservamos el autor original
-        const tagReenviadoPrevio = nodoMensaje ? nodoMensaje.querySelector(".mensaje-etiqueta-reenviado b") : null;
-        let autorOriginal = tagReenviadoPrevio ? tagReenviadoPrevio.textContent.trim() : null;
+        let idMensaje = msgId
+          || window.mensajeSeleccionadoId
+          || (nodoMensaje ? (nodoMensaje.getAttribute("data-msg-id") || nodoMensaje.getAttribute("data-id")) : null);
 
-        // 2. Si es la primera vez que se reenvía, obtenemos el nombre actual
+        if (!idMensaje && nodoMensaje) {
+          const contenedorPadre = nodoMensaje.closest("[data-msg-id]") || nodoMensaje.closest("[data-id]");
+          if (contenedorPadre) {
+            idMensaje = contenedorPadre.getAttribute("data-msg-id") || contenedorPadre.getAttribute("data-id");
+          }
+        }
+
+        if (!idChat || !idMensaje) {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("No se pudo identificar el mensaje a reenviar.", "⚠️", "#ff4b2b");
+          }
+          return;
+        }
+
+        const mensajeRef = ref(db, `chats/${idChat}/mensajes/${idMensaje}`);
+        const snapshot = await get(mensajeRef);
+
+        if (!snapshot.exists()) {
+          if (typeof mostrarAvisoPremium === "function") {
+            mostrarAvisoPremium("No se encontró el mensaje en la base de datos.", "⚠️", "#ff4b2b");
+          }
+          return;
+        }
+
+        const msg = snapshot.val();
+        const tieneTexto = msg.texto && msg.texto.trim().length > 0;
+        const tieneAdjunto = msg.urlAdjunto || msg.tipoAdjunto === "audio";
+
+        if (!tieneTexto && !tieneAdjunto) return;
+
+        const esMioReal = (msg.emisor || msg.emisorUid) === miUid;
+        let autorOriginal = msg.autorOriginal;
+
         if (!autorOriginal) {
-          if (esMio) {
-            autorOriginal = "Tú";
+          if (esMioReal) {
+            // 👤 Captura tu nombre de usuario real para que al receptor le aparezca tu nombre
+            autorOriginal = (auth.currentUser && auth.currentUser.displayName)
+              || window.miNombreUsuario
+              || (window.miPerfil && window.miPerfil.nombre)
+              || "Tú";
           } else {
             const elemNombreContacto = document.querySelector(".amigo-nombre-chat");
             autorOriginal = elemNombreContacto ? elemNombreContacto.textContent.trim() : "Contacto";
           }
         }
 
-        // 3. Guardar el paquete en memoria global
-        window.objetoPendienteReenviar = {
-          texto: textoMensaje,
+        // 📦 1. Armar el paquete de datos del reenvío
+        const paqueteReenvio = {
+          texto: msg.texto || "",
+          urlAdjunto: msg.urlAdjunto || null,
+          tipoAdjunto: msg.tipoAdjunto || (msg.urlAdjunto ? "audio" : null),
+          duracion: msg.duracion || null,
           autorOriginal: autorOriginal
         };
 
-        // 4. Volver a la lista de chats
+        // 🛡️ Asignar en AMBAS variables globales por compatibilidad
+        window.objetoPendienteReenviar = paqueteReenvio;
+        window.mensajeReenviadoActivo = paqueteReenvio;
+
+        // ✍️ 2. INYECTAR TEXTO COMODÍN Y DISPARAR EVENTO 'INPUT'
+        const inputChat = document.getElementById("input-chat-privado");
+        if (inputChat) {
+          if (msg.tipoAdjunto === "audio" || msg.urlAdjunto) {
+            inputChat.value = "🎙️ Nota de voz";
+          } else {
+            inputChat.value = msg.texto || "";
+          }
+
+          inputChat.style.opacity = "0.6";
+          inputChat.style.fontStyle = "italic";
+
+          // ⚡ Disparar evento input para activar los listeners del DOM
+          inputChat.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+
+        // 🔄 3. Forzar cambio de icono a Avioncito
+        if (typeof actualizarIconoBotonAccion === "function") {
+          actualizarIconoBotonAccion();
+        }
+
+        // 📱 4. Volver a la lista de chats
         const pantallaChat = document.getElementById("pantalla-chat-privado") || document.querySelector(".pantalla-chat-privado");
         const btnVolver = document.querySelector(".btn-volver") || document.getElementById("btn-cerrar-chat");
 
@@ -3471,13 +3903,13 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
           }
         }
 
+        const tipoEtiqueta = tieneAdjunto ? "Nota de voz" : "Mensaje";
         if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium(`Mensaje de ${autorOriginal} listo. Selecciona el chat ↪️`, "✨", "#00f2fe");
+          mostrarAvisoPremium(`${tipoEtiqueta} de ${autorOriginal} lista. Selecciona el chat ↪️`, "✨", "#00f2fe");
         }
-      } else {
-        if (typeof mostrarAvisoPremium === "function") {
-          mostrarAvisoPremium("No hay texto para reenviar.", "⚠️", "#ff4b2b");
-        }
+
+      } catch (err) {
+        console.error("❌ Error al reenviar:", err);
       }
     }
 
@@ -3557,18 +3989,21 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
                 if (typeof mostrarAvisoPremium === "function") {
                   mostrarAvisoPremium("Pasaron más de 15 minutos. Ya no puedes eliminarlo para todos.", "⏱️", "#ff4b2b");
                 }
-              } else {
-                // 🗑️ Si el mensaje tenía un adjunto en Supabase, borrar el archivo físico
-                if (datosMensaje.urlAdjunto && datosMensaje.urlAdjunto.includes("supabase.co")) {
-                  await eliminarArchivoSupabase(datosMensaje.urlAdjunto, "movachat-adjuntos");
-                }
-
-                await set(mensajeRef, null);
-                if (typeof mostrarAvisoPremium === "function") {
-                  mostrarAvisoPremium("Mensaje e imagen eliminados de la nube.", "🗑️", "#ff4b2b");
-                }
-                desaparecerBurbuja();
+                return; // 🛑 Frenar proceso si excedió el tiempo límite
               }
+
+              // 🗑️ Destrucción física del adjunto (audio/imagen) en Supabase Storage
+              if (datosMensaje.urlAdjunto && datosMensaje.urlAdjunto.includes("supabase.co")) {
+                await borrarArchivoDeSupabase(datosMensaje.urlAdjunto);
+              }
+
+              // Eliminar el registro en Realtime Database
+              await set(mensajeRef, null);
+
+              if (typeof mostrarAvisoPremium === "function") {
+                mostrarAvisoPremium("Mensaje e imagen eliminados de la nube.", "🗑️", "#ff4b2b");
+              }
+              desaparecerBurbuja();
             }
           });
         } else if (accion === "eliminar-mi") {
@@ -3586,15 +4021,16 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
                 [`ocultoPara/${miUid}`]: true
               });
 
-              // Verificar si la otra persona YA lo había ocultado para sí misma
+              // Verificar si la otra persona YA lo había ocultado/eliminado para sí misma
               const yaLoOcultoOtro = (datos.ocultoPara && datos.ocultoPara[otroUid]) ||
                 (datos.eliminadoPara && datos.eliminadoPara[otroUid]);
 
-              // Si ambos lo ocultaron, realizar la purga física definitiva de la nube
+              // Si ambos lo ocultaron, realizar la purga física definitiva de Supabase Storage
               if (yaLoOcultoOtro) {
                 if (datos.urlAdjunto && datos.urlAdjunto.includes("supabase.co")) {
-                  await eliminarArchivoSupabase(datos.urlAdjunto, "movachat-adjuntos");
+                  await borrarArchivoDeSupabase(datos.urlAdjunto);
                 }
+                // Purga final del nodo en Realtime Database
                 await set(mensajeRef, null);
               }
 
@@ -3616,23 +4052,30 @@ document.querySelectorAll(".opcion-menu-ctx").forEach(boton => {
 });
 
 function actualizarIconoBotonAccion() {
+  const btnAccionChat = document.getElementById("btn-accion-chat") || document.querySelector(".btn-enviar-mensaje");
+  const inputChat = document.getElementById("input-chat-privado");
+
   if (!btnAccionChat) return;
 
-  const tieneTexto = inputChat ? inputChat.value.trim().length > 0 : false;
-  const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
+  const tieneTexto = inputChat && inputChat.value.trim().length > 0;
 
-  if (!tieneTexto && window.burbujaEnEdicion) {
-    window.burbujaEnEdicion = null;
-    window.mensajeEnEdicionId = null; // Limpiamos también el ID de edición en Firebase
-  }
+  // 🎯 DETECCIÓN TOTAL DE REENVÍO: Busca en variables JS O en la barra visible del HTML
+  const vistaPreviaDOM = document.getElementById("vista-previa-reenvio") || document.querySelector(".barra-reenvio") || document.querySelector("[class*='reenvi']");
+  const tieneReenvioPendiente = !!(window.objetoPendienteReenviar || window.mensajeReenviadoActivo || (vistaPreviaDOM && vistaPreviaDOM.offsetHeight > 0));
 
-  if (tieneTexto || tieneAdjunto) {
-    btnAccionChat.innerHTML = `<i data-lucide="send"></i>`;
+  const tieneVistaPreviaAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
+
+  // 🚀 Si hay Texto, Adjunto O Reenvío Pendiente (en JS o HTML) -> Mostrar Avión / Send
+  if (tieneTexto || tieneReenvioPendiente || tieneVistaPreviaAdjunto) {
+    btnAccionChat.setAttribute("data-modo", "enviar");
+    btnAccionChat.innerHTML = `<i data-lucide="send" style="width:20px; height:20px; margin-left: 2px;"></i>`;
   } else {
-    btnAccionChat.innerHTML = `<i data-lucide="mic"></i>`;
+    // 🎙️ Solo si NO hay absolutamente nada -> Mostrar Micrófono
+    btnAccionChat.setAttribute("data-modo", "grabar");
+    btnAccionChat.innerHTML = `<i data-lucide="mic" style="width:20px; height:20px;"></i>`;
   }
 
-  // ⚡ OPTIMIZACIÓN CPU: Redibujar ÚNICAMENTE el botón de acción
+  // Redibujar icono con Lucide
   if (window.lucide) {
     window.lucide.createIcons({
       targets: [btnAccionChat]
@@ -3850,8 +4293,20 @@ if (btnPerfilMenu) {
       if (typeof window.cambiarAura === "function") {
         window.cambiarAura(valorAttrHTML);
       }
+
+      // ⚡ Optimización: Se acota al contenedor del perfil o pantalla de ajustes activa
+      const contenedorPerfil = document.getElementById("pantalla-perfil") ||
+        document.getElementById("modal-perfil") ||
+        document.querySelector(".contenedor-capsula-aura");
+
       if (window.lucide) {
-        window.lucide.createIcons();
+        if (contenedorPerfil) {
+          window.lucide.createIcons({ targets: [contenedorPerfil] });
+        } else {
+          // Fallback si no encuentra el contenedor específico
+          const btnAura = document.querySelector(".btn-capsula-aura");
+          if (btnAura) window.lucide.createIcons({ targets: [btnAura] });
+        }
       }
     }, 50);
   });
@@ -4860,58 +5315,80 @@ botonesLed.forEach(boton => {
 // B) Guardar Cambios UNIFICADO (Diferencia Perfil de Historias)
 if (btnGuardarEstado && modalEstado) {
   btnGuardarEstado.onclick = async () => {
-    const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
-    const fraseIngresada = inputNuevoEstado ? inputNuevoEstado.value.trim() : "";
+    // 🛡️ 1. Prevenir clics dobles / fantasma mientras se procesa la petición
+    if (btnGuardarEstado.disabled) return;
+    btnGuardarEstado.disabled = true;
 
-    if (modoModalEstado === "historia") {
-      // --- GUARDAR COMENTARIO DE HISTORIA ("Mi Estado") ---
-      fraseEstadoGuardada = fraseIngresada;
+    try {
+      const usuarioActual = typeof auth !== "undefined" ? auth.currentUser : null;
+      const fraseIngresada = inputNuevoEstado ? inputNuevoEstado.value.trim() : "";
 
-      if (usuarioActual) {
-        await update(ref(db, `usuarios/${usuarioActual.uid}`), {
-          estadoHistoriaTexto: fraseEstadoGuardada
-        });
+      if (modoModalEstado === "historia") {
+        // --- GUARDAR COMENTARIO DE HISTORIA ("Mi Estado") ---
+        if (typeof fraseEstadoGuardada !== "undefined") {
+          fraseEstadoGuardada = fraseIngresada;
+        }
+
+        if (usuarioActual) {
+          await update(ref(db, `usuarios/${usuarioActual.uid}`), {
+            estadoHistoriaTexto: fraseIngresada
+          });
+        }
+
+        if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
+        if (textoSubtituloMiEstado) {
+          textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
+          textoSubtituloMiEstado.classList.add("texto-cyan");
+        }
+        if (tiempoMiEstado) tiempoMiEstado.textContent = "Hace un momento";
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("¡Tu historia ya está publicada en la nube! 🚀", "🛸", "#00f2fe");
+        }
+
+      } else {
+        // --- GUARDAR PERFIL GENERAL (Frase + LED) ---
+        const nombreSel = typeof nombreEstadoSeleccionado !== "undefined" ? nombreEstadoSeleccionado : "En línea";
+        const colorSel = typeof colorLedSeleccionado !== "undefined" ? colorLedSeleccionado : "#00f2fe";
+        const tipoSel = typeof tipoEstadoSeleccionado !== "undefined" ? tipoEstadoSeleccionado : "online";
+
+        const textoFinal = fraseIngresada !== "" ? fraseIngresada : `${nombreSel}. Toca para añadir estado...`;
+
+        if (textoEstadoPerfil) textoEstadoPerfil.textContent = textoFinal;
+        if (ledPerfil) {
+          ledPerfil.style.backgroundColor = colorSel;
+          ledPerfil.style.boxShadow = `0 0 10px ${colorSel}`;
+        }
+
+        if (usuarioActual) {
+          await update(ref(db, `usuarios/${usuarioActual.uid}`), {
+            estadoTexto: textoFinal,
+            estado: textoFinal,
+            estadoConexion: tipoSel,
+            estadoPresencia: tipoSel
+          });
+        }
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium(`Perfil actualizado: ${nombreSel} ✨`, "👤", "#00f2fe");
+        }
       }
 
-      if (avatarMiEstadoClick) avatarMiEstadoClick.classList.add("con-estado-activo");
-      if (textoSubtituloMiEstado) {
-        textoSubtituloMiEstado.textContent = "👁️ Toca para ver tu estado activo";
-        textoSubtituloMiEstado.classList.add("texto-cyan");
-      }
-      if (tiempoMiEstado) tiempoMiEstado.textContent = "Hace un momento";
+      // Ocultar modal solo si todo se guardó correctamente
+      modalEstado.classList.add("oculto");
 
+      if (typeof actualizarDobleLedCabecera === "function") {
+        actualizarDobleLedCabecera("perfil");
+      }
+
+    } catch (error) {
+      console.error("Error al actualizar el estado:", error);
       if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("¡Tu historia ya está publicada en la nube! 🚀", "🛸", "#00f2fe");
+        mostrarAvisoPremium("Error de conexión al guardar el estado ⚠️", "❌", "#ff4b2b");
       }
-
-    } else {
-      // --- GUARDAR PERFIL GENERAL (Frase + LED) ---
-      const textoFinal = fraseIngresada !== "" ? fraseIngresada : `${nombreEstadoSeleccionado}. Toca para añadir estado...`;
-
-      if (textoEstadoPerfil) textoEstadoPerfil.textContent = textoFinal;
-      if (ledPerfil) {
-        ledPerfil.style.backgroundColor = colorLedSeleccionado;
-        ledPerfil.style.boxShadow = `0 0 10px ${colorLedSeleccionado}`;
-      }
-
-      if (usuarioActual) {
-        await update(ref(db, `usuarios/${usuarioActual.uid}`), {
-          estadoTexto: textoFinal,
-          estado: textoFinal,
-          estadoConexion: tipoEstadoSeleccionado,
-          estadoPresencia: tipoEstadoSeleccionado
-        });
-      }
-
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Perfil actualizado: ${nombreEstadoSeleccionado} ✨`, "👤", "#00f2fe");
-      }
-    }
-
-    modalEstado.classList.add("oculto");
-
-    if (typeof actualizarDobleLedCabecera === "function") {
-      actualizarDobleLedCabecera("perfil");
+    } finally {
+      // 🔓 Reorganizar el botón para futuros usos
+      btnGuardarEstado.disabled = false;
     }
   };
 }
@@ -5096,7 +5573,18 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         }
 
         const nombreContacto = datosUsuario ? (datosUsuario.nombre || "MovaChat") : "MovaChat";
-        const textoContacto = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Archivo adjunto" : "Nuevo mensaje");
+
+        // 🎯 DETECCIÓN EXACTA DEL CONTENIDO PARA EL TEXTO DE LA NOTIFICACIÓN
+        let textoContacto = (ultimoMsg.texto || "").trim();
+        if (!textoContacto) {
+          if (ultimoMsg.tipoAdjunto === "audio") textoContacto = "🎙️ Nota de voz";
+          else if (ultimoMsg.tipoAdjunto === "foto" || ultimoMsg.tipoAdjunto === "imagen") textoContacto = "📷 Foto";
+          else if (ultimoMsg.tipoAdjunto === "video") textoContacto = "🎥 Video";
+          else if (ultimoMsg.tipoAdjunto === "documento") textoContacto = "📄 Documento";
+          else if (ultimoMsg.tipoAdjunto) textoContacto = "📎 Archivo adjunto";
+          else textoContacto = "Nuevo mensaje";
+        }
+
         const fotoContacto = datosUsuario ? datosUsuario.fotoUrl : "";
 
         if (typeof window.notificarNuevoMensaje === "function") {
@@ -5222,7 +5710,29 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
 
     if (ultimoMsg) {
-      if (elemTexto) elemTexto.textContent = ultimoMsg.texto || (ultimoMsg.tipoAdjunto ? "📷 Adjunto" : "");
+      if (elemTexto) {
+        const textoMsg = (ultimoMsg.texto || "").trim();
+        const tipoAdj = ultimoMsg.tipoAdjunto || (ultimoMsg.urlAdjunto ? (ultimoMsg.urlAdjunto.includes("audio") ? "audio" : "adjunto") : null);
+
+        if (tipoAdj === "audio") {
+          elemTexto.innerHTML = `<span class="preview-adjunto"><i data-lucide="mic" style="width:14px; height:14px; margin-right:3px; vertical-align:middle;"></i> ${textoMsg || "Nota de voz"}</span>`;
+        } else if (tipoAdj === "foto" || tipoAdj === "imagen") {
+          elemTexto.innerHTML = `<span class="preview-adjunto"><i data-lucide="camera" style="width:14px; height:14px; margin-right:3px; vertical-align:middle;"></i> ${textoMsg || "Foto"}</span>`;
+        } else if (tipoAdj === "video") {
+          elemTexto.innerHTML = `<span class="preview-adjunto"><i data-lucide="video" style="width:14px; height:14px; margin-right:3px; vertical-align:middle;"></i> ${textoMsg || "Video"}</span>`;
+        } else if (tipoAdj === "documento") {
+          elemTexto.innerHTML = `<span class="preview-adjunto"><i data-lucide="file-text" style="width:14px; height:14px; margin-right:3px; vertical-align:middle;"></i> ${textoMsg || "Documento"}</span>`;
+        } else if (tipoAdj) {
+          elemTexto.innerHTML = `<span class="preview-adjunto"><i data-lucide="paperclip" style="width:14px; height:14px; margin-right:3px; vertical-align:middle;"></i> ${textoMsg || "Adjunto"}</span>`;
+        } else {
+          elemTexto.textContent = textoMsg;
+        }
+
+        // 🔄 Redibujar los iconos Lucide en la tarjeta
+        if (window.lucide) {
+          window.lucide.createIcons({ targets: [elemTexto] });
+        }
+      }
       if (elemHora) elemHora.textContent = ultimoMsg.hora || "";
     } else {
       if (elemTexto) elemTexto.textContent = "Conversación vaciada";
@@ -6350,10 +6860,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
           Object.values(mensajesMap).forEach((msg) => {
             if (msg.urlAdjunto && msg.urlAdjunto.includes("supabase.co")) {
-              promesasBorradoFisico.push(eliminarArchivoSupabase(msg.urlAdjunto, "movachat-adjuntos"));
+              // Usa la función helper oficial del proyecto
+              promesasBorradoFisico.push(borrarArchivoDeSupabase(msg.urlAdjunto));
             }
           });
 
+          // Destrucción en paralelo de todos los archivos
           await Promise.all(promesasBorradoFisico);
         }
 
@@ -6474,7 +6986,7 @@ if (inputBuscadorPrincipal) {
 // ==========================================================
 let tarjetaChatSeleccionada = null;
 let temporizadorLongPress = null;
-let bloquarClickFantasma = false;
+
 
 const btnCtxFijar = document.getElementById("btn-ctx-fijar");
 const btnCtxVaciarChat = document.getElementById("btn-ctx-vaciar-chat");
@@ -7566,7 +8078,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("click", (e) => {
   // Si presiona el botón de flecha atrás en el chat privado
   if (e.target.closest("#pantalla-chat-privado .btn-volver") || e.target.closest("#btn-volver-chats")) {
-    
+
     // 1. Ocultar la pantalla de chat privado
     const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
     if (pantallaChatPrivado) {
@@ -8062,8 +8574,10 @@ window.togglePasswordVisibility = function () {
 
     if (iconoOjito) {
       iconoOjito.setAttribute("data-lucide", esPassword ? "eye-off" : "eye");
+
+      // ⚡ Optimización: Se especifica 'iconoOjito' para renderizar solo ese elemento
       if (window.lucide) {
-        window.lucide.createIcons();
+        window.lucide.createIcons({ targets: [iconoOjito] });
       }
     }
   }
@@ -8527,21 +9041,40 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
   }
 }
 
-// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES
+// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES Y GRABAR VOZ
 const inputChatPrivado = document.getElementById("input-chat-privado");
 
 if (btnAccionChat) {
   btnAccionChat.onclick = (e) => {
     e.preventDefault();
+
     const tieneTexto = inputChatPrivado && inputChatPrivado.value.trim().length > 0;
     const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
+    const tieneReenvioPendiente = !!window.objetoPendienteReenviar;
+    const modoBoton = btnAccionChat.getAttribute("data-modo");
 
-    if (tieneTexto || tieneAdjunto) {
+    // 🛡️ PRIORIDAD ABSOLUTA: Si hay reenvío, texto o adjunto, ENVIAR MENSAJE
+    if (tieneReenvioPendiente || tieneTexto || tieneAdjunto || modoBoton === "enviar") {
       enviarMensajeNuevo();
+    } else {
+      // 🎙️ Solo se activa la grabadora de voz si no hay reenvío ni texto
+      if (typeof toggleGrabacionVoz === "function") {
+        toggleGrabacionVoz();
+      }
     }
   };
 }
 
+// 🔄 1. Cambiar icono (Micrófono <-> Avión) dinámicamente al escribir/borrar
+if (inputChatPrivado) {
+  inputChatPrivado.addEventListener("input", () => {
+    if (typeof actualizarIconoBotonAccion === "function") {
+      actualizarIconoBotonAccion();
+    }
+  });
+}
+
+// 📩 2. Enviar mensaje al presionar la tecla "Enter"
 if (inputChatPrivado) {
   inputChatPrivado.onkeydown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -8551,7 +9084,7 @@ if (inputChatPrivado) {
   };
 }
 
-// ⌨️ Cancelar edición al presionar la tecla Escape
+// ⌨️ 3. Cancelar edición al presionar la tecla "Escape"
 if (inputChatPrivado) {
   inputChatPrivado.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && window.mensajeEnEdicionId) {
@@ -8573,37 +9106,26 @@ if (inputChatPrivado) {
 
 let listenerChatActivo = null;
 let listenerConfigActivo = null;
-
-// 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL (CORREGIDO Y UNIFICADO)
 let listenerEscribiendoActivo = null;
 let listenerLecturaActivo = null;
 let listenerPresenciaContactoActivo = null;
 
+// 🧹 FUNCIÓN GLOBAL PARA CANCELAR TODOS LOS ESCUCHADORES ACTIVOS
+function limpiarListenersActivos() {
+  if (typeof listenerChatActivo === "function") { listenerChatActivo(); listenerChatActivo = null; }
+  if (typeof listenerConfigActivo === "function") { listenerConfigActivo(); listenerConfigActivo = null; }
+  if (typeof listenerEscribiendoActivo === "function") { listenerEscribiendoActivo(); listenerEscribiendoActivo = null; }
+  if (typeof listenerLecturaActivo === "function") { listenerLecturaActivo(); listenerLecturaActivo = null; }
+  if (typeof listenerPresenciaContactoActivo === "function") { listenerPresenciaContactoActivo(); listenerPresenciaContactoActivo = null; }
+}
+
+// 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL (OPTIMIZADO)
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
   if (!contenedorHistorial) return;
 
   // 1. 🧹 CANCELAR SUSCRIPCIONES ANTERIORES
-  if (typeof listenerChatActivo === "function") {
-    listenerChatActivo();
-    listenerChatActivo = null;
-  }
-  if (typeof listenerConfigActivo === "function") {
-    listenerConfigActivo();
-    listenerConfigActivo = null;
-  }
-  if (typeof listenerEscribiendoActivo === "function") {
-    listenerEscribiendoActivo();
-    listenerEscribiendoActivo = null;
-  }
-  if (typeof listenerLecturaActivo === "function") {
-    listenerLecturaActivo();
-    listenerLecturaActivo = null;
-  }
-  if (typeof listenerPresenciaContactoActivo === "function") {
-    listenerPresenciaContactoActivo();
-    listenerPresenciaContactoActivo = null;
-  }
+  limpiarListenersActivos();
 
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
   const contactoUid = window.contactoActivoUid;
@@ -8670,14 +9192,17 @@ function escucharMensajesChat(chatId) {
     });
   }
 
-  // 🟢 5. ESCUCHAR LA PRESENCIA EN VIVO DEL RECEPTOR
+  // 🟢 5. ESCUCHAR LA PRESENCIA EN VIVO DEL RECEPTOR (OPTIMIZADO)
   let estaEnAppReceptorLive = false;
   if (contactoUid) {
     const presenciaContactoRef = ref(db, `usuarios/${contactoUid}/presenciaReal`);
     listenerPresenciaContactoActivo = onValue(presenciaContactoRef, (snapPresencia) => {
       estaEnAppReceptorLive = snapPresencia.exists() && snapPresencia.val() === true;
 
-      document.querySelectorAll(".indicador-checks-mova").forEach((contenedor) => {
+      const elemHistorial = document.querySelector(".historial-mensajes");
+      if (!elemHistorial) return;
+
+      elemHistorial.querySelectorAll(".indicador-checks-mova").forEach((contenedor) => {
         const esLeido = contenedor.classList.contains("leido");
         if (!esLeido) {
           if (estaEnAppReceptorLive) {
@@ -8690,8 +9215,9 @@ function escucharMensajesChat(chatId) {
         }
       });
 
+      // ⚡ Optimización: Se limita la creación de íconos únicamente al historial activo
       if (window.lucide) {
-        window.lucide.createIcons({ targets: document.querySelectorAll(".indicador-checks-mova") });
+        window.lucide.createIcons({ targets: [elemHistorial] });
       }
     });
   }
@@ -8859,7 +9385,7 @@ function escucharMensajesChat(chatId) {
             `;
           }
 
-          // 📷 RENDERING DE FOTO (CON EXPIRACIÓN, ESTADOS DE SUBIDA Y VISOR HD)
+          // 📷 RENDERING DE FOTO
           if (msg.tipoAdjunto === 'foto') {
             const esSubiendo = msg.urlAdjunto === "subiendo";
             const esError = msg.urlAdjunto === "error";
@@ -8911,7 +9437,6 @@ function escucharMensajesChat(chatId) {
             const esSubiendo = msg.urlAdjunto === "subiendo";
             const esError = msg.urlAdjunto === "error";
 
-            // 1. ESTADO: SUBIENDO EN SEGUNDO PLANO (Bloqueado de clics + Círculo de progreso)
             if (esSubiendo) {
               const porcentaje = msg.progresoSubida || 0;
               const textoMB = msg.textoSubida || "Cargando...";
@@ -8931,7 +9456,6 @@ function escucharMensajesChat(chatId) {
                 <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
               `;
 
-              // 2. ESTADO: ERROR EN LA SUBIDA
             } else if (esError) {
               contenidoBurbuja = `
                 ${htmlReenviado}
@@ -8948,7 +9472,6 @@ function escucharMensajesChat(chatId) {
                 <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
               `;
 
-              // 3. ESTADO: LISTO Y COMPLETADO
             } else {
               contenidoBurbuja = `
                 ${htmlReenviado}
@@ -9017,19 +9540,26 @@ function escucharMensajesChat(chatId) {
             contenidoBurbuja = `
               ${htmlReenviado}
               <div class="reproductor-audio-burbuja">
-                <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+                <button type="button" class="btn-play-audio">
+                  <i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i>
+                </button>
+
                 <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
-                  <div class="aguja-reproduccion-roja" style="position: absolute; top:0; left: 0%; width: 2px; height: 100%; background: #ff4b2b; z-index: 2; transition: left 0.1s linear;"></div>
+                  <div class="aguja-reproduccion-roja"></div>
+                  <span class="onda-barra"></span><span class="onda-barra"></span>
                   <span class="onda-barra"></span><span class="onda-barra"></span>
                   <span class="onda-barra"></span><span class="onda-barra"></span>
                   <span class="onda-barra"></span><span class="onda-barra"></span>
                 </div>
-                <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${msg.duracion || '0:00'}</span>
-                <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata"></audio>
+
+                <span class="tiempo-texto-nodo">${msg.duracion || '0:00'}</span>
+
+                <audio class="audio-elemento-nativo" src="${msg.urlAdjunto}" preload="metadata" style="display: none;"></audio>
+
+                <button type="button" class="btn-velocidad-audio" data-velocidad="1">1x</button>
               </div>
               <span class="mensaje-hora" style="margin-top: 4px;">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
             `;
-
           } else if (msg.tipoAdjunto === 'contacto') {
             const contacto = msg.contactoInfo || {};
             const nombreContacto = contacto.nombre || "Contacto";
@@ -9156,8 +9686,25 @@ document.addEventListener("DOMContentLoaded", () => {
   const menuTarjetas = document.getElementById("menu-tarjetas-chat");
   window.addEventListener("scroll", cerrarMenuContextualMova, true);
 
+  // 🟢 ÚNICO CASO PERMITIDO: Carga inicial global del HTML estático
   if (window.lucide) {
     window.lucide.createIcons();
+  }
+
+  // 🔙 BOTÓN VOLVER / CERRAR CHAT (Limpia los listeners de Firebase y oculta el chat)
+  const btnVolverChat = document.getElementById("btn-volver-chat") || document.querySelector(".btn-volver-chat");
+  if (btnVolverChat) {
+    btnVolverChat.addEventListener("click", () => {
+      if (typeof limpiarListenersActivos === "function") {
+        limpiarListenersActivos(); // 🧹 Detiene las lecturas en tiempo real de Firebase
+      }
+      const pantallaChat = document.getElementById("pantalla-chat-privado");
+      if (pantallaChat) {
+        pantallaChat.style.display = "none";
+        pantallaChat.classList.remove("pantalla-completa");
+      }
+      window.contactoActivoUid = null; // Resetea el contacto activo
+    });
   }
 
   // 🌐 Enlazar los botones de redes sociales del perfil
@@ -9412,7 +9959,7 @@ document.addEventListener("DOMContentLoaded", () => {
       modalLogout.classList.add("oculto");
 
       try {
-        const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        // 🚀 Cierre de sesión directo usando la función global ya importada
         await signOut(auth);
 
         // 🧹 FIX DE PRIVACIDAD: Borra inmediatamente correo y contraseña del formulario
@@ -10196,6 +10743,13 @@ window.abrirChatDesdeContacto = function (uidContacto, nombreContacto = "", foto
   // Llamada a la función real que abre la pantalla de chat privado
   if (typeof abrirChatConUsuario === "function") {
     abrirChatConUsuario(uidContacto, nombreContacto, fotoContacto);
+
+    // ✈️ REVISIÓN Y TRANSFORMACIÓN DE BOTÓN (Acción -> Avión/Send si hay reenvío pendiente)
+    if (typeof actualizarIconoBotonAccion === "function") {
+      setTimeout(() => {
+        actualizarIconoBotonAccion();
+      }, 50); // Ligero retardo para asegurar que el DOM del chat ya fue renderizado
+    }
   } else {
     console.error("❌ La función abrirChatConUsuario no está disponible.");
   }
@@ -10215,3 +10769,172 @@ if (btnAccionChat) {
   document.addEventListener('mousemove', moverControlTactilMic);
   document.addEventListener('mouseup', finalizarControlTactilMic);
 }
+
+// ========================================================
+// ⚡ CAMBIO DE VELOCIDAD DE NOTAS DE VOZ (1x -> 1.5x -> 2x)
+// ========================================================
+document.addEventListener("click", (e) => {
+  const btnVelocidad = e.target.closest(".btn-velocidad-audio");
+  if (!btnVelocidad) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  // 1. Obtener la burbuja contenedora y el audio nativo
+  const reproductor = btnVelocidad.closest(".reproductor-audio-burbuja");
+  const audioNativo = reproductor ? reproductor.querySelector(".audio-elemento-nativo") : null;
+
+  let velocidad = parseFloat(btnVelocidad.getAttribute("data-velocidad") || "1");
+
+  // 2. Alternar velocidad (1x -> 1.5x -> 2x -> 1x)
+  if (velocidad === 1) {
+    velocidad = 1.5;
+  } else if (velocidad === 1.5) {
+    velocidad = 2;
+  } else {
+    velocidad = 1;
+  }
+
+  // 3. Aplicar velocidad al reproductor de audio
+  if (audioNativo) {
+    audioNativo.playbackRate = velocidad;
+  }
+
+  // 4. Actualizar visualmente el botón
+  btnVelocidad.setAttribute("data-velocidad", velocidad);
+  btnVelocidad.textContent = `${velocidad}x`;
+});
+
+// Resetear o gestionar al terminar la reproducción
+document.addEventListener("ended", (e) => {
+  if (e.target && e.target.classList.contains("audio-elemento-nativo")) {
+    const reproductor = e.target.closest(".reproductor-audio-burbuja");
+    const btnVelocidad = reproductor ? reproductor.querySelector(".btn-velocidad-audio") : null;
+
+    // Opcional: Volver a 1x al finalizar
+    if (btnVelocidad) {
+      e.target.playbackRate = 1;
+      btnVelocidad.setAttribute("data-velocidad", "1");
+      btnVelocidad.textContent = "1x";
+    }
+  }
+}, true);
+
+// ========================================================
+// ▶️ CONTROLADOR DE PLAY / PAUSA PARA LAS NOTAS DE VOZ
+// ========================================================
+document.addEventListener("click", async (e) => {
+  // 1. Detectar clic en el botón Play/Pausa o su ícono
+  const btnPlay = e.target.closest(".btn-play-audio") || e.target.closest("[data-accion='play']");
+  if (!btnPlay) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  // 2. Localizar el contenedor de la burbuja y el elemento <audio>
+  const contenedor = btnPlay.closest(".reproductor-audio-burbuja") || btnPlay.closest(".mensaje-burbuja");
+  const audioElem = contenedor ? contenedor.querySelector("audio") : null;
+
+  if (!audioElem) {
+    console.error("❌ No se encontró la etiqueta <audio> dentro del contenedor.");
+    return;
+  }
+
+  // 3. Verificar si el audio tiene una fuente válida
+  if (!audioElem.src || audioElem.src === window.location.href) {
+    console.error("❌ El elemento <audio> no tiene un atributo 'src' o URL válida.");
+    return;
+  }
+
+  // 4. Pausar los demás audios que se estén reproduciendo actualmente
+  document.querySelectorAll("audio").forEach((a) => {
+    if (a !== audioElem && !a.paused) {
+      a.pause();
+    }
+  });
+
+  // 5. Alternar Reproducción / Pausa
+  try {
+    if (audioElem.paused) {
+      await audioElem.play();
+      btnPlay.classList.add("reproduciendo"); // Para cambiar el ícono a Pausa en CSS/JS
+    } else {
+      audioElem.pause();
+      btnPlay.classList.remove("reproduciendo");
+    }
+  } catch (error) {
+    console.error("⚠️ Error al intentar reproducir el audio:", error);
+  }
+});
+
+// ========================================================
+// 🎵 ANIMACIÓN DE WAVEFORM + AGUJA EN TIEMPO REAL
+// ========================================================
+document.addEventListener("timeupdate", (e) => {
+  const audio = e.target;
+  if (audio.tagName !== "AUDIO") return;
+
+  const contenedor = audio.closest(".reproductor-audio-burbuja") || audio.closest(".mensaje-burbuja");
+  if (!contenedor) return;
+
+  // Localizar elementos
+  const aguja = contenedor.querySelector(".aguja-reproduccion-roja") ||
+    contenedor.querySelector(".aguja-progreso") ||
+    contenedor.querySelector(".linea-reproduccion");
+
+  const barras = contenedor.querySelectorAll(".onda-barra");
+
+  const textoTiempo = contenedor.querySelector(".tiempo-texto-nodo") ||
+    contenedor.querySelector(".tiempo-audio") ||
+    contenedor.querySelector(".duracion");
+
+  if (!audio.duration || isNaN(audio.duration)) return;
+
+  // 1. Porcentaje de reproducción (0% -> 100%)
+  const porcentaje = (audio.currentTime / audio.duration) * 100;
+
+  // 2. Mover la aguja roja
+  if (aguja) {
+    aguja.style.left = `${porcentaje}%`;
+  }
+
+  // 3. 🌟 Encender/iluminar las barras individuales al compás del audio
+  if (barras.length > 0) {
+    barras.forEach((barra, index) => {
+      const porcentajeBarra = (index / barras.length) * 100;
+
+      if (porcentaje >= porcentajeBarra) {
+        barra.classList.add("activa");
+      } else {
+        barra.classList.remove("activa");
+      }
+    });
+  }
+
+  // 4. Actualizar el tiempo en pantalla
+  if (textoTiempo) {
+    const min = Math.floor(audio.currentTime / 60);
+    const seg = Math.floor(audio.currentTime % 60);
+    textoTiempo.textContent = `${min.toString().padStart(2, '0')}:${seg.toString().padStart(2, '0')}`;
+  }
+}, true);
+
+// Reiniciar aguja y apagar barras al terminar la nota de voz
+document.addEventListener("ended", (e) => {
+  const audio = e.target;
+  if (audio.tagName !== "AUDIO") return;
+
+  const contenedor = audio.closest(".reproductor-audio-burbuja") || audio.closest(".mensaje-burbuja");
+  if (!contenedor) return;
+
+  const aguja = contenedor.querySelector(".aguja-reproduccion-roja") ||
+    contenedor.querySelector(".aguja-progreso") ||
+    contenedor.querySelector(".linea-reproduccion");
+
+  const barras = contenedor.querySelectorAll(".onda-barra");
+  const btnPlay = contenedor.querySelector(".btn-play-audio");
+
+  if (aguja) aguja.style.left = "0%";
+  if (barras) barras.forEach(b => b.classList.remove("activa"));
+  if (btnPlay) btnPlay.classList.remove("reproduciendo");
+}, true);
