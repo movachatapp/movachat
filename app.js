@@ -2938,7 +2938,7 @@ function activarCandadoManosLibres() {
 window.addEventListener("mouseup", finalizarGrabacionVoz);
 window.addEventListener("touchend", finalizarGrabacionVoz);
 
-function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idChat = null, idMensaje = null) {
+function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idChat = null, idMensaje = null, arrayOndas = []) {
   const ahora = new Date();
   const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
@@ -2948,7 +2948,6 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
   // 🚨 1. SI EL MENSAJE YA CADUCÓ
   if (estaCaducado || !urlAudio) {
     if (idChat && idMensaje) {
-      // Disparar purga en segundo plano si aún no se había limpiado de Supabase
       procesarCaducidadNotaVoz(idChat, idMensaje, { tipoAdjunto: "audio", caducado: true, urlAdjunto: urlAudio });
     }
 
@@ -2964,22 +2963,37 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
       historialMensajes.appendChild(nuevaBurbujaHTML);
       historialMensajes.scrollTop = historialMensajes.scrollHeight;
     }
-    return; // ⛔ Cancela la creación de controles de audio nativos
+    return;
   }
 
-  // 🟢 2. SI EL MENSAJE ES VÁLIDO (REPRODUCTOR NORMAL)
+  // 🎯 2. GENERAR 30 BARRAS HOMOGÉNEAS (Para que llene el reproductor tanto en PC como Móvil)
+  const ondasEstandar = (typeof normalizarOndas === "function") 
+    ? normalizarOndas(arrayOndas, 30) 
+    : new Array(30).fill(20);
+
+  const htmlBarras = ondasEstandar
+    .map(() => `<span class="onda-barra"></span>`)
+    .join("");
+
+  // Convertir texto de duración (ej. "00:15") a segundos reales de respaldo
+  let segundosRespaldo = 0;
+  if (typeof duracion === "string" && duracion.includes(":")) {
+    const partes = duracion.split(":");
+    segundosRespaldo = (parseInt(partes[0], 10) * 60) + parseInt(partes[1], 10);
+  } else if (typeof duracion === "number") {
+    segundosRespaldo = duracion;
+  }
+
+  // 🟢 3. SI EL MENSAJE ES VÁLIDO (REPRODUCTOR NORMAL)
   nuevaBurbujaHTML.innerHTML = `
-    <div class="reproductor-audio-burbuja">
-      <button class="btn-play-audio"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
+    <div class="reproductor-audio-burbuja" data-duracion-segundos="${segundosRespaldo}">
+      <button class="btn-play-audio" type="button"><i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i></button>
       <div class="ondas-audio-preview" style="position: relative; cursor: pointer;">
         <div class="aguja-reproduccion-roja"></div>
-        <span class="onda-barra"></span><span class="onda-barra"></span>
-        <span class="onda-barra"></span><span class="onda-barra"></span>
-        <span class="onda-barra"></span><span class="onda-barra"></span>
-        <span class="onda-barra"></span><span class="onda-barra"></span>
+        ${htmlBarras}
       </div>
       <span class="tiempo-texto-nodo" style="font-size:0.75rem; font-family:monospace; opacity:0.8; margin-right:4px;">${duracion}</span>
-      <audio class="audio-elemento-nativo" src="${urlAudio}" preload="metadata"></audio>
+      <audio class="audio-elemento-nativo" src="${urlAudio}" preload="metadata" data-duracion="${segundosRespaldo}"></audio>
       <button type="button" class="btn-velocidad-audio" data-velocidad="1">1x</button>
     </div>
     <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}</span>
@@ -2989,11 +3003,8 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
     historialMensajes.appendChild(nuevaBurbujaHTML);
     if (typeof aplicarRelojArenaEfecto === "function") aplicarRelojArenaEfecto(nuevaBurbujaHTML);
 
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar solo los iconos dentro de la nueva burbuja
     if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [nuevaBurbujaHTML]
-      });
+      window.lucide.createIcons({ targets: [nuevaBurbujaHTML] });
     }
     historialMensajes.scrollTop = historialMensajes.scrollHeight;
   }
@@ -3001,12 +3012,13 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
   const btnPlay = nuevaBurbujaHTML.querySelector(".btn-play-audio");
   const audioElem = nuevaBurbujaHTML.querySelector(".audio-elemento-nativo");
   const agujaRoja = nuevaBurbujaHTML.querySelector(".aguja-reproduccion-roja");
-  const nodoTextoTiempo = nuevaBurbujaHTML.querySelector(".tiempo-texto-nodo");
   const pistaOndas = nuevaBurbujaHTML.querySelector(".ondas-audio-preview");
-  const barras = nuevaBurbujaHTML.querySelectorAll(".onda-barra");
+  const btnVelocidad = nuevaBurbujaHTML.querySelector(".btn-velocidad-audio");
 
+  // 🔘 CONTROL DE REPRODUCCIÓN (PLAY / PAUSA)
   if (btnPlay && audioElem) {
     btnPlay.addEventListener("click", function () {
+      // Pausar cualquier otro audio en reproducción
       document.querySelectorAll(".audio-elemento-nativo").forEach(a => {
         if (a !== audioElem) {
           a.pause();
@@ -3017,46 +3029,33 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
       if (audioElem.paused) {
         audioElem.play();
         btnPlay.innerHTML = `<i data-lucide="square" style="width:14px; height:14px;"></i>`;
-        barras.forEach(b => b.style.backgroundColor = "#00f2fe");
       } else {
         audioElem.pause();
         btnPlay.innerHTML = `<i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i>`;
-        barras.forEach(b => b.style.backgroundColor = "rgba(255,255,255,0.2)");
       }
 
       if (window.lucide) {
-        window.lucide.createIcons({
-          targets: [btnPlay]
-        });
+        window.lucide.createIcons({ targets: [btnPlay] });
       }
     });
-
-    audioElem.ontimeupdate = function () {
-      if (audioElem.duration) {
-        const porcentaje = (audioElem.currentTime / audioElem.duration) * 100;
-        if (agujaRoja) agujaRoja.style.left = `${porcentaje}%`;
-
-        const segsActuales = Math.floor(audioElem.currentTime);
-        let mins = Math.floor(segsActuales / 60).toString().padStart(2, '0');
-        let secs = (segsActuales % 60).toString().padStart(2, '0');
-        if (nodoTextoTiempo) nodoTextoTiempo.textContent = `${mins}:${secs}`;
-      }
-    };
-
-    audioElem.onended = function () {
-      btnPlay.innerHTML = `<i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i>`;
-      barras.forEach(b => b.style.backgroundColor = "rgba(255,255,255,0.2)");
-      if (agujaRoja) agujaRoja.style.left = "0%";
-      if (nodoTextoTiempo) nodoTextoTiempo.textContent = duracion;
-
-      if (window.lucide) {
-        window.lucide.createIcons({
-          targets: [btnPlay]
-        });
-      }
-    };
   }
 
+  // ⚡ CONTROL DE VELOCIDAD (1x, 1.5x, 2x)
+  if (btnVelocidad && audioElem) {
+    btnVelocidad.addEventListener("click", function (e) {
+      e.stopPropagation();
+      let vel = parseFloat(btnVelocidad.getAttribute("data-velocidad") || "1");
+      if (vel === 1) vel = 1.5;
+      else if (vel === 1.5) vel = 2;
+      else vel = 1;
+
+      btnVelocidad.setAttribute("data-velocidad", vel.toString());
+      btnVelocidad.textContent = `${vel}x`;
+      audioElem.playbackRate = vel;
+    });
+  }
+
+  // 🎯 CLIC EN LA PISTA DE ONDAS PARA ADELANTAR / REBOBINAR
   if (pistaOndas && audioElem) {
     pistaOndas.addEventListener("click", function (e) {
       const rectPista = pistaOndas.getBoundingClientRect();
@@ -3066,13 +3065,13 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
       if (porcentaje < 0) porcentaje = 0;
       if (porcentaje > 1) porcentaje = 1;
 
-      if (audioElem.duration) {
-        audioElem.currentTime = porcentaje * audioElem.duration;
+      let duracionReal = audioElem.duration;
+      if (!duracionReal || isNaN(duracionReal) || !isFinite(duracionReal)) {
+        duracionReal = segundosRespaldo;
+      }
 
-        const btnVelocidad = nuevaBurbujaHTML.querySelector(".btn-velocidad-audio");
-        const velocidadActual = parseFloat(btnVelocidad ? btnVelocidad.getAttribute("data-velocidad") : "1");
-        audioElem.playbackRate = velocidadActual;
-
+      if (duracionReal > 0) {
+        audioElem.currentTime = porcentaje * duracionReal;
         if (agujaRoja) agujaRoja.style.left = `${porcentaje * 100}%`;
       }
     });
@@ -5618,7 +5617,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
   const vaciadoRef = ref(db, `vaciados/${miUid}/${contactoUid}`);
   const ocultoRef = ref(db, `chats_ocultos/${miUid}/${contactoUid}`);
 
-  // 🛡️ LIMPIEZA ANTI-DUPLICADOS: Si ya existe un escuchador para este contacto, lo apagamos antes de crear uno nuevo
   if (window.desuscripcionesUltimoMsg[contactoUid]) {
     window.desuscripcionesUltimoMsg[contactoUid]();
     delete window.desuscripcionesUltimoMsg[contactoUid];
@@ -5660,7 +5658,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       mensajes = snapshot.val();
       const ahora = Date.now();
 
-      // 🎯 ORDENAR CRONOLÓGICAMENTE POR TIMESTAMP REAL
       mensajesOrdenados = Object.keys(mensajes)
         .map(key => ({ key, ...mensajes[key] }))
         .filter(m => {
@@ -5684,7 +5681,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    // 🔊 NOTIFICACIONES Y REPRODUCCIÓN EN TIEMPO REAL
+    // Notificaciones y audio
     window.mensajesNotificadosUnificados = window.mensajesNotificadosUnificados || new Set();
 
     if (!esPrimeraCargaGlobal && ultimoMsg && ultimoMsgKey) {
@@ -5700,7 +5697,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
         const nombreContacto = datosUsuario ? (datosUsuario.nombre || "MovaChat") : "MovaChat";
 
-        // 🎯 DETECCIÓN EXACTA DEL CONTENIDO PARA EL TEXTO DE LA NOTIFICACIÓN
         let textoContacto = (ultimoMsg.texto || "").trim();
         if (!textoContacto) {
           if (ultimoMsg.tipoAdjunto === "audio") textoContacto = "🎙️ Nota de voz";
@@ -5727,10 +5723,11 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (tarjetaContacto) tarjetaContacto.remove();
       if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
       if (typeof window.actualizarBadgesNotificaciones === "function") window.actualizarBadgesNotificaciones();
+      reordenarListaChats();
       return;
     }
 
-    // Crear la tarjeta en la lista si no existe aún
+    // Crear la tarjeta si no existe
     if (!tarjetaContacto) {
       tarjetaContacto = document.createElement("div");
       tarjetaContacto.className = "tarjeta-chat contacto-item";
@@ -5756,14 +5753,10 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
         sombraLed = "0 0 8px #888888";
       }
 
-      const esFijado = fijadosBD[contactoUid] === true || localStorage.getItem(`fijado_${contactoUid}`) === "true";
-      if (esFijado) {
-        tarjetaContacto.classList.add("tarjeta-fijada");
-        tarjetaContacto.style.order = "-1";
-      }
+      const estaSilenciadoInicial = localStorage.getItem(`silenciado_${contactoUid}`) === "true";
+      const esFijadoInicial = fijadosBD[contactoUid] === true || localStorage.getItem(`fijado_${contactoUid}`) === "true";
 
-      const estaSilenciado = localStorage.getItem(`silenciado_${contactoUid}`) === "true";
-      if (estaSilenciado) {
+      if (estaSilenciadoInicial) {
         tarjetaContacto.classList.add("chat-silenciado-zona");
       }
 
@@ -5776,8 +5769,8 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           <div class="chat-cabecera">
             <h4 class="chat-nombre">${nombreContacto}</h4>
             <span class="chat-hora">--:--</span>
-            ${esFijado ? `<span class="indicador-pin-neon" title="Chat fijado"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>` : ''}
-            ${estaSilenciado ? `<span class="indicador-silencio-neon" title="Chat silenciado"><i data-lucide="bell-off"></i></span>` : ''}
+            ${esFijadoInicial ? `<span class="indicador-pin-neon" title="Chat fijado"><i data-lucide="pin" style="width:14px; height:14px;"></i></span>` : ''}
+            ${estaSilenciadoInicial ? `<span class="indicador-silencio-neon" title="Chat silenciado"><i data-lucide="bell-off"></i></span>` : ''}
           </div>
           <div class="chat-mensaje-caja">
             <p class="chat-texto"></p>
@@ -5789,7 +5782,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       tarjetaContacto.addEventListener("click", (e) => {
         e.stopPropagation();
 
-        // 📸 Si hizo clic en la foto de avatar Y la tarjeta tiene una historia activa, abre el Visor de Historias
         if (e.target.closest(".chat-avatar-caja") && tarjetaContacto.dataset.estadoUrl) {
           if (typeof abrirEstadoAmigo === "function") {
             abrirEstadoAmigo(tarjetaContacto.dataset.estadoUrl, tarjetaContacto.dataset.estadoTexto || "", contactoUid);
@@ -5797,7 +5789,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           return;
         }
 
-        // 💬 De lo contrario, abre el chat privado normalmente
         window.contactoActivoUid = contactoUid;
 
         const badge = tarjetaContacto.querySelector(".badge-chat-no-leido");
@@ -5830,7 +5821,22 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       }
     }
 
-    // Actualizar datos del último mensaje en la tarjeta
+    // 🏆 ASIGNACIÓN DE ESTADO Y TIMESTAMP
+    const timestampMsg = ultimoMsg ? (ultimoMsg.timestamp || Date.now()) : 0;
+    const esFijado = fijadosBD[contactoUid] === true || localStorage.getItem(`fijado_${contactoUid}`) === "true";
+
+    tarjetaContacto.dataset.timestamp = timestampMsg;
+
+    if (esFijado) {
+      tarjetaContacto.classList.add("tarjeta-fijada");
+    } else {
+      tarjetaContacto.classList.remove("tarjeta-fijada");
+    }
+
+    // Limpiar propiedad order si existía previamente
+    tarjetaContacto.style.removeProperty("order");
+
+    // Actualizar contenido del mensaje
     const elemTexto = tarjetaContacto.querySelector(".chat-texto");
     const elemHora = tarjetaContacto.querySelector(".chat-hora");
     const elemBadge = tarjetaContacto.querySelector(".badge-chat-no-leido") || tarjetaContacto.querySelector(".badge-mensaje");
@@ -5854,7 +5860,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
           elemTexto.textContent = textoMsg;
         }
 
-        // 🔄 Redibujar los iconos Lucide en la tarjeta
         if (window.lucide) {
           window.lucide.createIcons({ targets: [elemTexto] });
         }
@@ -5865,7 +5870,7 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       if (elemHora) elemHora.textContent = "--:--";
     }
 
-    // 🎯 VERIFICACIÓN DE LECTURA Y CONTEO ACUMULATIVO
+    // Conteo de mensajes no leídos
     const pantallaChat = document.getElementById("pantalla-chat-privado");
     const estaAbierto = (window.contactoActivoUid === contactoUid) &&
       pantallaChat &&
@@ -5886,7 +5891,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       get(lecturaRef).then((lecturaSnap) => {
         const ultimoLeidoKey = lecturaSnap.exists() ? lecturaSnap.val() : "";
 
-        // Buscar el timestamp del último leído
         const objUltimoLeido = mensajesOrdenados.find(m => m.key === ultimoLeidoKey);
         const timestampUltimoLeido = objUltimoLeido ? (objUltimoLeido.timestamp || 0) : 0;
 
@@ -5894,7 +5898,6 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
 
         mensajesOrdenados.forEach((m) => {
           const idEmisor = m.emisor || m.emisorUid || m.remitente || m.remitenteId || m.uid;
-          // Si el mensaje es del contacto Y fue creado después de la última lectura
           if (idEmisor === contactoUid && (m.timestamp || 0) > timestampUltimoLeido) {
             nuevos++;
           }
@@ -5920,10 +5923,12 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       });
     }
 
+    // 🔄 EJECUTAR EL REORDENAMIENTO REAL EN EL DOM
+    reordenarListaChats();
+
     if (typeof actualizarEstadoPantallaInicio === "function") actualizarEstadoPantallaInicio();
   });
 
-  // Guardar desuscripción en el mapa global
   window.desuscripcionesUltimoMsg[contactoUid] = unsubscribe;
 }
 
@@ -5934,6 +5939,54 @@ document.addEventListener("visibilitychange", () => {
     }
   }
 });
+
+function reordenarListaChats() {
+  const contenedor = document.getElementById("lista-chats-principal");
+  if (!contenedor) return;
+
+  // 1. Obtener exactamente la tarjeta de Mi Estado
+  const miEstado = document.getElementById("tarjeta-mi-estado-propio");
+
+  // 2. Obtener SOLO los chats de contactos (excluyendo Mi Estado explícitamente)
+  const tarjetasChat = Array.from(contenedor.querySelectorAll(".tarjeta-chat"))
+    .filter(t => !t.classList.contains("tarjeta-estado-propio") && t.id !== "tarjeta-mi-estado-propio");
+
+  const fijados = [];
+  const normales = [];
+
+  tarjetasChat.forEach(tarjeta => {
+    // Quitar cualquier 'order' de CSS viejo que pueda romper el DOM
+    tarjeta.style.removeProperty("order");
+
+    const esFijado = tarjeta.classList.contains("tarjeta-fijada") || 
+                     tarjeta.querySelector(".indicador-pin-neon") !== null;
+    const timestamp = Number(tarjeta.dataset.timestamp) || 0;
+
+    if (esFijado) {
+      fijados.push({ elem: tarjeta, timestamp });
+    } else {
+      normales.push({ elem: tarjeta, timestamp });
+    }
+  });
+
+  // 3. Ordenar de más reciente a más antiguo dentro de cada bloque
+  fijados.sort((a, b) => b.timestamp - a.timestamp);
+  normales.sort((a, b) => b.timestamp - a.timestamp);
+
+  // 4. REINSERCIÓN FÍSICA EN EL DOM (JERARQUÍA ESTRICTA)
+  
+  // Posición 1: Mi Estado SIEMPRE de primero
+  if (miEstado) {
+    miEstado.style.removeProperty("order");
+    contenedor.appendChild(miEstado);
+  }
+
+  // Posición 2: Chats fijados
+  fijados.forEach(item => contenedor.appendChild(item.elem));
+
+  // Posición 3: Chats normales
+  normales.forEach(item => contenedor.appendChild(item.elem));
+}
 
 // --- 6. NOTIFICACIONES PUSH NATIVAS (CONECTADAS) ---
 
@@ -7998,9 +8051,9 @@ if (btnAdjuntarContacto) {
     if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
 
     // 2. Buscar e identificar el modal de contactos en el DOM
-    const elemModal = document.getElementById("modal-seleccionar-contacto") 
-                   || document.getElementById("modal-contactos")
-                   || document.querySelector(".modal-contactos");
+    const elemModal = document.getElementById("modal-seleccionar-contacto")
+      || document.getElementById("modal-contactos")
+      || document.querySelector(".modal-contactos");
 
     if (!elemModal) {
       console.error("❌ No se encontró el modal de contactos en el DOM.");
@@ -9333,7 +9386,7 @@ function escucharMensajesChat(chatId) {
             // Guardar en Firebase para que persista al recargar o salir del chat
             if (estaEnAppReceptorLive && !yaFueEntregado && msgId && window.idChatActual) {
               const msgRef = ref(db, `chats/${window.idChatActual}/mensajes/${msgId}`);
-              update(msgRef, { entregado: true }).catch(() => {});
+              update(msgRef, { entregado: true }).catch(() => { });
             }
           } else {
             contenedor.className = "indicador-checks-mova enviado";
@@ -11004,22 +11057,33 @@ document.addEventListener("timeupdate", (e) => {
     contenedor.querySelector(".tiempo-audio") ||
     contenedor.querySelector(".duracion");
 
-  if (!audio.duration || isNaN(audio.duration)) return;
+  // 🛠️ 1. SOLUCIÓN AL BUG DE DURACIÓN (WebM / Ogg / Infinity)
+  let duracion = audio.duration;
 
-  // 1. Porcentaje de reproducción (0% -> 100%)
-  const porcentaje = (audio.currentTime / audio.duration) * 100;
+  // Si audio.duration falla, intenta leer la duración guardada en un data-attribute del contenedor o del audio
+  if (!duracion || isNaN(duracion) || !isFinite(duracion)) {
+    const duracionGuardada = contenedor.dataset.duracionSegundos || audio.dataset.duracion;
+    duracion = Number(duracionGuardada) || 0;
+  }
 
-  // 2. Mover la aguja roja
+  // Si después del respaldo la duración sigue siendo inválida o 0, no continuamos
+  if (duracion <= 0) return;
+
+  // 🎯 2. Porcentaje de reproducción exacto y acotado (0% a 100%)
+  const progresoDecimal = Math.min(Math.max(audio.currentTime / duracion, 0), 1);
+  const porcentaje = progresoDecimal * 100;
+
+  // 3. Mover la aguja roja a lo largo de toda la longitud del reproductor
   if (aguja) {
     aguja.style.left = `${porcentaje}%`;
   }
 
-  // 3. 🌟 Encender/iluminar las barras individuales al compás del audio
+  // 4. 🌟 Encender/iluminar barras de forma proporcional al progreso real
   if (barras.length > 0) {
-    barras.forEach((barra, index) => {
-      const porcentajeBarra = (index / barras.length) * 100;
+    const totalBarrasAColorear = Math.round(progresoDecimal * barras.length);
 
-      if (porcentaje >= porcentajeBarra) {
+    barras.forEach((barra, index) => {
+      if (index < totalBarrasAColorear) {
         barra.classList.add("activa");
       } else {
         barra.classList.remove("activa");
@@ -11027,7 +11091,7 @@ document.addEventListener("timeupdate", (e) => {
     });
   }
 
-  // 4. Actualizar el tiempo en pantalla
+  // 5. Actualizar el tiempo transcurrido en pantalla
   if (textoTiempo) {
     const min = Math.floor(audio.currentTime / 60);
     const seg = Math.floor(audio.currentTime % 60);

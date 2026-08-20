@@ -1635,10 +1635,13 @@ body {
 .reproductor-audio-burbuja {
   display: flex;
   align-items: center; /* 🎯 Centra verticalmente todos los elementos */
-  gap: 10px;
-  min-width: 220px;
+  gap: 8px;
+  width: 100%;        /* 🎯 Ocupa todo el ancho disponible de la burbuja */
+  min-width: 200px;   /* Garantiza un tamaño cómodo en móviles pequeños */
+  max-width: 100%;
   padding: 6px 4px;
   user-select: none;
+  box-sizing: border-box;
 }
 
 /* 🔘 Botón de Play / Pausa */
@@ -1666,36 +1669,48 @@ body {
   transform: scale(0.95);
 }
 
-/* 🌊 Contenedor de las Ondas de Audio */
+/* 🌊 Contenedor de las Ondas de Audio (Elasticidad total) */
 .ondas-audio-preview {
   position: relative;
-  flex: 1;
+  flex: 1;            /* 🎯 Se estira automáticamente llenando el espacio central */
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 24px;
+  justify-content: space-between;
+  gap: 2px;
+  height: 26px;
   cursor: pointer;
   padding: 2px 0;
+  width: 100%;
+  overflow: hidden;   /* Evita desbordamientos en pantallas pequeñas */
 }
 
+/* 📊 Barras de onda adaptables */
 .onda-barra {
-  flex: 1;
+  flex: 1;            /* 🎯 Cada barra toma un ancho proporcional idéntico */
+  min-width: 2px;
+  max-width: 4px;     /* Evita que se deformen si hay muy pocas barras */
   background: rgba(255, 255, 255, 0.25);
   border-radius: 3px;
-  transition: background 0.3s, height 0.3s;
+  transition: background 0.2s ease, height 0.2s ease;
 }
 
-/* Alturas aleatorias para simular la onda */
-.onda-barra:nth-child(1) { height: 35%; }
-.onda-barra:nth-child(2) { height: 65%; }
-.onda-barra:nth-child(3) { height: 90%; }
-.onda-barra:nth-child(4) { height: 45%; }
-.onda-barra:nth-child(5) { height: 75%; }
-.onda-barra:nth-child(6) { height: 100%; }
-.onda-barra:nth-child(7) { height: 55%; }
-.onda-barra:nth-child(8) { height: 35%; }
+/* 🌟 Iluminación cuando la reproducción pasa por la barra */
+.onda-barra.activa {
+  background: #00f2fe !important;
+  box-shadow: 0 0 4px rgba(0, 242, 254, 0.6);
+}
 
-.ondas-audio-preview:hover .onda-barra {
+/* Alturas dinámicas cíclicas (Funciona para 8, 20 o 100 barras) */
+.onda-barra:nth-child(8n+1) { height: 35%; }
+.onda-barra:nth-child(8n+2) { height: 65%; }
+.onda-barra:nth-child(8n+3) { height: 90%; }
+.onda-barra:nth-child(8n+4) { height: 45%; }
+.onda-barra:nth-child(8n+5) { height: 75%; }
+.onda-barra:nth-child(8n+6) { height: 100%; }
+.onda-barra:nth-child(8n+7) { height: 55%; }
+.onda-barra:nth-child(8n+0) { height: 35%; }
+
+.ondas-audio-preview:hover .onda-barra:not(.activa) {
   background: rgba(255, 255, 255, 0.45);
 }
 
@@ -1706,10 +1721,10 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  margin: auto 0; /* 🎯 Centra la aguja exactamente a la altura de las ondas */
+  margin: auto 0;
   left: 0%;
   width: 3px;
-  height: 18px; /* Altura perfecta para tapar las barritas sin salirse */
+  height: 20px;
   background-color: #ff4b2b;
   border-radius: 2px;
   box-shadow: 0 0 8px rgba(255, 75, 43, 0.9);
@@ -1729,7 +1744,7 @@ body {
   color: #ffffff;
   white-space: nowrap;
   line-height: 1;
-  margin-left: 2px;
+  flex-shrink: 0;     /* Impide que el texto se comprima */
 }
 
 /* ⚡ Botón de Cambio de Velocidad (1x, 1.5x, 2x) */
@@ -4393,3 +4408,15 @@ body.tema-claro .btn-accion-contacto-card:hover {
 body:has(#pantalla-chat-privado:not([style*="display: none"])) .encabezado-inicio {
   display: none !important;
 }
+
+#lista-chats-principal {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 👑 1. Mi Estado: El valor más bajo de todos */
+#tarjeta-mi-estado-propio,
+.tarjeta-estado-propio {
+  order: -999999 !important;
+}
+
