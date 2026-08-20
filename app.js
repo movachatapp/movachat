@@ -2289,12 +2289,21 @@ if (btnBorrarVistaPrevia) {
     e.stopPropagation();
 
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
-    if (imgMiniaturaAdjunto) imgMiniaturaAdjunto.src = "";
+    
+    // 👇 NUEVO: Liberamos la memoria RAM destruyendo el archivo temporal
+    if (imgMiniaturaAdjunto && imgMiniaturaAdjunto.src) {
+      if (imgMiniaturaAdjunto.src.startsWith("blob:")) {
+        URL.revokeObjectURL(imgMiniaturaAdjunto.src);
+      }
+      imgMiniaturaAdjunto.src = "";
+    }
+    // 👆 FIN DE LO NUEVO
 
     const iconoPrevio = document.querySelector(".wrapper-miniatura .icono-doc-preview");
     if (iconoPrevio) iconoPrevio.remove();
 
     tipoAdjuntoActivo = null;
+    archivoAdjuntoPendiente = null; // Limpiamos también el archivo pendiente
 
     if (inputChat) inputChat.placeholder = "Escribe un mensaje privado...";
 
@@ -2316,6 +2325,14 @@ if (btnBorrarVistaPrevia) {
 let mediaRecorderAudio = null;
 let fragmentosAudio = [];
 let streamAudioLive = null;
+
+function detenerStream(stream) {
+  if (stream && stream.getTracks) {
+    // Apaga tanto el audio como el video si existen en el stream
+    stream.getTracks().forEach(track => track.stop());
+  }
+  return null; // Devuelve null para resetear la variable global
+}
 
 function arrancarCronometroAudio() {
   segundosGrabados = 0;
@@ -2485,6 +2502,8 @@ async function iniciarGrabacionVoz(e) {
   if (e && e.preventDefault) e.preventDefault();
 
   try {
+    streamAudioLive = detenerStream(streamAudioLive);
+
     // 🔊 SONIDO DE INICIO DE GRABACIÓN
     if (typeof reproducirSonido === "function") {
       reproducirSonido("grabando");
@@ -2874,13 +2893,7 @@ function cancelarGrabacion() {
 }
 
 function apagarMicrofonoFisico() {
-  if (streamAudioLive) {
-    streamAudioLive.getTracks().forEach(pista => {
-      pista.stop();
-      pista.enabled = false;
-    });
-    streamAudioLive = null;
-  }
+  streamAudioLive = detenerStream(streamAudioLive);
 }
 
 // ========================================================
@@ -5944,10 +5957,17 @@ function reordenarListaChats() {
   const contenedor = document.getElementById("lista-chats-principal");
   if (!contenedor) return;
 
+  // 👇 EL TRUCO DE SEGURIDAD: Bloqueamos los toques fantasma por 300 milisegundos 
+  // mientras las tarjetas se mueven físicamente hacia arriba.
+  bloquarClickFantasma = true;
+  setTimeout(() => {
+    bloquarClickFantasma = false;
+  }, 300);
+
   // 1. Obtener exactamente la tarjeta de Mi Estado
   const miEstado = document.getElementById("tarjeta-mi-estado-propio");
 
-  // 2. Obtener SOLO los chats de contactos (excluyendo Mi Estado explícitamente)
+  // 2. Obtener SOLO los chats de contactos (excluyendo Mi Estado)
   const tarjetasChat = Array.from(contenedor.querySelectorAll(".tarjeta-chat"))
     .filter(t => !t.classList.contains("tarjeta-estado-propio") && t.id !== "tarjeta-mi-estado-propio");
 
@@ -5955,7 +5975,7 @@ function reordenarListaChats() {
   const normales = [];
 
   tarjetasChat.forEach(tarjeta => {
-    // Quitar cualquier 'order' de CSS viejo que pueda romper el DOM
+    // Quitar cualquier 'order' de CSS viejo por si acaso
     tarjeta.style.removeProperty("order");
 
     const esFijado = tarjeta.classList.contains("tarjeta-fijada") || 
@@ -5977,14 +5997,13 @@ function reordenarListaChats() {
   
   // Posición 1: Mi Estado SIEMPRE de primero
   if (miEstado) {
-    miEstado.style.removeProperty("order");
     contenedor.appendChild(miEstado);
   }
 
   // Posición 2: Chats fijados
   fijados.forEach(item => contenedor.appendChild(item.elem));
 
-  // Posición 3: Chats normales
+  // Posición 3: Chats normales (los nuevos subirán justo aquí debajo de los fijados)
   normales.forEach(item => contenedor.appendChild(item.elem));
 }
 
@@ -9891,9 +9910,11 @@ document.addEventListener("DOMContentLoaded", () => {
       clearTimeout(timerBusquedaInput);
       timerBusquedaInput = setTimeout(async () => {
         const textoConsulta = e.target.value.trim().toLowerCase();
-        if (!textoConsulta) return;
 
-        // AQUÍ VA TU LÓGICA DE BÚSQUEDA EN FIREBASE
+        // 🟢 Lógica de filtrado en vivo de la lista de contactos
+        if (typeof renderizarListaContactosModal === "function") {
+          renderizarListaContactosModal(textoConsulta);
+        }
       }, 300);
     });
   }
