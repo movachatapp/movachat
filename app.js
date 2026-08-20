@@ -2175,6 +2175,9 @@ if (btnCancelarGrabarLive && modalCamaraLive) {
 }
 
 if (inputRealGaleria) {
+  // 🟢 RESTRICCIÓN DE GALERÍA: Bloquea videos y solo permite seleccionar imágenes
+  inputRealGaleria.setAttribute("accept", "image/*");
+
   inputRealGaleria.addEventListener("change", (e) => {
     if (e.target.files && e.target.files[0]) {
       const reader = new FileReader();
@@ -3292,7 +3295,7 @@ async function enviarMensajeNuevo() {
   const DOCE_DIAS_MS = 12 * 24 * 60 * 60 * 1000;
   const expiracionMs = (duracionEfimeraMs > 0) ? duracionEfimeraMs : DOCE_DIAS_MS;
 
-  // 🟢 CASO: NUEVO MENSAJE (INCLUYE SOPORTE DE REENVÍO)
+  // 🟢 CASO: NUEVO MENSAJE (INCLUYE SOPORTE DE REENVÍO Y ESTADOS DE ENTREGA)
   let objetoMensaje = {
     emisor: miUid,
     emisorUid: miUid,
@@ -3301,9 +3304,13 @@ async function enviarMensajeNuevo() {
     hora: horaFormateada,
     timestamp: timestampAhora,
     creadoEn: timestampAhora,
-    expiraEn: timestampAhora + expiracionMs, // ⏱️ Asigna fecha de caducidad
+    expiraEn: timestampAhora + expiracionMs,
     esEfimero: duracionEfimeraMs > 0,
     duracionEfimeraMs: duracionEfimeraMs,
+
+    // 🟢 ESTADOS DE ENTREGA Y LECTURA INICIALES
+    entregado: false,
+    leido: false,
 
     // ↪️ METADATOS DE REENVÍO
     esReenviado: paqueteReenvio ? true : false,
@@ -4388,8 +4395,26 @@ function asignarEventosMenuCabecera() {
 
       // --- OPCIONES PANTALLA PRINCIPAL ---
       if (accion === "mi-perfil") {
-        // Busca cualquier elemento dentro de la barra inferior que contenga el texto "Perfil"
-        const elementosNav = document.querySelectorAll(".barra-navegacion *, footer *");
+        if (!miUid) return;
+
+        // 1. Ocultar el chat privado y la vista de perfil de contacto si estaban abiertos
+        const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
+        const vistaPerfilContacto = document.getElementById("vista-perfil-usuario") || document.getElementById("perfil-contacto");
+
+        if (pantallaChatPrivado) pantallaChatPrivado.style.display = "none";
+        if (vistaPerfilContacto) vistaPerfilContacto.style.display = "none";
+
+        // 2. Forzar el renderizado explícito de TUS datos propios
+        if (typeof cargarDatosPerfilPropio === "function") {
+          cargarDatosPerfilPropio(miUid);
+        } else if (typeof cargarMiPerfil === "function") {
+          cargarMiPerfil(miUid);
+        } else if (typeof renderizarMiPerfil === "function") {
+          renderizarMiPerfil();
+        }
+
+        // 3. Activar la pestaña de "Perfil" en la navegación inferior
+        const elementosNav = document.querySelectorAll(".barra-navegacion *, footer *, .menu-flotante *");
         const btnPerfilInferior = Array.from(elementosNav).find((el) =>
           el.textContent && el.textContent.trim().toLowerCase() === "perfil"
         );
@@ -4397,7 +4422,6 @@ function asignarEventosMenuCabecera() {
         if (btnPerfilInferior) {
           btnPerfilInferior.click();
         } else {
-          // Si no lo halla por texto, alterna las pantallas directamente
           const pantallaPerfil = document.getElementById("pantalla-perfil") || document.querySelector(".pantalla-perfil");
           const pantallaChats = document.getElementById("pantalla-chats") || document.querySelector(".pantalla-chats");
 
@@ -4406,6 +4430,10 @@ function asignarEventosMenuCabecera() {
             pantallaPerfil.style.display = "flex";
           }
         }
+
+        // 4. Restaurar la visibilidad del encabezado principal
+        const encabezadoInicio = document.querySelector(".encabezado-inicio");
+        if (encabezadoInicio) encabezadoInicio.style.display = "flex";
       }
 
       else if (accion === "modo-oscuro") {
@@ -4823,6 +4851,58 @@ let temporizadorEstado = null;
 let intervaloBarraProgreso = null;
 let likesSimulados = 0;
 
+// ⏱️ VARIABLES PARA CONTROLAR LA PAUSA AL MANTENER PRESIONADO
+let tiempoTotalHistoria = 10000; // 10 segundos por defecto
+let tiempoRestante = 10000;
+let tiempoInicioEstado = 0;
+let historiaPausada = false;
+
+function iniciarTemporizadorVisor(duracionMs) {
+  tiempoInicioEstado = Date.now();
+  tiempoRestante = duracionMs;
+  historiaPausada = false;
+
+  // Animación suave de la barra de progreso
+  if (intervaloBarraProgreso) clearInterval(intervaloBarraProgreso);
+  intervaloBarraProgreso = setInterval(() => {
+    if (historiaPausada) return;
+
+    const transcurridoSegmento = Date.now() - tiempoInicioEstado;
+    const tiempoConsumidoTotal = (tiempoTotalHistoria - tiempoRestante) + transcurridoSegmento;
+    let porcentaje = (tiempoConsumidoTotal / tiempoTotalHistoria) * 100;
+
+    if (porcentaje > 100) porcentaje = 100;
+    if (lineaProgreso) lineaProgreso.style.width = `${porcentaje}%`;
+  }, 50);
+
+  // Programar cierre cuando acabe el tiempo restante
+  if (temporizadorEstado) clearTimeout(temporizadorEstado);
+  temporizadorEstado = setTimeout(() => {
+    cerrarEstadoMova();
+  }, duracionMs);
+}
+
+function pausarVisorHistoria() {
+  if (historiaPausada) return;
+  historiaPausada = true;
+
+  // Congelar timers
+  if (temporizadorEstado) clearTimeout(temporizadorEstado);
+
+  // Calcular exactamente cuánto tiempo queda
+  const transcurrido = Date.now() - tiempoInicioEstado;
+  tiempoRestante = Math.max(0, tiempoRestante - transcurrido);
+}
+
+function reanudarVisorHistoria() {
+  if (!historiaPausada) return;
+  if (tiempoRestante <= 0) {
+    cerrarEstadoMova();
+    return;
+  }
+  iniciarTemporizadorVisor(tiempoRestante);
+}
+
 function abrirEstadoAmigo(urlFoto, fraseInicial, uidAutor = null) {
   if (!visorEstados) return;
   if (lineaProgreso && lineaProgreso.parentNode) {
@@ -4856,26 +4936,18 @@ function abrirEstadoAmigo(urlFoto, fraseInicial, uidAutor = null) {
 
   visorEstados.classList.remove("oculto");
 
-  let tiempoTranscurrido = 0;
+  // Resetear estados de tiempo e iniciar contador a 10s
+  tiempoTotalHistoria = 10000;
   if (lineaProgreso) lineaProgreso.style.width = "0%";
-
-  if (intervaloBarraProgreso) clearInterval(intervaloBarraProgreso);
-  intervaloBarraProgreso = setInterval(() => {
-    tiempoTranscurrido += 50;
-    let porcentaje = (tiempoTranscurrido / 10000) * 100;
-    if (lineaProgreso) lineaProgreso.style.width = `${porcentaje}%`;
-  }, 50);
-
-  if (temporizadorEstado) clearTimeout(temporizadorEstado);
-  temporizadorEstado = setTimeout(() => {
-    cerrarEstadoMova();
-  }, 10000);
+  iniciarTemporizadorVisor(tiempoTotalHistoria);
 }
 
 function cerrarEstadoMova() {
   if (visorEstados) visorEstados.classList.add("oculto");
   if (temporizadorEstado) clearTimeout(temporizadorEstado);
   if (intervaloBarraProgreso) clearInterval(intervaloBarraProgreso);
+
+  historiaPausada = false;
 
   // 🟢 RESTAURAR VISIBILIDAD DE LA BARRA
   if (lineaProgreso && lineaProgreso.parentNode) {
@@ -4893,6 +4965,33 @@ function cerrarEstadoMova() {
 if (btnCerrarEstado) {
   btnCerrarEstado.addEventListener("click", () => {
     cerrarEstadoMova();
+  });
+}
+
+// 👆 LISTENERS PARA MANTENER PRESIONADO Y PAUSAR LA HISTORIA (CON PROTECCIÓN MENÚ CONTEXTUAL)
+if (visorEstados) {
+  // 🚨 Prevenir el menú contextual (menú emergente del móvil/navegador)
+  visorEstados.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+  });
+
+  // Listener de mantener presionado
+  visorEstados.addEventListener("pointerdown", (e) => {
+    // Si toca algún botón interactivo, no pausamos para permitir el clic normal
+    if (e.target.closest("button") || e.target.closest(".btn-accion") || e.target.closest("#menu-vistas-likes")) {
+      return;
+    }
+    pausarVisorHistoria();
+  });
+
+  // Al soltar el toque/clic
+  visorEstados.addEventListener("pointerup", () => {
+    reanudarVisorHistoria();
+  });
+
+  // Si arrastra el dedo o puntero fuera de la pantalla
+  visorEstados.addEventListener("pointerleave", () => {
+    reanudarVisorHistoria();
   });
 }
 
@@ -5891,19 +5990,23 @@ async function borrarMiEstadoCompleto(usuarioUid, urlFotoBorrar) {
       await eliminarArchivoSupabase(urlFotoBorrar, "movachat-adjuntos");
     }
 
-    // 2. Limpiar los datos en Firebase Realtime Database
+    // 2. Limpiar los datos del estado en el perfil del usuario en Firebase
     await update(ref(db, `usuarios/${usuarioUid}`), {
       estadoHistoriaUrl: null,
       estadoHistoriaFecha: null,
       estadoHistoriaTexto: null
     });
 
-    // 3. Resetear variables globales
+    // 🚨 3. ELIMINAR CORAZONES Y VISTAS ASOCIADOS A ESTE ESTADO EN FIREBASE
+    await remove(ref(db, `historias_likes/${usuarioUid}`));
+    await remove(ref(db, `historias_vistas/${usuarioUid}`));
+
+    // 4. Resetear variables globales
     imagenEstadoGuardada = null;
     fraseEstadoGuardada = "";
     fechaEstadoGuardada = null;
 
-    // 4. Restaurar el diseño original de la tarjeta en la interfaz
+    // 5. Restaurar el diseño original de la tarjeta en la interfaz
     if (avatarMiEstadoClick) avatarMiEstadoClick.classList.remove("con-estado-activo");
     if (textoSubtituloMiEstado) {
       textoSubtituloMiEstado.textContent = "Comparte imágenes con tus amigos...";
@@ -5916,6 +6019,12 @@ async function borrarMiEstadoCompleto(usuarioUid, urlFotoBorrar) {
       miniBotonMas.textContent = "+";
       miniBotonMas.style.boxShadow = "none";
     }
+
+    // 6. Resetear y ocultar badges/contadores visuales en la tarjeta de Mi Estado
+    const badgeVistas = document.getElementById("badge-vistas-mi-estado");
+    const cantVistas = document.getElementById("cant-vistas-tarjeta");
+    if (badgeVistas) badgeVistas.classList.add("oculto");
+    if (cantVistas) cantVistas.textContent = "0";
 
     // Remover botón de eliminar del visor si existía
     const btnBorrarVisor = document.getElementById("btn-borrar-mi-estado-visor");
@@ -6014,14 +6123,23 @@ if (inputSubirEstadoReal) {
 
     if (!archivoSel || !usuarioActual) return;
 
+    // 🚨 FILTRO DE RESPALDO: Rechazar videos si se seleccionan por error
+    if (!archivoSel.type.startsWith("image/")) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Solo se permiten imágenes en los estados 📷", "⚠️", "#ff4b2b");
+      }
+      inputSubirEstadoReal.value = "";
+      return;
+    }
+
     try {
       if (typeof mostrarAvisoPremium === "function") {
         mostrarAvisoPremium("Comprimiendo y subiendo tu estado a la nube... 🪐", "☁️", "#00f2fe");
       }
 
-      // A) Si ya existía una foto activa, se elimina de Supabase antes de subir la nueva
+      // 🚨 A) SI YA EXISTÍA UNA FOTO ACTIVA, SE BORRA COMPLETAMENTE (INCLUYENDO LIKES Y VISTAS)
       if (imagenEstadoGuardada) {
-        await eliminarArchivoSupabase(imagenEstadoGuardada, "movachat-adjuntos");
+        await borrarMiEstadoCompleto(usuarioActual.uid, imagenEstadoGuardada);
       }
 
       // B) Comprimir imagen a WebP (1080x1920 máx)
@@ -7776,39 +7894,142 @@ if (btnConfirmarEliminar && capaConfirmarEliminar) {
   });
 }
 
-// 📇 BOTÓN COMPARTIR CONTACTO EN EL CHAT (CORREGIDO)
+/**
+ * ☁️ Guarda el contacto compartido en Firebase (Con límite diario, expiración a 15 días y ocultoPara)
+ */
+async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto) {
+  const usuarioActual = auth.currentUser;
+  const miUid = usuarioActual ? usuarioActual.uid : null;
+  const contactoUid = window.contactoActivoUid;
+
+  if (!miUid || !contactoUid) {
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Debes estar dentro de un chat activo para enviar el contacto.", "⚠️", "#ff4b2b");
+    }
+    return;
+  }
+
+  // 🛡️ VERIFICAR LÍMITE DIARIO (MÁXIMO 10 CONTACTOS COMPARTIDOS)
+  if (typeof verificarLimiteDiarioContactos === "function") {
+    const chequeoContactos = await verificarLimiteDiarioContactos(miUid);
+    if (!chequeoContactos.permitido) {
+      if (typeof mostrarAvisoPremium === "function") {
+        mostrarAvisoPremium("Has alcanzado tu límite diario de 10 contactos compartidos 🛑", "⚠️", "#ff4b2b");
+      }
+      return;
+    }
+  }
+
+  // 🟢 CERRAR MODAL DE CONTACTOS DE INMEDIATO
+  const modalContactos = document.getElementById("modal-seleccionar-contacto") || document.getElementById("modal-contactos");
+  if (modalContactos) modalContactos.classList.add("oculto");
+
+  const chatId = typeof obtenerChatId === "function"
+    ? obtenerChatId(miUid, contactoUid)
+    : [miUid, contactoUid].sort().join("_");
+
+  const ahora = new Date();
+  const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  // ⏱️ Expiración de 15 días en milisegundos
+  const TIEMPO_15_DIAS_MS = 15 * 24 * 60 * 60 * 1000;
+  const fechaExpiracion = Date.now() + TIEMPO_15_DIAS_MS;
+
+  const objetoMensaje = {
+    emisor: miUid,
+    emisorUid: miUid,
+    receptor: contactoUid,
+    tipoAdjunto: 'contacto',
+    contactoInfo: {
+      uid: uidContacto,
+      nombre: nombreContacto || "Contacto",
+      foto: (fotoContacto && !fotoContacto.includes("assets/")) ? fotoContacto : ""
+    },
+    texto: "",
+    hora: horaFormateada,
+    timestamp: Date.now(),
+    expiraEn: fechaExpiracion, // ⌛ Expiración a los 15 días
+    ocultoPara: {}             // 🙈 Registro para "Eliminar para mí"
+  };
+
+  try {
+    const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
+    const nuevoMensajeRef = push(listaMensajesRef);
+    await set(nuevoMensajeRef, objetoMensaje);
+
+    // 📈 Actualizar el resumen del último mensaje en la conversación
+    const resumenChatRef = ref(db, `chats/${chatId}/ultimoMensaje`);
+    await set(resumenChatRef, {
+      texto: `📇 Contacto: ${nombreContacto}`,
+      timestamp: Date.now(),
+      emisor: miUid
+    });
+
+    // Incrementar contador diario tras el envío exitoso
+    if (typeof incrementarContadorContactos === "function") {
+      await incrementarContadorContactos(miUid);
+    }
+
+    if (typeof reproducirSonidoEnviado === "function") {
+      reproducirSonidoEnviado();
+    }
+
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium(`Contacto <b>${nombreContacto}</b> compartido con éxito.`, "📇", "#00f2fe");
+    }
+
+  } catch (err) {
+    console.error("❌ Error al enviar tarjeta de contacto a Firebase:", err);
+    if (typeof mostrarAvisoPremium === "function") {
+      mostrarAvisoPremium("Error de red al intentar enviar el contacto.", "⚠️", "#ff4b2b");
+    }
+  }
+}
+
+// 📇 BOTÓN COMPARTIR CONTACTO EN EL CHAT
 const btnAdjuntarContacto = document.getElementById("btn-adjuntar-contacto");
 
-if (btnAdjuntarContacto && modalContactos) {
+if (btnAdjuntarContacto) {
   btnAdjuntarContacto.addEventListener("click", async (e) => {
     e.stopPropagation();
 
-    // 1. Cerrar menú de adjuntos
-    if (typeof menuAdjuntar !== "undefined" && menuAdjuntar) {
-      menuAdjuntar.classList.add("oculto");
-    }
-    if (typeof btnAdjuntarTodo !== "undefined" && btnAdjuntarTodo) {
-      btnAdjuntarTodo.classList.remove("caiman-abierto");
+    // 1. Cerrar menú flotante de adjuntos
+    const menuAdjuntar = document.getElementById("menu-adjuntar-files");
+    if (menuAdjuntar) menuAdjuntar.classList.add("oculto");
+
+    // 2. Buscar e identificar el modal de contactos en el DOM
+    const elemModal = document.getElementById("modal-seleccionar-contacto") 
+                   || document.getElementById("modal-contactos")
+                   || document.querySelector(".modal-contactos");
+
+    if (!elemModal) {
+      console.error("❌ No se encontró el modal de contactos en el DOM.");
+      return;
     }
 
-    // 2. Cargar la lista esperando a que la consulta a Firebase termine
-    await renderizarListaContactosModal();
+    // 3. Cargar la lista de contactos
+    if (typeof renderizarListaContactosModal === "function") {
+      await renderizarListaContactosModal();
+    }
 
-    // 3. Asignar el evento para compartir inmediatamente sobre los elementos generados
+    // 4. Asignar evento de clic único a cada fila
     const filasContactos = document.querySelectorAll(".item-contacto-fila");
 
     filasContactos.forEach(fila => {
       fila.style.cursor = "pointer";
 
-      // Clonar para eliminar escuchadores previos que abrían el chat privado
+      // Clonar nodo para evitar escuchadores duplicados
       const nuevaFila = fila.cloneNode(true);
-      fila.parentNode.replaceChild(nuevaFila, fila);
+      if (fila.parentNode) fila.parentNode.replaceChild(nuevaFila, fila);
 
       nuevaFila.addEventListener("click", async (evt) => {
         evt.stopPropagation();
         evt.preventDefault();
 
         if (evt.target.closest(".btn-eliminar-contacto-item")) return;
+
+        // Ocultar modal inmediatamente
+        elemModal.classList.add("oculto");
 
         const elemNombre = nuevaFila.querySelector(".nombre-contacto-texto");
         const elemAvatar = nuevaFila.querySelector(".avatar-contacto-mini");
@@ -7817,18 +8038,13 @@ if (btnAdjuntarContacto && modalContactos) {
         const srcAvatar = elemAvatar ? elemAvatar.src : "";
         const targetUid = nuevaFila.dataset.uid || fila.dataset.uid || "";
 
-        // Ocultar modal
-        modalContactos.classList.add("oculto");
-
-        // Enviar la tarjeta de contacto a Firebase Realtime Database
+        // Enviar único a Firebase
         await enviarContactoAFirebase(targetUid, nombreContacto, srcAvatar);
       });
     });
 
-    modalContactos.classList.remove("oculto");
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Selecciona un contacto para enviarlo a este chat 📇", "✨", "#00f2fe");
-    }
+    // 5. Abrir el modal
+    elemModal.classList.remove("oculto");
   });
 }
 
@@ -7876,158 +8092,7 @@ async function incrementarContadorContactos(uid) {
   }
 }
 
-/**
- * ☁️ Guarda el contacto compartido en Firebase (Con límite diario, expiración a 15 días y ocultoPara)
- */
-async function enviarContactoAFirebase(uidContacto, nombreContacto, fotoContacto) {
-  const usuarioActual = auth.currentUser;
-  const miUid = usuarioActual ? usuarioActual.uid : null;
-  const contactoUid = window.contactoActivoUid;
 
-  if (!miUid || !contactoUid) {
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Debes estar dentro de un chat activo para enviar el contacto.", "⚠️", "#ff4b2b");
-    }
-    return;
-  }
-
-  // 🛡️ VERIFICAR LÍMITE DIARIO (MÁXIMO 10 CONTACTOS COMPARTIDOS)
-  if (typeof verificarLimiteDiarioContactos === "function") {
-    const chequeoContactos = await verificarLimiteDiarioContactos(miUid);
-    if (!chequeoContactos.permitido) {
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Has alcanzado tu límite diario de 10 contactos compartidos 🛑", "⚠️", "#ff4b2b");
-      }
-      return;
-    }
-  }
-
-  const chatId = typeof obtenerChatId === "function"
-    ? obtenerChatId(miUid, contactoUid)
-    : [miUid, contactoUid].sort().join("_");
-
-  const ahora = new Date();
-  const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-  // ⏱️ Expiración de 15 días en milisegundos
-  const TIEMPO_15_DIAS_MS = 15 * 24 * 60 * 60 * 1000;
-  const fechaExpiracion = Date.now() + TIEMPO_15_DIAS_MS;
-
-  const objetoMensaje = {
-    emisor: miUid,
-    receptor: contactoUid,
-    tipoAdjunto: 'contacto',
-    contactoInfo: {
-      uid: uidContacto,
-      nombre: nombreContacto,
-      foto: fotoContacto || ""
-    },
-    texto: "",
-    hora: horaFormateada,
-    timestamp: Date.now(),
-    expiraEn: fechaExpiracion, // ⌛ Expiración a los 15 días
-    ocultoPara: {}             // 🙈 Registro para "Eliminar para mí"
-  };
-
-  try {
-    const listaMensajesRef = ref(db, `chats/${chatId}/mensajes`);
-    const nuevoMensajeRef = push(listaMensajesRef);
-    await set(nuevoMensajeRef, objetoMensaje);
-
-    // 📈 Actualizar el resumen del último mensaje en la conversación
-    const resumenChatRef = ref(db, `chats/${chatId}/ultimoMensaje`);
-    await set(resumenChatRef, {
-      texto: `📇 Contacto: ${nombreContacto}`,
-      timestamp: Date.now(),
-      emisor: miUid
-    });
-
-    // Incrementar contador diario tras el envío exitoso
-    if (typeof incrementarContadorContactos === "function") {
-      await incrementarContadorContactos(miUid);
-    }
-
-    if (typeof reproducirSonidoEnviado === "function") {
-      reproducirSonidoEnviado();
-    }
-
-    // Inyectar visualmente en la pantalla del emisor de forma inmediata
-    inyectarContactoCompartidoBurbuja(uidContacto, nombreContacto, fotoContacto);
-
-  } catch (err) {
-    console.error("❌ Error al enviar tarjeta de contacto a Firebase:", err);
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium("Error de red al intentar enviar el contacto.", "⚠️", "#ff4b2b");
-    }
-  }
-}
-
-/**
- * 📇 Renderiza visualmente la burbuja del contacto compartido en el historial del chat
- */
-function inyectarContactoCompartidoBurbuja(uidContacto, nombre, avatar) {
-  const ahora = new Date();
-  const horaFormateada = ahora.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-  const nuevaBurbujaHTML = document.createElement("div");
-  nuevaBurbujaHTML.className = "mensaje-burbuja enviado";
-  nuevaBurbujaHTML.style.padding = "8px";
-
-  // Foto por defecto si viene vacía
-  const avatarUrl = avatar || "https://i.pravatar.cc/150";
-
-  nuevaBurbujaHTML.innerHTML = `
-    <div class="tarjeta-contacto-compartido">
-      <div class="cabecera-contacto-card">
-        <img src="${avatarUrl}" alt="${nombre}" class="avatar-contacto-card">
-        <div class="info-contacto-card">
-          <span class="nombre-contacto-card">${nombre}</span>
-          <span class="subtexto-contacto-card">
-            <i data-lucide="shield-check" style="width:12px; height:12px;"></i> Contacto MovaChat
-          </span>
-        </div>
-      </div>
-      <button class="btn-accion-contacto-card">
-        <i data-lucide="message-square" style="width:14px; height:14px;"></i> Chatear
-      </button>
-    </div>
-    <span class="mensaje-hora" style="margin-top: 4px;">${horaFormateada}</span>
-  `;
-
-  // 🛡️ Evento para abrir la conversación directamente con el contacto compartido al presionar Chatear
-  const btnChatear = nuevaBurbujaHTML.querySelector(".btn-accion-contacto-card");
-  if (btnChatear) {
-    btnChatear.addEventListener("click", () => {
-      if (typeof abrirConversacion === "function" && uidContacto) {
-        abrirConversacion(uidContacto);
-      } else if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium(`Iniciando conversación con ${nombre}...`, '💬', '#00f2fe');
-      }
-    });
-  }
-
-  const historialMensajes = document.getElementById("historial-mensajes");
-  if (historialMensajes) {
-    historialMensajes.appendChild(nuevaBurbujaHTML);
-
-    if (typeof aplicarRelojArenaEfecto === "function") {
-      aplicarRelojArenaEfecto(nuevaBurbujaHTML);
-    }
-
-    // ⚡ OPTIMIZACIÓN CPU: Renderizar únicamente los iconos dentro de la nueva tarjeta de contacto
-    if (window.lucide) {
-      window.lucide.createIcons({
-        targets: [nuevaBurbujaHTML]
-      });
-    }
-
-    historialMensajes.scrollTop = historialMensajes.scrollHeight;
-
-    if (typeof mostrarAvisoPremium === "function") {
-      mostrarAvisoPremium(`Contacto <b>${nombre}</b> compartido con éxito.`, "📇", "#00f2fe");
-    }
-  }
-}
 
 // ========================================================
 // 14. INICIALIZACIÓN GLOBAL (DOM CONTENT LOADED)
@@ -9093,9 +9158,13 @@ if (btnAccionChat) {
     if (tieneReenvioPendiente || tieneTexto || tieneAdjunto || modoBoton === "enviar") {
       enviarMensajeNuevo();
     } else {
-      // 🎙️ Solo se activa la grabadora de voz si no hay reenvío ni texto
+      // 🎙️ Control de grabación de voz seguro
       if (typeof toggleGrabacionVoz === "function") {
-        toggleGrabacionVoz();
+        toggleGrabacionVoz(e);
+      } else if (typeof estaGrabandoAudio !== "undefined" && estaGrabandoAudio) {
+        if (typeof finalizarGrabacionVoz === "function") finalizarGrabacionVoz();
+      } else {
+        if (typeof iniciarGrabacionVoz === "function") iniciarGrabacionVoz(e);
       }
     }
   };
@@ -9155,6 +9224,18 @@ function limpiarListenersActivos() {
   if (typeof listenerPresenciaContactoActivo === "function") { listenerPresenciaContactoActivo(); listenerPresenciaContactoActivo = null; }
 }
 
+// 🟢 FUNCIÓN AUXILIAR DE SCROLL AUTOMÁTICO PARA MULTIMEDIA
+function hacerScrollAlFinalHistorial() {
+  const elemHistorial = document.querySelector(".historial-mensajes");
+  if (!elemHistorial) return;
+
+  requestAnimationFrame(() => {
+    elemHistorial.scrollTop = elemHistorial.scrollHeight;
+  });
+}
+// 👈 HACER DISPONIBLE EN WINDOW PARA LOS ATRIBUTOS ONLOAD DEL HTML
+window.hacerScrollAlFinalHistorial = hacerScrollAlFinalHistorial;
+
 // 📌 ESCUCHAR MENSAJES Y CHECKS DE LECTURA EN TIEMPO REAL (OPTIMIZADO)
 function escucharMensajesChat(chatId) {
   const contenedorHistorial = document.querySelector(".historial-mensajes");
@@ -9206,7 +9287,7 @@ function escucharMensajesChat(chatId) {
             </div>
           `;
           elemHistorial.appendChild(burbujaEscribiendo);
-          elemHistorial.scrollTop = elemHistorial.scrollHeight;
+          hacerScrollAlFinalHistorial();
         }
       } else {
         if (burbujaEscribiendo) {
@@ -9228,7 +9309,7 @@ function escucharMensajesChat(chatId) {
     });
   }
 
-  // 🟢 5. ESCUCHAR LA PRESENCIA EN VIVO DEL RECEPTOR (OPTIMIZADO)
+  // 🟢 5. ESCUCHAR LA PRESENCIA EN VIVO DEL RECEPTOR (PERSISTENCIA TOTAL EN FIREBASE)
   let estaEnAppReceptorLive = false;
   if (contactoUid) {
     const presenciaContactoRef = ref(db, `usuarios/${contactoUid}/presenciaReal`);
@@ -9240,18 +9321,27 @@ function escucharMensajesChat(chatId) {
 
       elemHistorial.querySelectorAll(".indicador-checks-mova").forEach((contenedor) => {
         const esLeido = contenedor.classList.contains("leido");
+        const yaFueEntregado = contenedor.classList.contains("entregado");
+        const msgId = contenedor.getAttribute("data-msg-id");
+
         if (!esLeido) {
-          if (estaEnAppReceptorLive) {
+          // Si entra a la app O ya se entregó antes, se mantienen las 2 palomitas
+          if (estaEnAppReceptorLive || yaFueEntregado) {
             contenedor.className = "indicador-checks-mova entregado";
             contenedor.innerHTML = `<i data-lucide="check-check"></i>`;
+
+            // Guardar en Firebase para que persista al recargar o salir del chat
+            if (estaEnAppReceptorLive && !yaFueEntregado && msgId && window.idChatActual) {
+              const msgRef = ref(db, `chats/${window.idChatActual}/mensajes/${msgId}`);
+              update(msgRef, { entregado: true }).catch(() => {});
+            }
           } else {
             contenedor.className = "indicador-checks-mova enviado";
-            contenedor.innerHTML = `<i data-lucide="check"></i>`;
+            contenedor.innerHTML = `<i data-lucide="check-check"></i>`;
           }
         }
       });
 
-      // ⚡ Optimización: Se limita la creación de íconos únicamente al historial activo
       if (window.lucide) {
         window.lucide.createIcons({ targets: [elemHistorial] });
       }
@@ -9385,6 +9475,7 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
+          // 🟢 GENERACIÓN UNIFICADA DE CHECKS CON DATA-MSG-ID Y PERSISTENCIA
           let htmlChecks = "";
           if (esMio) {
             let claseChecks = "enviado";
@@ -9395,7 +9486,7 @@ function escucharMensajesChat(chatId) {
             if (esLeido) {
               claseChecks = "leido";
               iconoLucide = "check-check";
-            } else if (estaEnAppReceptorLive) {
+            } else if (estaEnAppReceptorLive || msg.entregado) {
               claseChecks = "entregado";
               iconoLucide = "check-check";
             }
@@ -9460,7 +9551,7 @@ function escucharMensajesChat(chatId) {
               contenidoBurbuja = `
                 ${htmlReenviado}
                 <div class="contenedor-foto-enviada" data-foto-hd="${msg.urlAdjunto}" style="max-width: 100%; margin-bottom: 6px; border-radius: 12px; overflow: hidden; cursor: pointer; position: relative;">
-                  <img src="${msg.urlAdjunto}" style="width: 100%; max-height: 280px; object-fit: cover; display: block; border-radius: 12px;">
+                  <img src="${msg.urlAdjunto}" onload="hacerScrollAlFinalHistorial()" style="width: 100%; max-height: 280px; object-fit: cover; display: block; border-radius: 12px;">
                 </div>
                 ${msg.texto ? `<p class="mensaje-texto">${msg.texto}</p>` : ""}
                 <span class="mensaje-hora">${iconoRelojHTML}${horaFormateada}${textoEditadoHTML}${htmlChecks}</span>
@@ -9564,7 +9655,7 @@ function escucharMensajesChat(chatId) {
                     <i data-lucide="play" style="width: 28px; height: 28px; fill: white; color: white;"></i>
                   </div>
                   <div class="marco-video-redondo" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; position: relative; z-index: 1; background: #000;">
-                    <video src="${msg.urlAdjunto}" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
+                    <video src="${msg.urlAdjunto}" onloadeddata="hacerScrollAlFinalHistorial()" playsinline webkit-playsinline preload="auto" muted style="width: 100%; height: 100%; object-fit: cover; display: block;"></video>
                   </div>
                 </div>
                 ${msg.texto ? `<p class="mensaje-texto" style="text-align: center; margin-top: 6px;">${msg.texto}</p>` : ""}
@@ -9640,7 +9731,10 @@ function escucharMensajesChat(chatId) {
           window.lucide.createIcons({ targets: [elemHistorial] });
         }
 
-        elemHistorial.scrollTop = elemHistorial.scrollHeight;
+        // 🟢 Scroll inmediato + diferidos para multimedia y ajuste de teclado
+        hacerScrollAlFinalHistorial();
+        setTimeout(hacerScrollAlFinalHistorial, 150);
+        setTimeout(hacerScrollAlFinalHistorial, 400);
       }
 
       esCargaInicial = false;
@@ -9714,6 +9808,14 @@ function actualizarEstadoPantallaInicio() {
   }
 }
 
+// 🗑️ Liberación explícita de memoria RAM para vistas previas
+function limpiarPreviewBlob(elementoImg) {
+  if (elementoImg && elementoImg.src && elementoImg.src.startsWith("blob:")) {
+    URL.revokeObjectURL(elementoImg.src);
+    elementoImg.src = "";
+  }
+}
+
 // ⚡ Inicialización principal y eventos al cargar el DOM
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -9725,6 +9827,22 @@ document.addEventListener("DOMContentLoaded", () => {
   // 🟢 ÚNICO CASO PERMITIDO: Carga inicial global del HTML estático
   if (window.lucide) {
     window.lucide.createIcons();
+  }
+
+  // 🔍 Búsqueda en Firebase optimizada con debounce de 300ms
+  const inputNuevoContacto = document.getElementById("input-nuevo-contacto");
+  let timerBusquedaInput = null;
+
+  if (inputNuevoContacto) {
+    inputNuevoContacto.addEventListener("input", (e) => {
+      clearTimeout(timerBusquedaInput);
+      timerBusquedaInput = setTimeout(async () => {
+        const textoConsulta = e.target.value.trim().toLowerCase();
+        if (!textoConsulta) return;
+
+        // AQUÍ VA TU LÓGICA DE BÚSQUEDA EN FIREBASE
+      }, 300);
+    });
   }
 
   // 🔙 BOTÓN VOLVER / CERRAR CHAT (Limpia los listeners de Firebase y oculta el chat)
@@ -10722,56 +10840,6 @@ if (!document.getElementById("anim-spin-mova")) {
   document.head.appendChild(estiloSpin);
 }
 
-/**
- * 👤 Envía una tarjeta de contacto al chat actual
- */
-function enviarContactoAlChat(contacto) {
-  if (!contacto || !chatActualId || !usuarioActual) return;
-
-  const idMensaje = `msg_${Date.now()}`;
-  const horaActual = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  const nuevoMensaje = {
-    id: idMensaje,
-    emisorId: usuarioActual.uid,
-    receptorId: chatActualId,
-    timestamp: Date.now(),
-    hora: horaActual,
-    tipoAdjunto: 'contacto',
-    urlAdjunto: 'contacto',
-    contactoInfo: {
-      uid: contacto.uid || contacto.id,
-      nombre: contacto.nombre || contacto.displayName || "Usuario Mova",
-      foto: contacto.foto || contacto.photoURL || ""
-    },
-    leido: false
-  };
-
-  // ========================================================
-  // 📱 ENVÍO SEGURO DE CONTACTO ADJUNTO (SIN DUPLICADOS)
-  // ========================================================
-
-  // Guardar mensaje en la base de datos usando la sintaxis modular de Firebase v10
-  const rutaMensaje = ref(db, `chats/${obtenerIdChatCombinado(usuarioActual.uid, chatActualId)}/${idMensaje}`);
-
-  set(rutaMensaje, nuevoMensaje).then(() => {
-    // Cerrar modal de selección si está abierto
-    const modalContactos = document.getElementById("modal-seleccionar-contacto");
-    if (modalContactos) {
-      modalContactos.classList.add("oculto");
-
-      // ✨ CLONACIÓN PREVENTIVA: Limpiamos los eventos acumulados en el modal de contactos
-      const listaContactosModal = document.getElementById("lista-contactos-modal-adjuntar") || document.getElementById("modal-seleccionar-contacto");
-      if (listaContactosModal && listaContactosModal.parentNode) {
-        const listaLimpia = listaContactosModal.cloneNode(true);
-        listaContactosModal.parentNode.replaceChild(listaLimpia, listaContactosModal);
-      }
-    }
-  }).catch((error) => {
-    console.error("❌ Error al compartir el contacto:", error);
-  });
-}
-
 // Global para abrir chat desde el botón de la tarjeta
 window.abrirChatDesdeContacto = function (uidContacto, nombreContacto = "", fotoContacto = "") {
   if (!uidContacto) {
@@ -11009,7 +11077,7 @@ async function cerrarSesionLimpia() {
     const modalLogout = document.getElementById("modal-confirmar-cerrar-sesion");
     if (modalLogout) modalLogout.classList.add("oculto");
 
-    window.location.reload(); 
+    window.location.reload();
   } catch (error) {
     console.error("Error al cerrar sesión:", error);
   }

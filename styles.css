@@ -1938,6 +1938,19 @@ body {
 /* ========================================================
    📸 CONTENEDOR Y VISOR DE FOTO (PROPORCIÓN VERTICAL IDEAL)
    ======================================================== */
+   /* 🚫 Desactivar selección y menú contextual al mantener presionado en móviles */
+#visor-historias-mova,
+#visor-historias-mova img,
+#img-estado-render {
+  -webkit-touch-callout: none; /* Desactiva el menú emergente en iOS/Safari */
+  -webkit-user-select: none;   /* Safari */
+  -khtml-user-select: none;    /* Konqueror HTML */
+  -moz-user-select: none;      /* Firefox */
+  -ms-user-select: none;       /* Internet Explorer/Edge */
+  user-select: none;           /* Estándar */
+  touch-action: manipulation;  /* Evita gestos no deseados */
+}
+
 .wrapper-foto-estado-premium {
   position: relative;
   width: 88%;

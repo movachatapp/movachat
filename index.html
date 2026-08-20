@@ -499,7 +499,8 @@
 
     <input type="file" id="input-archivo-galeria" accept="image/*,video/*" style="display: none;">
     <input type="file" id="input-archivo-documento" accept=".pdf,.doc,.docx,.zip,.rar,.txt" style="display: none;">
-    <input type="file" id="input-subir-estado" accept="image/*,video/*" style="display: none;">
+    <!-- 🚨 SE REMOVIÓ video/* PARA SOLO PERMITIR IMÁGENES -->
+    <input type="file" id="input-subir-estado" accept="image/*" style="display: none;">
     <input type="file" id="input-foto-perfil" accept="image/*" style="display: none;">
 
     <div class="modal-overlay oculto" id="modal-qr-mova">
@@ -576,7 +577,7 @@
 
     <div class="menu-contextual oculto" id="menu-adjuntar-files">
       <button class="opcion-menu-ctx" id="btn-adjuntar-galeria"><i data-lucide="image"></i> Galería
-        (Fotos/Videos)</button>
+        (Fotos / Imagen)</button>
       <button class="opcion-menu-ctx" id="btn-adjuntar-doc"><i data-lucide="file-text"></i> Documentos</button>
       <button class="opcion-menu-ctx" id="btn-adjuntar-contacto" style="color: #00f2fe;"><i data-lucide="user-plus"></i>
         Compartir Contacto</button>
