@@ -204,7 +204,7 @@ body {
   border-radius: 40px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.1);
-  z-index: 100;
+  z-index: 90;
 }
 
 .menu-btn {
@@ -1286,6 +1286,28 @@ body {
   border-color: rgba(168, 85, 247, 0.25);
 }
 
+/* 🚀 GLOBOS ESPECIALES DE NOVEDADES (BENTO GRID + GLASSMORPHISM + NEÓN CYAN) */
+.mensaje-burbuja.canal-oficial-burbuja {
+  align-self: center !important;
+  width: 92% !important;
+  max-width: 360px !important;
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.08), rgba(127, 0, 255, 0.12)) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(0, 242, 254, 0.3) !important;
+  border-radius: 20px !important;
+  padding: 14px 18px !important;
+  margin: 8px auto 14px auto !important;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4), 0 0 15px rgba(0, 242, 254, 0.15) !important;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.mensaje-burbuja.canal-oficial-burbuja:hover {
+  transform: translateY(-2px) !important;
+  border-color: rgba(0, 242, 254, 0.55) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 22px rgba(0, 242, 254, 0.3) !important;
+}
+
 .mensaje-texto {
   font-size: 0.92rem;
   line-height: 1.4;
@@ -1398,20 +1420,20 @@ body {
 /* --- MENÚ CONTEXTUAL (GLASSMORPHISM PRO) --- */
 .menu-contextual {
   position: absolute;
-  z-index: 1000;
-  margin-top: -30px !important; /* 👈 Desplaza el menú hacia arriba respecto a la coordenada JS */
-  background: rgba(15, 20, 35, 0.82);
+  z-index: 2000 !important;
+  margin-top: -10px !important;
+  background: rgba(15, 20, 35, 0.88);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
   padding: 6px;
   width: 185px;
   box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.6),
-    0 0 15px rgba(0, 242, 254, 0.05);
+    0 10px 30px rgba(0, 0, 0, 0.7),
+    0 0 15px rgba(0, 242, 254, 0.1);
 
-  transform-origin: top left;
+  transform-origin: top right;
   opacity: 0;
   transform: scale(0.95);
   pointer-events: none;
@@ -1745,26 +1767,6 @@ body {
   white-space: nowrap;
   line-height: 1;
   flex-shrink: 0;     /* Impide que el texto se comprima */
-}
-
-/* ⚡ Botón de Cambio de Velocidad (1x, 1.5x, 2x) */
-.btn-velocidad-audio {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #00f2fe;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 3px 7px;
-  border-radius: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.btn-velocidad-audio:hover {
-  background: rgba(0, 242, 254, 0.2);
-  border-color: #00f2fe;
 }
 
 /* 📎 Botón de Adjuntar */
@@ -2632,6 +2634,8 @@ body {
 #menu-tarjetas-chat {
   pointer-events: auto !important;
   z-index: 2147483647 !important;
+  max-width: calc(100vw - 32px) !important; /* Evita que sobrepase el ancho de la pantalla */
+  right: 16px !important; /* Mantiene un margen mínimo de 16px con el borde derecho */
 }
 
 /* --- TOAST DE NOTIFICACIÓN FLOTANTE --- */
@@ -3678,7 +3682,11 @@ body.tema-claro .nombre-sugerencia-txt {
 }
 
 .amigo-datos .amigo-estado-texto {
-  display: none !important;
+  color: #00f2fe !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+  display: block !important;
 }
 
 /* ⚡ CHECKS DE ESTADO MOVACHAT (ALTO CONTRASTE Y TIEMPO REAL) */
@@ -4249,30 +4257,6 @@ body.tema-claro .btn-accion-contacto-card:hover {
   transition: transform 0.15s ease-out;
 }
 
-/* 🔒 ESTILOS Y BRILLO DEL CANDADO ENGANCHADO */
-#contenedor-candado-manoslibres.candado-bloqueado {
-  background: rgba(0, 242, 254, 0.15) !important;
-  border-color: #00f2fe !important;
-  box-shadow: 0 0 20px rgba(0, 242, 254, 0.4) !important;
-}
-
-#contenedor-candado-manoslibres.candado-bloqueado #icono-candado {
-  color: #00f2fe !important;
-  animation: pulsoCandado 1s infinite alternate;
-}
-
-@keyframes pulsoCandado {
-  from { transform: scale(1); }
-  to { transform: scale(1.15); }
-}
-
-/* 🙈 FORZAR OCULTAMIENTO PERFECTO CUANDO TIENE LA CLASE .oculto */
-#contenedor-candado-manoslibres.oculto {
-  display: none !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
 /* ========================================================
    ⚡ BOTÓN DE VELOCIDAD DE AUDIO (MOVACHAT PRO)
    ======================================================== */
@@ -4420,3 +4404,525 @@ body:has(#pantalla-chat-privado:not([style*="display: none"])) .encabezado-inici
   order: -999999 !important;
 }
 
+/* 🚨 SOLUCIÓN DEFINITIVA: BLOQUEO DE BORDE PARA MENÚ CONTEXTUAL */
+#menu-tarjetas-chat {
+  position: absolute;
+  z-index: 99999;
+  /* Eliminamos los !important de left/right para que JS mande con libertad */
+  width: 210px; 
+}
+
+/* ========================================================
+   📱 AJUSTE RESPONSIVO BENTO: MODAL ACERCA DE MOVACHAT
+   ======================================================== */
+#modal-acerca-de .modal-cristal {
+  max-width: 400px !important; /* 👈 Aumentamos el límite de ancho */
+  width: 100% !important;        /* 👈 Ocupa casi todo el ancho visible del teléfono */
+  padding: 24px 20px !important;
+}
+
+/* Alineación limpia estilo Bento para los datos internos */
+#modal-acerca-de .modal-cristal div[style*="background: rgba(0, 0, 0, 0.25)"] > div {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 20px 0 !important;
+}
+
+#modal-acerca-de .modal-cristal div[style*="background: rgba(0, 0, 0, 0.25)"] span {
+  font-size: 0.78rem !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  flex-shrink: 0 !important;
+}
+
+#modal-acerca-de .modal-cristal div[style*="background: rgba(0, 0, 0, 0.25)"] strong {
+  font-size: 0.85rem !important;
+  color: #ffffff !important;
+  text-align: right !important;
+  word-break: break-word !important;
+}
+
+/* ========================================================
+   📱 AJUSTE RESPONSIVO BENTO: MODAL REPORTAR BUG / FEEDBACK
+   ======================================================== */
+#modal-reportar-bug .modal-cristal {
+  max-width: 400px !important; /* 👈 Aumentamos la anchura máxima */
+  width: 100% !important;        /* 👈 Ocupa el 94% de la pantalla del teléfono */
+  padding: 24px 14px !important;
+}
+
+/* ========================================================
+   👑 PANEL DE CONTROL ADMIN (BENTO GRID + GLASSMORPHISM)
+   ======================================================== */
+
+.modal-admin-bento {
+  background: rgba(15, 20, 35, 0.92) !important;
+  backdrop-filter: blur(25px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(25px) saturate(180%) !important;
+  border: 1px solid rgba(0, 242, 254, 0.25) !important;
+  border-radius: 28px !important;
+  width: 92% !important;
+  max-width: 420px !important;
+  padding: 20px !important;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 242, 254, 0.15) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  animation: modalEntrada 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* BLOQUE 1: Encabezado */
+.admin-bento-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 4px;
+}
+
+.admin-titulo-caja {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icono-corona-neon {
+  width: 22px;
+  height: 22px;
+  color: #ffb703;
+  filter: drop-shadow(0 0 8px rgba(255, 183, 3, 0.6));
+}
+
+.admin-bento-header h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.btn-cerrar-bento {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-cerrar-bento:hover {
+  background: rgba(255, 75, 43, 0.2);
+  color: #ff4b2b;
+  border-color: rgba(255, 75, 43, 0.4);
+}
+
+/* BLOQUE 2: Matriz Bento de Pestañas */
+.bento-grid-nav {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 8px !important;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 6px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tab-bento-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 10px 6px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.tab-bento-btn svg {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.2s ease;
+}
+
+.tab-bento-btn span {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.tab-bento-btn:hover {
+  background: rgba(0, 242, 254, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tab-bento-btn.activo {
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(127, 0, 255, 0.25)) !important;
+  border-color: #00f2fe !important;
+  color: #00f2fe !important;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.25) !important;
+}
+
+.tab-bento-btn.activo svg {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 5px #00f2fe);
+}
+
+/* BLOQUE 3: Visor de Resultados */
+.bento-contenido-visor {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  padding: 14px;
+  min-height: 220px;
+}
+
+.scroll-bento-lista {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.texto-vacio-bento {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 30px 0;
+  margin: 0;
+}
+
+/* Formulario Bento de Novedades */
+.formulario-bento-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(0, 242, 254, 0.2);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.label-bento-neon {
+  font-size: 0.78rem;
+  color: #00f2fe;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.label-bento-neon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.formulario-bento-card textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px;
+  color: #fff;
+  font-size: 0.85rem;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.formulario-bento-card textarea:focus {
+  border-color: #00f2fe;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+}
+
+.btn-publicar-neon {
+  width: 100%;
+  background: linear-gradient(135deg, #00f2fe, #7f00ff);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  padding: 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-publicar-neon:active {
+  transform: scale(0.97);
+}
+
+.historial-novedades-caja {
+  max-height: 160px;
+}
+
+/* Tarjeta Bento MovaMusic en Perfil (Integración Total Bento Glassmorphism) */
+.tarjeta-bento.movamusic-player-card {
+  background: rgba(18, 18, 23, 0.65) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px !important;
+  padding: 16px !important;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4) !important;
+  margin-top: -6px !important; /* 👈 Ajustado para subir la tarjeta */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+.tarjeta-bento.movamusic-player-card:hover {
+  border-color: rgba(0, 242, 254, 0.25) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(0, 242, 254, 0.1) !important;
+}
+
+.movamusic-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badge-movamusic {
+  font-size: 0.68rem;
+  color: #00f2fe;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.movamusic-info-cancion h4 {
+  margin: 2px 0 0 0;
+  color: #ffffff;
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.movamusic-info-cancion p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.78rem;
+}
+
+/* Ecualizador Animado Neón */
+.ecualizador-bento {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 18px;
+}
+
+.barra-eq {
+  width: 3px;
+  height: 5px;
+  background: #00f2fe;
+  border-radius: 2px;
+  box-shadow: 0 0 6px #00f2fe;
+  transition: height 0.2s ease;
+}
+
+.ecualizador-bento.reproduciendo .barra-eq:nth-child(1) { animation: reboteEq 0.6s ease-in-out infinite alternate; }
+.ecualizador-bento.reproduciendo .barra-eq:nth-child(2) { animation: reboteEq 0.8s ease-in-out infinite alternate 0.2s; }
+.ecualizador-bento.reproduciendo .barra-eq:nth-child(3) { animation: reboteEq 0.5s ease-in-out infinite alternate 0.4s; }
+.ecualizador-bento.reproduciendo .barra-eq:nth-child(4) { animation: reboteEq 0.7s ease-in-out infinite alternate 0.1s; }
+
+@keyframes reboteEq {
+  0% { height: 4px; opacity: 0.4; }
+  100% { height: 16px; opacity: 1; background: #00f2fe; box-shadow: 0 0 8px #00f2fe; }
+}
+
+/* Controles de Música Integrados */
+.movamusic-controles-caja {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.movamusic-botones {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-control-music {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-control-music:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.btn-control-music.play-principal {
+  background: linear-gradient(135deg, #00f2fe, #4facfe);
+  border: none;
+  color: #000;
+  box-shadow: 0 0 12px rgba(0, 242, 254, 0.35);
+}
+
+.btn-control-music:active {
+  transform: scale(0.92);
+}
+
+.movamusic-volumen-caja {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icono-volumen {
+  width: 15px;
+  height: 15px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.range-neon-volumen {
+  -webkit-appearance: none;
+  width: 70px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  outline: none;
+}
+
+.range-neon-volumen::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #00f2fe;
+  box-shadow: 0 0 6px #00f2fe;
+  cursor: pointer;
+}
+
+/* Estilos oscuros Glassmorphism para los Inputs del Admin */
+.input-bento-text {
+  width: 100% !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 12px !important;
+  padding: 10px 14px !important;
+  color: #ffffff !important;
+  font-size: 0.85rem !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  transition: all 0.2s ease !important;
+}
+
+.input-bento-text:focus {
+  border-color: #00f2fe !important;
+  box-shadow: 0 0 10px rgba(0, 242, 254, 0.2) !important;
+}
+
+.input-bento-text::placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Ajuste compacto para el botón de Añadir Playlist */
+.btn-music-compacto {
+  padding: 9px 14px !important;
+  margin-top: 4px !important;
+  font-size: 0.82rem !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 242, 254, 0.25) !important;
+}
+
+/* ========================================================
+   📊 DASHBOARD DE MÉTRICAS BENTO (2x2)
+   ======================================================== */
+
+.grid-metricas-bento {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 4px;
+}
+
+.card-metrica-item {
+  background: rgba(18, 18, 23, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.25s ease;
+}
+
+.metrica-encabezado {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.metrica-encabezado svg {
+  width: 14px;
+  height: 14px;
+}
+
+.card-metrica-item h2 {
+  margin: 6px 0 2px 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.card-metrica-item p {
+  margin: 0;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Temas Neón Bento para Métricas */
+.card-metrica-item.neon-cyan { border-color: rgba(0, 242, 254, 0.2); }
+.card-metrica-item.neon-cyan h2, .card-metrica-item.neon-cyan .metrica-encabezado svg { color: #00f2fe; filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.4)); }
+
+.card-metrica-item.neon-verde { border-color: rgba(0, 255, 136, 0.2); }
+.card-metrica-item.neon-verde h2, .card-metrica-item.neon-verde .metrica-encabezado svg { color: #00ff88; filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.4)); }
+
+.card-metrica-item.neon-purpura { border-color: rgba(127, 0, 255, 0.2); }
+.card-metrica-item.neon-purpura h2, .card-metrica-item.neon-purpura .metrica-encabezado svg { color: #b55fe6; filter: drop-shadow(0 0 6px rgba(181, 95, 230, 0.4)); }
+
+.card-metrica-item.neon-naranja { border-color: rgba(255, 115, 0, 0.2); }
+.card-metrica-item.neon-naranja h2, .card-metrica-item.neon-naranja .metrica-encabezado svg { color: #ff7300; filter: drop-shadow(0 0 6px rgba(255, 115, 0, 0.4)); }

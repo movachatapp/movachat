@@ -16,17 +16,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
 
   <!-- 🚀 PRECARGA DE AUDIOS Y RECURSOS CRÍTICOS (Instant Audio / PWA) -->
-  <link rel="prefetch" href="/assets/sounds/recibido.mp3">
-  <link rel="prefetch" href="/assets/sounds/enviado.mp3">
-  <link rel="prefetch" href="/assets/sounds/grabando.mp3">
-  <link rel="preload" href="/styles.css" as="style">
+  <link rel="prefetch" href="assets/sounds/recibido.mp3">
+  <link rel="prefetch" href="assets/sounds/enviado.mp3">
+  <link rel="prefetch" href="assets/sounds/grabando.mp3">
 
   <!-- Ícono Principal (Favicon para PC y Navegadores) -->
-  <link rel="icon" type="image/png" sizes="192x192" href="/assets/logo/icon-192.png">
-  <link rel="shortcut icon" href="/assets/logo/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/logo/icon-192.png">
+  <link rel="shortcut icon" href="assets/logo/icon-192.png">
 
   <!-- Configuración General y PWA -->
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#090d16">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="format-detection" content="telephone=no">
@@ -35,15 +34,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="MovaChat">
-  <link rel="apple-touch-icon" href="/assets/logo/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/logo/icon-192.png">
 
   <!-- Compatibilidad para Windows / Microsoft -->
   <meta name="msapplication-TileColor" content="#090d16">
-  <meta name="msapplication-TileImage" content="/assets/logo/icon-192.png">
+  <meta name="msapplication-TileImage" content="assets/logo/icon-192.png">
 
-  <!-- Estilos e Íconos -->
-  <link rel="stylesheet" href="/styles.css">
-  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js" defer></script>
+  <!-- Estilos Principales -->
+  <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
@@ -141,6 +139,13 @@
         <!-- MENÚ FLOTANTE UNIFICADO -->
         <div id="menu-desplegable-cabecera" class="menu-desplegable oculto">
           <ul id="lista-opciones-cabecera"></ul>
+
+          <div class="opcion-cabecera-item" id="btn-opcion-acerca-de" data-accion="acerca-de"
+            style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; color: #fff; font-size: 0.9rem;">
+            <i data-lucide="info" style="width: 18px; height: 18px; color: #00f2fe;"></i>
+            <span>Acerca de MovaChat</span>
+          </div>
+
         </div>
       </div>
     </header>
@@ -243,7 +248,7 @@
           <span class="texto-estado" id="texto-perfil-estado">Disponible. Toca para añadir estado...</span>
           <i data-lucide="edit-2" class="icono-lapiz solo-propietario"></i>
         </button>
-        
+
         <!-- BLOQUE: Acción exclusiva para cuando visitas a otra persona -->
         <div id="acciones-visitante" class="solo-visitante"
           style="margin-top: 15px; width: 100%; display: flex; flex-direction: column; gap: 12px;">
@@ -344,6 +349,53 @@
           </div>
         </div>
 
+        <!-- 🎵 TARJETA BENTO MOVA MUSIC (REPRODUCTOR DELGADO Y ELEGANTE) -->
+        <div class="tarjeta-bento movamusic-player-card">
+          <div class="movamusic-cabecera">
+            <div class="movamusic-info-cancion">
+              <span class="badge-movamusic">🎧 MovaMusic</span>
+              <h4 id="movamusic-titulo">Cargando playlist...</h4>
+              <p id="movamusic-artista"></p>
+            </div>
+
+            <!-- Ecualizador gráfico animado -->
+            <div class="ecualizador-bento" id="ecualizador-grafico">
+              <span class="barra-eq"></span>
+              <span class="barra-eq"></span>
+              <span class="barra-eq"></span>
+              <span class="barra-eq"></span>
+            </div>
+          </div>
+
+          <!-- Controles y deslizador de volumen -->
+          <div class="movamusic-controles-caja">
+            <div class="movamusic-botones">
+              <button type="button" id="btn-music-prev" class="btn-control-music" aria-label="Anterior">
+                <i data-lucide="skip-back"></i>
+              </button>
+
+              <button type="button" id="btn-music-play" class="btn-control-music play-principal"
+                aria-label="Reproducir/Pausar">
+                <i data-lucide="play" id="icono-play-music"></i>
+              </button>
+
+              <button type="button" id="btn-music-next" class="btn-control-music" aria-label="Siguiente">
+                <i data-lucide="skip-forward"></i>
+              </button>
+            </div>
+
+            <div class="movamusic-volumen-caja">
+              <i data-lucide="volume-2" class="icono-volumen"></i>
+              <input type="range" id="slider-volumen-music" min="0" max="100" value="80" class="range-neon-volumen">
+            </div>
+          </div>
+
+          <!-- Reproductor IFrame de YouTube Invisible -->
+          <div id="yt-player-container"
+            style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden;">
+          </div>
+        </div>
+
         <!-- Redes sociales públicas: Visibles para todos -->
         <div class="tarjeta-bento comunidad">
           <h3>Redes Sociales 🌐</h3>
@@ -395,7 +447,7 @@
 
           <div class="amigo-datos">
             <h3 class="amigo-nombre-chat">Contacto</h3>
-            <span class="amigo-estado-texto">En línea</span>
+            <span class="amigo-estado-texto"></span>
           </div>
         </div>
 
@@ -497,11 +549,10 @@
         usuario</button>
     </div>
 
+    <!-- Inputs limpios sin duplicados -->
     <input type="file" id="input-archivo-galeria" accept="image/*,video/*" style="display: none;">
     <input type="file" id="input-archivo-documento" accept=".pdf,.doc,.docx,.zip,.rar,.txt" style="display: none;">
-    <!-- 🚨 SE REMOVIÓ video/* PARA SOLO PERMITIR IMÁGENES -->
     <input type="file" id="input-subir-estado" accept="image/*" style="display: none;">
-    <input type="file" id="input-foto-perfil" accept="image/*" style="display: none;">
 
     <div class="modal-overlay oculto" id="modal-qr-mova">
       <div class="modal-cristal">
@@ -634,7 +685,7 @@
           <button type="button" id="btn-guardar-contacto" class="btn-primario"
             style="padding: 8px 14px; font-size: 12px; border-radius: 8px; white-space: nowrap;">Añadir</button>
 
-          <!-- Lista flotante de autocompletado de usuarios Firebase -->
+          <!-- Lista flotante de autocompletado -->
           <div id="sugerencias-busqueda-contactos" class="sugerencias-contactos-caja oculto"></div>
         </div>
 
@@ -730,27 +781,157 @@
     <span id="toast-texto">Lista de chats limpiada</span>
   </div>
 
-  <div id="modal-admin"
-    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center;">
-    <div
-      style="background: #121217; border: 1px solid rgba(255, 255, 255, 0.15); width: 90%; max-width: 450px; border-radius: 20px; padding: 24px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);">
+  <!-- 👑 PANEL DE ADMINISTRACIÓN PRO (ESTRUCTURA BENTO GRID + MÉTRICAS) -->
+  <div id="modal-admin" class="modal-mova-overlay oculto">
+    <div class="modal-admin-bento">
 
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h3 style="margin: 0; color: #fff; font-size: 1.2rem; display: flex; align-items: center; gap: 8px;">
-          👑 Solicitudes de Acceso
-        </h3>
-        <button id="btn-cerrar-admin"
-          style="background: none; border: none; color: #aaa; font-size: 1.5rem; cursor: pointer;">&times;</button>
+      <!-- BLOQUE 1: Encabezado del Panel -->
+      <div class="admin-bento-header">
+        <div class="admin-titulo-caja">
+          <i data-lucide="crown" class="icono-corona-neon"></i>
+          <h3>Panel de Control</h3>
+        </div>
+        <button type="button" id="btn-cerrar-admin" class="btn-cerrar-bento">✕</button>
       </div>
 
-      <div id="lista-pendientes" style="max-height: 300px; overflow-y: auto; padding-right: 5px;">
-        <p style="color: #aaa; font-size: 0.9rem; text-align: center;">Cargando solicitudes...</p>
+      <!-- BLOQUE 2: Matriz Bento de Navegación (Conservando tu orden + 5to Botón) -->
+      <div class="bento-grid-nav bento-nav-adaptable">
+        <button type="button" id="tab-admin-solicitudes" class="tab-bento-btn activo">
+          <i data-lucide="user-check"></i>
+          <span>Solicitudes</span>
+        </button>
+
+        <button type="button" id="tab-admin-reportes" class="tab-bento-btn">
+          <i data-lucide="message-square"></i>
+          <span>Reportes</span>
+        </button>
+
+        <button type="button" id="tab-admin-novedades" class="tab-bento-btn">
+          <i data-lucide="megaphone"></i>
+          <span>Novedades</span>
+        </button>
+
+        <button type="button" id="tab-admin-movamusic" class="tab-bento-btn">
+          <i data-lucide="music"></i>
+          <span>MovaMusic</span>
+        </button>
+
+        <!-- 📊 5to Botón Integrado -->
+        <button type="button" id="tab-admin-metricas" class="tab-bento-btn">
+          <i data-lucide="activity"></i>
+          <span>Métricas</span>
+        </button>
+      </div>
+
+      <!-- BLOQUE 3: Contenedor de Resultados Dinámicos -->
+      <div class="bento-contenido-visor">
+
+        <!-- SECCIÓN 1: Solicitudes de Acceso -->
+        <div id="sec-admin-solicitudes" class="sec-admin-panel">
+          <div id="lista-pendientes" class="scroll-bento-lista">
+            <p class="texto-vacio-bento">Cargando solicitudes...</p>
+          </div>
+        </div>
+
+        <!-- SECCIÓN 2: Buzón de Reportes / Sugerencias -->
+        <div id="sec-admin-reportes" class="sec-admin-panel oculto">
+          <div id="lista-reportes-admin" class="scroll-bento-lista">
+            <p class="texto-vacio-bento">No hay reportes ni sugerencias recibidas. ✨</p>
+          </div>
+        </div>
+
+        <!-- SECCIÓN 3: Publicador de Novedades Globales -->
+        <div id="sec-admin-novedades" class="sec-admin-panel oculto">
+          <div class="formulario-bento-card">
+            <label class="label-bento-neon">
+              <i data-lucide="rocket"></i> Publicar Comunicado Oficial (v1.0.0)
+            </label>
+
+            <textarea id="txt-novedad-admin" rows="3"
+              placeholder="Escribe el mensaje o novedad de la versión..."></textarea>
+
+            <button type="button" id="btn-publicar-novedad" class="btn-publicar-neon">
+              <span>Publicar a todos los usuarios</span>
+            </button>
+          </div>
+
+          <div id="lista-novedades-admin" class="scroll-bento-lista historial-novedades-caja">
+            <p class="texto-vacio-bento">Cargando historial...</p>
+          </div>
+        </div>
+
+        <!-- SECCIÓN 4: Gestor de MovaMusic (YouTube Links) -->
+        <div id="sec-admin-movamusic" class="sec-admin-panel oculto">
+          <div class="formulario-bento-card">
+            <label class="label-bento-neon">
+              <i data-lucide="music"></i> Agregar Canción a MovaMusic
+            </label>
+
+            <input type="text" id="txt-music-titulo" placeholder="Título de la canción / Nombre"
+              class="input-bento-text">
+            <input type="text" id="txt-music-link" placeholder="Link o ID de YouTube (ej: https://youtu.be/...)"
+              class="input-bento-text">
+
+            <button type="button" id="btn-agregar-cancion" class="btn-publicar-neon btn-music-compacto">
+              <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i>
+              <span>Añadir a la Playlist</span>
+            </button>
+          </div>
+
+          <div id="lista-canciones-admin" class="scroll-bento-lista historial-novedades-caja">
+            <p class="texto-vacio-bento">Cargando playlist de MovaMusic...</p>
+          </div>
+        </div>
+
+        <!-- SECCIÓN 5: DASHBOARD DE MÉTRICAS EN TIEMPO REAL -->
+        <div id="sec-admin-metricas" class="sec-admin-panel oculto">
+          <div class="grid-metricas-bento">
+
+            <div class="card-metrica-item neon-cyan">
+              <div class="metrica-encabezado">
+                <i data-lucide="users"></i>
+                <span>Registrados</span>
+              </div>
+              <h2 id="metric-total-usuarios">0</h2>
+              <p>Comunidad total</p>
+            </div>
+
+            <div class="card-metrica-item neon-verde">
+              <div class="metrica-encabezado">
+                <i data-lucide="radio"></i>
+                <span>En Vivo</span>
+              </div>
+              <h2 id="metric-online-usuarios">0</h2>
+              <p>Conectados ahora</p>
+            </div>
+
+            <div class="card-metrica-item neon-purpura">
+              <div class="metrica-encabezado">
+                <i data-lucide="headphones"></i>
+                <span>MovaMusic</span>
+              </div>
+              <h2 id="metric-escuchando-music">0</h2>
+              <p>Escuchando música</p>
+            </div>
+
+            <div class="card-metrica-item neon-naranja">
+              <div class="metrica-encabezado">
+                <i data-lucide="zap"></i>
+                <span>Activos</span>
+              </div>
+              <h2 id="metric-interactuando-usuarios">0</h2>
+              <p>Interacción reciente</p>
+            </div>
+
+          </div>
+        </div>
+
       </div>
 
     </div>
   </div>
 
-  <!-- 🗑️ MODAL PERSONALIZADO ELIMINAR CONVERSACIÓN (GLASSMORPHISM) -->
+  <!-- 🗑️ MODAL ELIMINAR CONVERSACIÓN -->
   <div id="modal-confirmar-vaciar" class="modal-overlay oculto">
     <div class="modal-cristal modal-mova-caja" style="max-width: 350px; text-align: center;">
       <div class="modal-mova-icono"
@@ -771,7 +952,7 @@
     </div>
   </div>
 
-  <!-- 🔕 MODAL PERSONALIZADO SILENCIAR CON TIEMPOS (MOVACHAT) -->
+  <!-- 🔕 MODAL SILENCIAR CON TIEMPOS -->
   <div id="modal-silenciar-tiempo" class="modal-overlay oculto">
     <div class="modal-cristal modal-silenciar-caja">
       <div class="modal-header">
@@ -817,7 +998,7 @@
     </div>
   </div>
 
-  <!-- ⏳ MODAL PERSONALIZADO MENSAJES TEMPORALES (MOVACHAT) -->
+  <!-- ⏳ MODAL MENSAJES TEMPORALES -->
   <div id="modal-temporales-tiempo" class="modal-overlay oculto">
     <div class="modal-cristal modal-silenciar-caja">
       <div class="modal-header">
@@ -861,7 +1042,7 @@
     </div>
   </div>
 
-  <!-- 🗑️ MODAL GLASSMORPHISM: CONFIRMAR LIMPIAR HISTORIAL GLOBAL -->
+  <!-- 🗑️ MODAL CONFIRMAR LIMPIAR HISTORIAL GLOBAL -->
   <div id="modal-confirmar-limpiar-global" class="modal-overlay oculto">
     <div class="modal-caja-alerta">
       <div class="modal-alerta-icono red-neon">
@@ -878,7 +1059,7 @@
     </div>
   </div>
 
-  <!-- 🚪 MODAL PERSONALIZADO CERRAR SESIÓN (GLASSMORPHISM MOVACHAT) -->
+  <!-- 🚪 MODAL CERRAR SESIÓN -->
   <div id="modal-confirmar-cerrar-sesion" class="modal-overlay oculto">
     <div class="modal-cristal modal-mova-caja" style="max-width: 350px; text-align: center;">
       <div class="modal-mova-icono"
@@ -922,7 +1103,114 @@
     </div>
   </div>
 
-  <!-- 👥 MODAL LISTA DE PERSONAS QUE DIERON ME GUSTA -->
+  <!-- ℹ️ MODAL ACERCA DE MOVACHAT -->
+  <div id="modal-acerca-de" class="modal-overlay oculto">
+    <div class="modal-cristal modal-mova-caja" style="max-width: 380px; text-align: center; position: relative;">
+
+      <button id="btn-cerrar-acerca-de"
+        style="position: absolute; top: 14px; right: 16px; background: none; border: none; color: rgba(255,255,255,0.6); font-size: 1.2rem; cursor: pointer;">✕</button>
+
+      <div style="margin-bottom: 16px; margin-top: 6px;">
+        <img src="assets/logo/icon-192.png" alt="MovaChat Logo"
+          style="width: 64px; height: 64px; border-radius: 16px; filter: drop-shadow(0 0 12px rgba(0, 242, 254, 0.5)); margin-bottom: 10px;">
+        <h3 class="modal-mova-titulo" style="font-size: 1.3rem; color: #fff; font-weight: 700; margin: 0;">MovaChat</h3>
+        <span
+          style="display: inline-block; font-size: 0.75rem; color: #00f2fe; background: rgba(0, 242, 254, 0.1); padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(0, 242, 254, 0.3); margin-top: 6px; font-weight: 600;">v1.0.0
+          (Beta)</span>
+      </div>
+
+      <p class="modal-mova-texto"
+        style="font-size: 0.85rem; color: rgba(255, 255, 255, 0.75); line-height: 1.5; margin-bottom: 20px;">
+        Plataforma de mensajería instantánea en tiempo real diseñada con tecnología PWA y arquitectura de alta
+        eficiencia.
+      </p>
+
+      <div
+        style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 12px 16px; margin-bottom: 20px; text-align: left; font-size: 0.8rem;">
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+          <span style="color: rgba(255,255,255,0.5);">Desarrollador:</span>
+          <strong style="color: #fff; font-size: 0.82rem;">Junior A. Nova / Tecnológico</strong>
+        </div>
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+          <span style="color: rgba(255,255,255,0.5);">Plataforma:</span>
+          <strong style="color: #fff;">Android & Web</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px;">
+          <span style="color: rgba(255,255,255,0.5);">Estado:</span>
+          <strong style="color: #00ff88; text-shadow: 0 0 8px rgba(0, 255, 136, 0.4);">● Operativo (Supabase)</strong>
+        </div>
+      </div>
+
+      <button type="button" id="btn-abrir-reportar-bug"
+        style="width: 100%; padding: 10px; background: rgba(0, 242, 254, 0.08); border: 1px solid rgba(0, 242, 254, 0.25); border-radius: 12px; color: #00f2fe; font-size: 0.82rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px; font-weight: 500;">
+        <i data-lucide="message-square-plus" style="width: 16px; height: 16px;"></i>
+        <span>Enviar sugerencia o reporte</span>
+      </button>
+
+      <div style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.4);">
+        © 2026 MovaChat. Todos los derechos reservados.
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 🐛 MODAL REPORTAR BUG / SUGERENCIA -->
+  <div id="modal-reportar-bug" class="modal-overlay oculto">
+    <div class="modal-cristal modal-mova-caja" style="max-width: 360px; text-align: center; position: relative;">
+
+      <button id="btn-cerrar-reportar-bug"
+        style="position: absolute; top: 14px; right: 16px; background: none; border: none; color: rgba(255,255,255,0.6); font-size: 1.2rem; cursor: pointer;">✕</button>
+
+      <div style="margin-bottom: 16px;">
+        <div style="font-size: 2rem; margin-bottom: 6px; filter: drop-shadow(0 0 10px rgba(0, 242, 254, 0.5));">💬</div>
+        <h3 class="modal-mova-titulo" style="font-size: 1.15rem; color: #fff; margin: 0; font-weight: 600;">Feedback /
+          Reporte</h3>
+        <p style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin-top: 4px;">Ayúdanos a mejorar MovaChat</p>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <select id="select-tipo-reporte"
+          style="width: 100%; padding: 10px; border-radius: 10px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 0.85rem; outline: none;">
+          <option value="bug" style="background: #121217;">🐛 Reportar un problema</option>
+          <option value="sugerencia" style="background: #121217;">💡 Sugerencia de mejora</option>
+          <option value="otro" style="background: #121217;">⭐ Otro comentario</option>
+        </select>
+      </div>
+
+      <textarea id="input-texto-reporte" rows="4" placeholder="Describe brevemente lo que sucedió o tu idea..."
+        style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: #fff; font-size: 0.85rem; margin-bottom: 16px; outline: none; resize: none; box-sizing: border-box;"></textarea>
+
+      <div style="display: flex; gap: 10px;">
+        <button id="btn-cancelar-reporte" class="btn-secundario"
+          style="flex: 1; padding: 10px; font-size: 13px; border-radius: 12px;">Cancelar</button>
+        <button id="btn-enviar-reporte" class="btn-primario"
+          style="flex: 1; padding: 10px; font-size: 13px; border-radius: 12px; background: linear-gradient(135deg, #00c6ff, #0072ff);">Enviar</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 🔔 MODAL ALERTA PERSONALIZADA (REEMPLAZO DE ALERT NATIVO) -->
+  <div id="modal-alerta-reporte" class="modal-overlay oculto">
+    <div class="modal-cristal modal-mova-caja" style="max-width: 330px; text-align: center;">
+      <div id="alerta-reporte-icono"
+        style="font-size: 2.2rem; margin-bottom: 10px; filter: drop-shadow(0 0 10px rgba(0, 242, 254, 0.5));">✨</div>
+      <h3 id="alerta-reporte-titulo" style="font-size: 1.1rem; color: #fff; margin-bottom: 8px; font-weight: 600;">
+        Notificación</h3>
+      <p id="alerta-reporte-mensaje"
+        style="font-size: 0.85rem; color: rgba(255, 255, 255, 0.75); line-height: 1.45; margin-bottom: 20px;">
+        Mensaje del sistema.
+      </p>
+      <button id="btn-cerrar-alerta-reporte" class="btn-primario"
+        style="width: 100%; padding: 11px; font-size: 13px; border-radius: 12px; background: linear-gradient(135deg, #00c6ff, #0072ff); cursor: pointer;">
+        Entendido
+      </button>
+    </div>
+  </div>
+
+  <!-- 👥 MODAL LISTA DE REACCIONES -->
   <div id="modal-lista-likes" class="modal-overlay oculto">
     <div class="modal-cristal">
       <div class="modal-header">
@@ -932,7 +1220,30 @@
         </button>
       </div>
       <div id="contenedor-usuarios-likes" class="lista-usuarios-likes">
-        <!-- Se inyectan dinámicamente con JavaScript -->
+        <!-- Se inyectan dinámicamente -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 🗑️ MODAL DE CONFIRMACIÓN PARA ELIMINAR REPORTE -->
+  <div id="modal-confirmar-eliminar-reporte" class="modal-overlay oculto" style="display: none;">
+    <div class="modal-cristal modal-mova-caja"
+      style="max-width: 340px; text-align: center; border: 1px solid rgba(255, 75, 43, 0.3); box-shadow: 0 0 20px rgba(255, 75, 43, 0.2);">
+      <div style="font-size: 2.2rem; margin-bottom: 8px; filter: drop-shadow(0 0 10px rgba(255, 75, 43, 0.5));">🗑️
+      </div>
+      <h3 style="font-size: 1.1rem; color: #fff; margin-bottom: 8px; font-weight: 600;">¿Eliminar reporte?</h3>
+      <p style="font-size: 0.85rem; color: rgba(255, 255, 255, 0.75); line-height: 1.45; margin-bottom: 20px;">
+        Esta acción eliminará el reporte de forma permanente en Firebase. No se podrá recuperar.
+      </p>
+      <div style="display: flex; gap: 10px;">
+        <button id="btn-cancelar-eliminar-reporte" class="btn-secundario"
+          style="flex: 1; padding: 10px; font-size: 13px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; cursor: pointer;">
+          Cancelar
+        </button>
+        <button id="btn-confirmar-eliminar-reporte" class="btn-primario"
+          style="flex: 1; padding: 10px; font-size: 13px; border-radius: 12px; background: linear-gradient(135deg, #ff4b2b, #ff416c); border: none; color: #fff; font-weight: 600; cursor: pointer; box-shadow: 0 0 12px rgba(255, 75, 43, 0.4);">
+          Eliminar
+        </button>
       </div>
     </div>
   </div>
@@ -940,6 +1251,7 @@
   <audio id="sonido-recibido" src="assets/sounds/recibido.mp3" preload="auto"></audio>
   <audio id="sonido-enviado" src="assets/sounds/enviado.mp3" preload="auto"></audio>
 
+  <!-- Librerías JS al final para renderizado rápido -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
 

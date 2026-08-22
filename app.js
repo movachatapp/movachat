@@ -954,28 +954,23 @@ async function ejecutarAutolimpieza12Dias(idChat) {
     const promesasBorrado = [];
 
     for (const [idMensaje, msg] of Object.entries(mensajes)) {
-      // Verifica si tiene fecha de expiración configurada y ya se cumplió el plazo
       if (msg.expiraEn && ahora >= msg.expiraEn) {
-
-        // 1. Limpieza de archivos físicos en Supabase Storage
         if (msg.tipoAdjunto === 'video_circular' && msg.archivoRuta) {
           promesasBorrado.push(borrarArchivoDeSupabase(msg.archivoRuta));
         } else if (msg.urlAdjunto && msg.urlAdjunto.includes("supabase.co")) {
           promesasBorrado.push(eliminarArchivoSupabase(msg.urlAdjunto, "movachat-adjuntos"));
         }
 
-        // 2. Eliminación del nodo en Firebase Realtime Database
         const msgRef = ref(db, `chats/${idChat}/mensajes/${idMensaje}`);
         promesasBorrado.push(remove(msgRef));
       }
     }
 
-    // Ejecutar todas las eliminaciones en paralelo para no bloquear el hilo de ejecución
     await Promise.all(promesasBorrado);
     console.log(`🧹 Autolimpieza de 12 días ejecutada en chat: ${idChat}`);
 
   } catch (error) {
-    console.error("❌ Error al ejecutar autolimpieza de 12 días:", error);
+    console.warn("⚠️ Autolimpieza omitida (Restricción de permisos o sin mensajes a purgar).");
   }
 }
 
@@ -1555,9 +1550,26 @@ if (contenedorChats) {
     if (window.timerSimuladorLectura) clearTimeout(window.timerSimuladorLectura);
     if (window.timerSimuladorEscribiendo) clearTimeout(window.timerSimuladorEscribiendo);
 
-    if (textoEstadoCabecera) {
-      textoEstadoCabecera.textContent = "En línea";
-      textoEstadoCabecera.style.color = "rgba(255, 255, 255, 0.5)";
+    // 🎵 Escuchar en tiempo real si el usuario seleccionado está escuchando música
+    const contactoUid = tarjeta.dataset.uid || tarjeta.id.replace("tarjeta-chat-", "");
+
+    if (contactoUid && textoEstadoCabecera) {
+      // Cancelamos cualquier escuchador previo de la cabecera si existía
+      if (window.escuchadorMusicaChatActual) {
+        window.escuchadorMusicaChatActual();
+      }
+
+      window.escuchadorMusicaChatActual = onValue(usuarioRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const datosContacto = snapshot.val();
+          if (datosContacto.escuchandoMovaMusic && datosContacto.cancionActual) {
+            textoEstadoCabecera.textContent = `🎵 ${datosContacto.cancionActual}`;
+            textoEstadoCabecera.style.color = "#00f2fe";
+          } else {
+            textoEstadoCabecera.textContent = "";
+          }
+        }
+      });
     }
 
     if (ledSuperiorEnfoque) {
@@ -2289,7 +2301,7 @@ if (btnBorrarVistaPrevia) {
     e.stopPropagation();
 
     if (cajaVistaPrevia) cajaVistaPrevia.classList.add("oculto");
-    
+
     // 👇 NUEVO: Liberamos la memoria RAM destruyendo el archivo temporal
     if (imgMiniaturaAdjunto && imgMiniaturaAdjunto.src) {
       if (imgMiniaturaAdjunto.src.startsWith("blob:")) {
@@ -2980,8 +2992,8 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
   }
 
   // 🎯 2. GENERAR 30 BARRAS HOMOGÉNEAS (Para que llene el reproductor tanto en PC como Móvil)
-  const ondasEstandar = (typeof normalizarOndas === "function") 
-    ? normalizarOndas(arrayOndas, 30) 
+  const ondasEstandar = (typeof normalizarOndas === "function")
+    ? normalizarOndas(arrayOndas, 30)
     : new Array(30).fill(20);
 
   const htmlBarras = ondasEstandar
@@ -5936,6 +5948,12 @@ function escucharUltimoMensajeContacto(miUid, contactoUid, datosUsuario, fijados
       });
     }
 
+    // 🎵 Garantizar que si el usuario está escuchando música se sobreescriba el último mensaje
+    const datosFresh = (window.usuariosCacheGlobal && window.usuariosCacheGlobal[contactoUid]) || datosUsuario;
+    if (typeof window.sincronizarMusicaEnTarjeta === "function" && datosFresh) {
+      window.sincronizarMusicaEnTarjeta(contactoUid, datosFresh);
+    }
+
     // 🔄 EJECUTAR EL REORDENAMIENTO REAL EN EL DOM
     reordenarListaChats();
 
@@ -5978,8 +5996,8 @@ function reordenarListaChats() {
     // Quitar cualquier 'order' de CSS viejo por si acaso
     tarjeta.style.removeProperty("order");
 
-    const esFijado = tarjeta.classList.contains("tarjeta-fijada") || 
-                     tarjeta.querySelector(".indicador-pin-neon") !== null;
+    const esFijado = tarjeta.classList.contains("tarjeta-fijada") ||
+      tarjeta.querySelector(".indicador-pin-neon") !== null;
     const timestamp = Number(tarjeta.dataset.timestamp) || 0;
 
     if (esFijado) {
@@ -5994,7 +6012,7 @@ function reordenarListaChats() {
   normales.sort((a, b) => b.timestamp - a.timestamp);
 
   // 4. REINSERCIÓN FÍSICA EN EL DOM (JERARQUÍA ESTRICTA)
-  
+
   // Posición 1: Mi Estado SIEMPRE de primero
   if (miEstado) {
     contenedor.appendChild(miEstado);
@@ -6840,10 +6858,15 @@ function obtenerChatId(uid1, uid2) {
   return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
 }
 
-// 🟢 CARGAR MENSAJES DE CHAT (Selección Segura)
+// 🟢 CARGAR MENSAJES DE CHAT (Con soporte para Canal de Novedades MovaChat)
 function cargarMensajesChat(contactoUid) {
   const usuarioActual = auth.currentUser;
   if (!usuarioActual) return;
+
+  // 🚀 Adaptamos la interfaz (Si es MovaChat Oficial, oculta la barra y muestra el banner de solo lectura)
+  if (typeof adaptarInterfazChatOficial === "function") {
+    adaptarInterfazChatOficial(contactoUid);
+  }
 
   const chatId = obtenerChatId(usuarioActual.uid, contactoUid);
   const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
@@ -6862,6 +6885,16 @@ function cargarMensajesChat(contactoUid) {
 
         const burbuja = document.createElement("div");
         burbuja.className = `mensaje-burbuja ${esMio ? 'enviado' : 'recibido'}`;
+
+        // Estilo especial estilo Bento/Glassmorphism para mensajes oficiales de MovaChat
+        if (contactoUid === "movachat_oficial" && !esMio) {
+          burbuja.style.cssText = `
+            border: 1px solid rgba(0, 242, 254, 0.3);
+            background: rgba(0, 242, 254, 0.05);
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.15);
+          `;
+        }
+
         burbuja.innerHTML = `
           <p class="mensaje-texto">${msg.texto || ''}</p>
           <span class="mensaje-hora">${msg.hora || new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -6871,7 +6904,11 @@ function cargarMensajesChat(contactoUid) {
 
       contenedorMensajes.scrollTop = contenedorMensajes.scrollHeight;
     } else {
-      contenedorMensajes.innerHTML = `<div style="text-align:center; color:#888; padding:20px;">Inicia la conversación 👋</div>`;
+      const mensajeVacio = contactoUid === "movachat_oficial"
+        ? "No hay novedades publicadas en este momento. 🚀"
+        : "Inicia la conversación 👋";
+
+      contenedorMensajes.innerHTML = `<div style="text-align:center; color:rgba(255,255,255,0.4); padding:20px; font-size: 0.85rem;">${mensajeVacio}</div>`;
     }
   });
 }
@@ -7258,32 +7295,41 @@ function abrirMenuContextualMova(x, y, tarjeta) {
     tarjeta.classList.remove("tarjeta-fijada");
   }
 
-  // 📐 Referencia del contenedor principal de forma segura
+  // 📐 Obtenemos los límites exactos del contenedor principal de tu app
   const elContenedor = document.querySelector(".contenedor-chat") || document.body;
   const marcoApp = elContenedor.getBoundingClientRect();
 
-  // 🧮 Coordenadas relativas dentro de la tarjeta / app
-  let posX = x - marcoApp.left;
-  let posY = y - marcoApp.top;
+  // 🧮 1. Cálculo horizontal (X) limitado estrictamente al marco de la app
+  const anchoMenu = 210; // Ancho fijo del menú en píxeles
+  const margenSeguridad = 16; // Margen de separación con el borde
 
-  // 🛡️ MÁRGENES DE SEGURIDAD (Evita que el menú se dibuje fuera del marco)
-  const anchoMenu = 190;
-  const altoMenu = 150;
+  // Límite derecho máximo basado en el ancho del contenedor de la PWA
+  const limiteDerecho = marcoApp.width - anchoMenu - margenSeguridad;
 
-  if (posX + anchoMenu > marcoApp.width) {
-    posX = marcoApp.width - anchoMenu - 10;
+  // Coordenada X relativa al contenedor de la aplicación
+  let posXRelativa = x - marcoApp.left;
+
+  // Si supera el límite derecho del contenedor, lo frenamos
+  let posXFinal = Math.min(posXRelativa, limiteDerecho);
+
+  // Margen de seguridad por la izquierda
+  posXFinal = Math.max(16, posXFinal);
+
+  // 🧮 2. Cálculo vertical (Y) seguro
+  const altoMenu = 160;
+  let posYFinal = y - marcoApp.top;
+
+  if (posYFinal + altoMenu > marcoApp.height) {
+    posYFinal = marcoApp.height - altoMenu - 20;
   }
-  if (posX < 10) posX = 10;
-
-  if (posY + altoMenu > marcoApp.height) {
-    posY = marcoApp.height - altoMenu - 10;
+  if (posYFinal < 10) {
+    posYFinal = 10;
   }
-  if (posY < 10) posY = 10;
 
-  // 📍 Posicionamiento absoluto seguro
+  // 📍 Aplicamos las coordenadas relativas al contenedor
   menuTarjetas.style.position = "absolute";
-  menuTarjetas.style.top = `${posY}px`;
-  menuTarjetas.style.left = `${posX}px`;
+  menuTarjetas.style.top = `${posYFinal}px`;
+  menuTarjetas.style.left = `${posXFinal}px`;
   menuTarjetas.style.zIndex = "99999";
   menuTarjetas.style.display = "block";
 
@@ -7644,7 +7690,7 @@ async function renderizarListaContactosModal(filtro = "") {
               document.querySelectorAll(".item-contacto-fila").forEach(el => el.classList.remove("activo"));
               filaHTML.classList.add("activo");
 
-              const uidContacto = targetUid;
+              const uidContacto = targetUid; // 👈 ¡CORREGIDO! 'targetUid' es la variable definida líneas arriba
               const nomContacto = usuario.nombre || "Usuario";
               const fotoContacto = fotoUrl || "";
 
@@ -8782,16 +8828,206 @@ if (opcionCambiarPassword) {
   });
 }
 
-// --- PANEL DE ADMINISTRACIÓN: ESCUCHAR Y APROBAR USUARIOS ---
+// ========================================================
+// 🛡️ PANEL DE ADMINISTRACIÓN Y CONTROL DE PESTAÑAS (5 TABS BENTO)
+// ========================================================
+
+document.addEventListener("DOMContentLoaded", () => {
+  // 1. Captura del modal y botones principales de apertura / cierre
+  const modalAdmin = document.getElementById("modal-admin");
+  const btnAbrirAdmin = document.getElementById("btn-abrir-admin") || document.getElementById("btn-admin-header");
+  const btnCerrarAdmin = document.getElementById("btn-cerrar-admin");
+
+  // 📂 2. Captura de botones (tabs) y secciones internas (5 pestañas)
+  const btnTabSolicitudes = document.getElementById("tab-admin-solicitudes");
+  const btnTabReportes = document.getElementById("tab-admin-reportes");
+  const btnTabNovedades = document.getElementById("tab-admin-novedades");
+  const btnTabMusic = document.getElementById("tab-admin-movamusic");
+  const btnTabMetricas = document.getElementById("tab-admin-metricas");
+
+  const secSolicitudes = document.getElementById("sec-admin-solicitudes");
+  const secReportes = document.getElementById("sec-admin-reportes");
+  const secNovedades = document.getElementById("sec-admin-novedades");
+  const secMusic = document.getElementById("sec-admin-movamusic");
+  const secMetricas = document.getElementById("sec-admin-metricas");
+
+  // 🔓 LÓGICA DE APERTURA DEL PANEL DE CONTROL
+  if (btnAbrirAdmin) {
+    btnAbrirAdmin.addEventListener("click", () => {
+      if (modalAdmin) {
+        modalAdmin.classList.remove("oculto");
+        modalAdmin.style.display = "flex";
+      }
+    });
+  }
+
+  // 🔒 LÓGICA DE CIERRE DEL PANEL DE CONTROL
+  if (btnCerrarAdmin) {
+    btnCerrarAdmin.addEventListener("click", () => {
+      if (modalAdmin) {
+        modalAdmin.classList.add("oculto");
+        modalAdmin.style.display = "none";
+      }
+    });
+  }
+
+  // 🧹 Función auxiliar para resetear estados visuales de las 5 pestañas Bento
+  function desmarcarTodasLasTabs() {
+    [btnTabSolicitudes, btnTabReportes, btnTabNovedades, btnTabMusic, btnTabMetricas].forEach((btn) => {
+      if (btn) {
+        btn.classList.remove("activo");
+        btn.style.background = "";
+        btn.style.color = "";
+      }
+    });
+
+    [secSolicitudes, secReportes, secNovedades, secMusic, secMetricas].forEach((sec) => {
+      if (sec) sec.classList.add("oculto");
+    });
+  }
+
+  // 👆 Evento Pestaña 1: Solicitudes
+  if (btnTabSolicitudes) {
+    btnTabSolicitudes.addEventListener("click", () => {
+      desmarcarTodasLasTabs();
+      btnTabSolicitudes.classList.add("activo");
+      if (secSolicitudes) secSolicitudes.classList.remove("oculto");
+    });
+  }
+
+  // 👆 Evento Pestaña 2: Reportes
+  if (btnTabReportes) {
+    btnTabReportes.addEventListener("click", () => {
+      desmarcarTodasLasTabs();
+      btnTabReportes.classList.add("activo");
+      if (secReportes) secReportes.classList.remove("oculto");
+
+      if (typeof cargarReportesAdmin === "function") {
+        cargarReportesAdmin();
+      }
+    });
+  }
+
+  // 👆 Evento Pestaña 3: Novedades Globales
+  if (btnTabNovedades) {
+    btnTabNovedades.addEventListener("click", () => {
+      desmarcarTodasLasTabs();
+      btnTabNovedades.classList.add("activo");
+      if (secNovedades) secNovedades.classList.remove("oculto");
+
+      if (typeof cargarNovedadesAdmin === "function") {
+        cargarNovedadesAdmin();
+      }
+    });
+  }
+
+  // 👆 Evento Pestaña 4: MovaMusic Admin
+  if (btnTabMusic) {
+    btnTabMusic.addEventListener("click", () => {
+      desmarcarTodasLasTabs();
+      btnTabMusic.classList.add("activo");
+      if (secMusic) secMusic.classList.remove("oculto");
+
+      if (typeof cargarMusicAdmin === "function") {
+        cargarMusicAdmin();
+      }
+    });
+  }
+
+  // 👆 Evento Pestaña 5: Métricas en Tiempo Real
+  if (btnTabMetricas) {
+    btnTabMetricas.addEventListener("click", () => {
+      desmarcarTodasLasTabs();
+      btnTabMetricas.classList.add("activo");
+      if (secMetricas) secMetricas.classList.remove("oculto");
+
+      cargarMetricasAdmin();
+    });
+  }
+
+  // 🔄 Transición de Modal "Acerca de MovaChat" -> Modal de "Feedback / Reporte"
+  const btnAbrirReporteDesdeAcerca = document.getElementById("btn-abrir-reporte-desde-acerca");
+  const modalAcerca = document.getElementById("modal-acerca-de");
+  const modalReporte = document.getElementById("modal-reportar-bug");
+
+  if (btnAbrirReporteDesdeAcerca) {
+    btnAbrirReporteDesdeAcerca.addEventListener("click", () => {
+      if (modalAcerca) modalAcerca.classList.add("oculto");
+      if (modalReporte) {
+        modalReporte.classList.remove("oculto");
+        modalReporte.style.display = "flex";
+      }
+    });
+  }
+});
+
+// 📊 FUNCIÓN PARA CALCULAR Y MOSTRAR MÉTRICAS EN TIEMPO REAL
+function cargarMetricasAdmin() {
+  const elemTotal = document.getElementById("metric-total-usuarios");
+  const elemOnline = document.getElementById("metric-online-usuarios");
+  const elemMusic = document.getElementById("metric-escuchando-music");
+  const elemActivos = document.getElementById("metric-interactuando-usuarios");
+
+  if (!elemTotal || !elemOnline || !elemMusic || !elemActivos) return;
+
+  const usuariosRef = ref(db, 'usuarios');
+
+  onValue(usuariosRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const usuarios = snapshot.val();
+      const keys = Object.keys(usuarios);
+
+      let totalRegistrados = keys.length;
+      let totalOnline = 0;
+      let totalMusic = 0;
+      let totalAprobados = 0;
+
+      keys.forEach((uid) => {
+        const u = usuarios[uid];
+
+        // 1. Conteo de usuarios online
+        if (u.presenciaReal === true || u.estado === "online") {
+          totalOnline++;
+        }
+
+        // 2. Conteo de usuarios escuchando MovaMusic
+        if (u.escuchandoMovaMusic === true) {
+          totalMusic++;
+        }
+
+        // 3. Conteo de usuarios interactuando recientemente (últimos 5 min)
+        const ahora = Date.now();
+        if (u.ultimaInteraccion && (ahora - u.ultimaInteraccion < 300000)) {
+          totalAprobados++;
+        } else if (u.estadoAcceso === "aprobado") {
+          // Si aún no tienen la marca de tiempo, los cuenta como miembros aprobados activos
+          totalAprobados++;
+        }
+      });
+
+      // Actualizar contadores en la interfaz
+      elemTotal.textContent = totalRegistrados;
+      elemOnline.textContent = totalOnline;
+      elemMusic.textContent = totalMusic;
+      elemActivos.textContent = totalAprobados;
+    } else {
+      elemTotal.textContent = "0";
+      elemOnline.textContent = "0";
+      elemMusic.textContent = "0";
+      elemActivos.textContent = "0";
+    }
+  });
+}
+
+// 3. Escuchar y Aprobar/Rechazar usuarios en tiempo real
 function cargarUsuariosPendientes() {
   const contenedorPendientes = document.getElementById("lista-pendientes");
   if (!contenedorPendientes) return;
 
-  // Consultar en tiempo real a los usuarios en la base de datos
   const usuariosRef = ref(db, 'usuarios');
 
   onValue(usuariosRef, (snapshot) => {
-    contenedorPendientes.innerHTML = ""; // Limpiar lista anterior
+    contenedorPendientes.innerHTML = "";
     let hayPendientes = false;
 
     if (snapshot.exists()) {
@@ -8800,7 +9036,6 @@ function cargarUsuariosPendientes() {
       Object.keys(usuarios).forEach((uid) => {
         const u = usuarios[uid];
 
-        // Filtrar solo los que están pendientes
         if (u.estadoAcceso === "pendiente") {
           hayPendientes = true;
 
@@ -8828,12 +9063,10 @@ function cargarUsuariosPendientes() {
             </div>
           `;
 
-          // Evento al presionar "Aprobar"
           tarjeta.querySelector(".btn-aprobar").addEventListener("click", () => {
             cambiarEstadoAcceso(uid, "aprobado");
           });
 
-          // Evento al presionar "Rechazar"
           tarjeta.querySelector(".btn-rechazar").addEventListener("click", () => {
             cambiarEstadoAcceso(uid, "baneado");
           });
@@ -8849,35 +9082,19 @@ function cargarUsuariosPendientes() {
   });
 }
 
-// --- FUNCIÓN PARA CAMBIAR EL ESTADO EN FIREBASE ---
+// --- FUNCIÓN UNIFICADA PARA CAMBIAR EL ESTADO DE ACCESO EN FIREBASE ---
 async function cambiarEstadoAcceso(uid, nuevoEstado) {
   try {
+    // 1. Actualizar el estado de acceso en Firebase Realtime Database
     await update(ref(db, `usuarios/${uid}`), {
       estadoAcceso: nuevoEstado
     });
 
+    // 2. Notificación visual de confirmación con estilos neón
     if (typeof mostrarAvisoPremium === "function") {
       const msj = nuevoEstado === "aprobado" ? "Usuario aprobado exitosamente 🟢" : "Usuario rechazado 🔴";
       const color = nuevoEstado === "aprobado" ? "#2ec4b6" : "#e71d36";
       mostrarAvisoPremium(msj, "👤", color);
-    }
-  } catch (error) {
-    console.error("Error al actualizar estado del usuario:", error);
-  }
-}
-
-// Función global para cambiar el estado de acceso desde los botones de Admin
-window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
-  try {
-    // 1. Actualizar el estado de acceso en Firebase Realtime Database
-    await update(ref(db, 'usuarios/' + uid), {
-      estadoAcceso: nuevoEstado
-    });
-
-    // 2. Notificación visual de confirmación
-    if (typeof mostrarAvisoPremium === "function") {
-      const msj = nuevoEstado === 'aprobado' ? 'aprobado 🟢' : 'rechazado 🔴';
-      mostrarAvisoPremium(`Usuario ${msj} con éxito.`, "✅", "#2ec4b6");
     }
   } catch (error) {
     console.error("❌ Error al actualizar el estado de acceso:", error);
@@ -8887,18 +9104,306 @@ window.cambiarEstadoAcceso = async function (uid, nuevoEstado) {
       alert("Error al actualizar el estado del usuario.");
     }
   }
+}
+
+// ========================================================
+// 💬 MÓDULO DE REPORTES Y FEEDBACK (ENVÍO, MUESTRA Y BORRADO)
+// ========================================================
+
+// Mapas de estilo y prioridad según el tipo de reporte
+const CONFIG_REPORTES = {
+  bug: {
+    titulo: "🐛 Problema / Bug",
+    color: "#ff4b2b",
+    bgEtiqueta: "rgba(255, 75, 43, 0.15)",
+    borde: "rgba(255, 75, 43, 0.4)"
+  },
+  sugerencia: {
+    titulo: "💡 Sugerencia",
+    color: "#ffb703",
+    bgEtiqueta: "rgba(255, 183, 3, 0.15)",
+    borde: "rgba(255, 183, 3, 0.4)"
+  },
+  otro: {
+    titulo: "⭐ Otro Comentario",
+    color: "#00f2fe",
+    bgEtiqueta: "rgba(0, 242, 254, 0.15)",
+    borde: "rgba(0, 242, 254, 0.4)"
+  }
 };
 
-// 🌟 FUNCIÓN AUXILIAR PARA ACTUALIZAR ANILLO DE HISTORIA Y LEDS EN LA TARJETA
+// 1. Escuchar el evento de envío del formulario de reporte
+document.addEventListener("DOMContentLoaded", () => {
+  const btnEnviarReporte = document.getElementById("btn-enviar-reporte");
+  const btnCancelarReporte = document.getElementById("btn-cancelar-reporte");
+  const btnCerrarReporte = document.getElementById("btn-cerrar-reportar-bug");
+  const modalReporte = document.getElementById("modal-reportar-bug");
+
+  // Cerrar modal al cancelar o pulsar la X
+  const cerrarModalReporte = () => {
+    if (modalReporte) {
+      modalReporte.style.display = "none";
+      modalReporte.classList.add("oculto");
+    }
+  };
+
+  if (btnCancelarReporte) btnCancelarReporte.addEventListener("click", cerrarModalReporte);
+  if (btnCerrarReporte) btnCerrarReporte.addEventListener("click", cerrarModalReporte);
+
+  // Guardar reporte en Firebase Realtime Database
+  if (btnEnviarReporte) {
+    btnEnviarReporte.addEventListener("click", async () => {
+      const selectTipo = document.getElementById("select-tipo-reporte");
+      const inputTexto = document.getElementById("input-texto-reporte");
+
+      const tipo = selectTipo ? selectTipo.value : "otro";
+      const texto = inputTexto ? inputTexto.value.trim() : "";
+
+      if (!texto) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Por favor escribe tu mensaje antes de enviar.", "⚠️", "#ffb703");
+        } else {
+          alert("Escribe un mensaje antes de enviar.");
+        }
+        return;
+      }
+
+      // Obtener datos del usuario actual si está disponible
+      const usuarioActual = typeof auth !== "undefined" && auth.currentUser ? auth.currentUser : null;
+      const nombreUsuario = usuarioActual ? (usuarioActual.displayName || usuarioActual.email || "Usuario Anónimo") : "Anónimo";
+
+      try {
+        // Generar un nuevo nodo único dentro de '/reportes'
+        const nuevoReporteRef = push(ref(db, "reportes"));
+        await set(nuevoReporteRef, {
+          tipo: tipo,
+          mensaje: texto,
+          usuario: nombreUsuario,
+          uid: usuarioActual ? usuarioActual.uid : "anonimo",
+          fecha: new Date().toISOString()
+        });
+
+        // Limpiar el campo de texto y cerrar
+        if (inputTexto) inputTexto.value = "";
+        cerrarModalReporte();
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("¡Gracias! Tu reporte ha sido enviado con éxito.", "🚀", "#00f2fe");
+        }
+      } catch (error) {
+        console.error("❌ Error al guardar el reporte en Firebase:", error);
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se pudo enviar el reporte. Inténtalo de nuevo.", "⚠️", "#ff4b2b");
+        }
+      }
+    });
+  }
+});
+
+// 2. Cargar reportes en tiempo real en la pestaña del Admin (Optimizado para Móviles + Orden por Hora)
+function cargarReportesAdmin() {
+  const contenedorReportes = document.getElementById("lista-reportes-admin");
+  if (!contenedorReportes) return;
+
+  const reportesRef = ref(db, "reportes");
+
+  onValue(reportesRef, (snapshot) => {
+    contenedorReportes.innerHTML = "";
+
+    if (snapshot.exists()) {
+      const reportes = snapshot.val();
+
+      // Convertimos el objeto de reportes a un Array para poder ordenarlo por fecha (más reciente primero)
+      const listaOrdenada = Object.keys(reportes).map((id) => ({
+        id: id,
+        ...reportes[id]
+      })).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+      listaOrdenada.forEach((item) => {
+        const config = CONFIG_REPORTES[item.tipo] || CONFIG_REPORTES.otro;
+
+        // Formatear la fecha para incluir la hora de envío (Ej: 20/08/2026, 09:46 p. m.)
+        const fechaObjeto = item.fecha ? new Date(item.fecha) : new Date();
+        const fechaHoraFormateada = fechaObjeto.toLocaleString([], {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+
+        const tarjeta = document.createElement("div");
+        tarjeta.className = "tarjeta-reporte-item";
+        tarjeta.style.cssText = `
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid ${config.borde};
+          border-radius: 14px;
+          padding: 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          position: relative;
+          backdrop-filter: blur(6px);
+        `;
+
+        tarjeta.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; width: 100%;">
+            <div style="display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0;">
+              <span style="align-self: flex-start; background: ${config.bgEtiqueta}; color: ${config.color}; border: 1px solid ${config.borde}; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 8px; white-space: nowrap;">
+                ${config.titulo}
+              </span>
+              <span style="font-size: 0.68rem; color: rgba(255,255,255,0.4); margin-top: 2px;">
+                ${fechaHoraFormateada}
+              </span>
+            </div>
+            <button class="btn-eliminar-reporte" style="background: rgba(255, 75, 43, 0.15); border: 1px solid rgba(255, 75, 43, 0.3); color: #ff4b2b; border-radius: 8px; padding: 6px 8px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0;" title="Eliminar reporte">
+              🗑️
+            </button>
+          </div>
+          <p style="margin: 0; color: #fff; font-size: 0.85rem; line-height: 1.4; word-break: break-word;">
+            ${item.mensaje || "Sin contenido"}
+          </p>
+          <div style="font-size: 0.75rem; color: rgba(255,255,255,0.5); border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px;">
+            Por: <strong style="color: rgba(255,255,255,0.8);">${item.usuario || "Anónimo"}</strong>
+          </div>
+        `;
+
+        // Evento para el borrado físico en Firebase
+        tarjeta.querySelector(".btn-eliminar-reporte").addEventListener("click", () => {
+          eliminarReporteFisico(item.id);
+        });
+
+        contenedorReportes.appendChild(tarjeta);
+      });
+    } else {
+      contenedorReportes.innerHTML = `
+        <p style="color: rgba(255,255,255,0.5); font-size: 0.85rem; text-align: center; padding: 20px 0;">
+          No hay reportes ni sugerencias recibidas. ✨
+        </p>`;
+    }
+  });
+}
+
+// 3. Borrado físico permanente con Modal de Confirmación Neón
+let reporteIdParaEliminar = null;
+
+function eliminarReporteFisico(idReporte) {
+  const modalConfirmar = document.getElementById("modal-confirmar-eliminar-reporte");
+  if (!modalConfirmar) return;
+
+  // Guardamos el ID del reporte seleccionado
+  reporteIdParaEliminar = idReporte;
+
+  // Mostramos el modal de confirmación
+  modalConfirmar.style.display = "flex";
+  modalConfirmar.classList.remove("oculto");
+}
+
+// Escuchadores para los botones del modal de eliminación
+document.addEventListener("DOMContentLoaded", () => {
+  const modalConfirmar = document.getElementById("modal-confirmar-eliminar-reporte");
+  const btnCancelar = document.getElementById("btn-cancelar-eliminar-reporte");
+  const btnConfirmar = document.getElementById("btn-confirmar-eliminar-reporte");
+
+  const cerrarModalConfirmar = () => {
+    if (modalConfirmar) {
+      modalConfirmar.style.display = "none";
+      modalConfirmar.classList.add("oculto");
+    }
+    reporteIdParaEliminar = null;
+  };
+
+  if (btnCancelar) btnCancelar.addEventListener("click", cerrarModalConfirmar);
+
+  if (btnConfirmar) {
+    btnConfirmar.addEventListener("click", async () => {
+      if (!reporteIdParaEliminar) return;
+
+      try {
+        // Eliminar de Firebase Realtime Database
+        await remove(ref(db, `reportes/${reporteIdParaEliminar}`));
+        cerrarModalConfirmar();
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Reporte eliminado permanentemente.", "🗑️", "#ff4b2b");
+        }
+      } catch (error) {
+        console.error("❌ Error al eliminar el reporte de Firebase:", error);
+        cerrarModalConfirmar();
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se pudo eliminar el reporte.", "⚠️", "#ff4b2b");
+        }
+      }
+    });
+  }
+});
+
+// ========================================================
+// ℹ️ MÓDULO CONTROLADOR DEL MODAL "ACERCA DE MOVACHAT"
+// ========================================================
+function inicializarModalAcercaDe() {
+  const btnAbrirAcerca = document.getElementById("btn-opcion-acerca-de");
+  const modalAcerca = document.getElementById("modal-acerca-de");
+  const btnCerrarAcerca = document.getElementById("btn-cerrar-acerca-de");
+  const btnAbrirReporte = document.getElementById("btn-abrir-reportar-bug");
+  const modalReporte = document.getElementById("modal-reportar-bug");
+
+  if (!modalAcerca) return;
+
+  // Funciones de apertura y cierre
+  const abrirModalAcerca = () => {
+    modalAcerca.style.display = "flex";
+    modalAcerca.classList.remove("oculto");
+  };
+
+  const cerrarModalAcerca = () => {
+    modalAcerca.style.display = "none";
+    modalAcerca.classList.add("oculto");
+  };
+
+  // 1. Abrir desde el menú de opciones
+  if (btnAbrirAcerca) {
+    btnAbrirAcerca.addEventListener("click", abrirModalAcerca);
+  }
+
+  // 2. Cerrar con el botón '✕'
+  if (btnCerrarAcerca) {
+    btnCerrarAcerca.addEventListener("click", cerrarModalAcerca);
+  }
+
+  // 3. Transición: Transición suave de "Acerca de..." a "Reporte / Bug"
+  if (btnAbrirReporte) {
+    btnAbrirReporte.addEventListener("click", () => {
+      cerrarModalAcerca();
+      if (modalReporte) {
+        modalReporte.style.display = "flex";
+        modalReporte.classList.remove("oculto");
+      }
+    });
+  }
+}
+
+// Ejecutar al cargar el documento
+document.addEventListener("DOMContentLoaded", inicializarModalAcercaDe);
+
+// Exponer la función globalmente para el Panel Admin
+window.cargarReportesAdmin = cargarReportesAdmin;
+
+// Expone la función globalmente para que pueda llamarse desde eventos HTML u otros scripts
+window.cambiarEstadoAcceso = cambiarEstadoAcceso;
+
+// 🌟 FUNCIÓN AUXILIAR PARA ACTUALIZAR ANILLO DE HISTORIA, LEDS Y MÚSICA EN LA TARJETA
 window.actualizarTarjetaContactoUI = function (uid, usuario) {
   if (!uid || !usuario) return;
 
-  // 1. Guardar siempre en la caché global aunque la tarjeta aún no exista en el DOM
+  // 1. Guardar siempre en la caché global
   window.usuariosCacheGlobal = window.usuariosCacheGlobal || {};
   window.usuariosCacheGlobal[uid] = usuario;
 
   const tarjeta = document.getElementById(`tarjeta-chat-${uid}`);
-  if (!tarjeta) return; // Si la tarjeta aún se está creando, se pintará cuando termine escucharUltimoMensajeContacto
+  if (!tarjeta) return;
 
   const avatarCaja = tarjeta.querySelector('.chat-avatar-caja');
   const imgAvatar = tarjeta.querySelector('.chat-avatar-caja img');
@@ -8926,7 +9431,7 @@ window.actualizarTarjetaContactoUI = function (uid, usuario) {
     imgAvatar.src = usuario.fotoUrl;
   }
 
-  // C) Actualizar LED de conexión
+  // C) Actualizar LED de conexión (Respetando tus estados originales)
   if (led) {
     const estadoManual = usuario.estadoConexion || usuario.estadoPresencia || "online";
     let colorLed = "#00f2fe";
@@ -8943,12 +9448,45 @@ window.actualizarTarjetaContactoUI = function (uid, usuario) {
     led.style.backgroundColor = colorLed;
     led.style.boxShadow = sombraLed;
   }
+
+  // D) Sincronizar el texto de la música en la tarjeta
+  if (typeof window.sincronizarMusicaEnTarjeta === "function") {
+    window.sincronizarMusicaEnTarjeta(uid, usuario);
+  }
+};
+
+// 🎵 FUNCIÓN PARA INYECTAR O LIMPIAR LA MÚSICA EN LA TARJETA (ICONO EN ETIQUETA SUPERIOR)
+window.sincronizarMusicaEnTarjeta = function (uid, usuario) {
+  const tarjeta = document.getElementById(`tarjeta-chat-${uid}`);
+  if (!tarjeta || !usuario) return;
+
+  const elemTexto = tarjeta.querySelector('.chat-texto');
+  if (!elemTexto) return;
+
+  // Si está escuchando música: "🎵 Escuchando:" arriba y título limpio abajo
+  if (usuario.escuchandoMovaMusic && usuario.cancionActual) {
+    elemTexto.style.display = "flex";
+    elemTexto.style.flexDirection = "column";
+    elemTexto.innerHTML = `
+      <span style="color: rgba(255, 255, 255, 0.45); font-size: 0.68rem; font-weight: 500; line-height: 1.1;">🎵 Escuchando:</span>
+      <span style="color: #00f2fe; font-weight: 600; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${usuario.cancionActual}</span>
+    `;
+  } 
+  // 🧹 SI PAUSÓ LA MÚSICA: Restauramos la dirección horizontal y re-cargamos el último mensaje
+  else if (elemTexto.innerHTML.includes("Escuchando:") || elemTexto.innerHTML.includes("🎵")) {
+    elemTexto.style.display = "";
+    elemTexto.style.flexDirection = "";
+    const datosFresh = window.usuariosCacheGlobal ? window.usuariosCacheGlobal[uid] : null;
+    if (typeof escucharUltimoMensajeContacto === "function" && auth.currentUser) {
+      escucharUltimoMensajeContacto(auth.currentUser.uid, uid, datosFresh || usuario);
+    }
+  }
 };
 
 // Variable global o fuera de la función para almacenar la desuscripción y evitar duplicados
 let desuscribirContactosAprobados = null;
 
-// 🟢 CARGAR CONTACTOS Y SINCRONIZAR HISTORIAS (24H) EN TIEMPO REAL
+// 🟢 CARGAR CONTACTOS, NOVEDADES GLOBALES Y SINCRONIZAR HISTORIAS (24H) EN TIEMPO REAL
 function cargarContactosAprobados(usuarioActualUid) {
   const contenedorContactos = document.getElementById("lista-chats-principal");
   if (!contenedorContactos) return;
@@ -8959,13 +9497,39 @@ function cargarContactosAprobados(usuarioActualUid) {
     desuscribirContactosAprobados = null;
   }
 
+  // 🚀 1. ESCUCHAR NOVEDADES GLOBALES (CANAL MOVACHAT)
+  const novedadesRef = ref(db, 'novedades_globales');
+  onValue(novedadesRef, async (snapNovedades) => {
+    if (snapNovedades.exists()) {
+      const novedades = snapNovedades.val();
+      const keys = Object.keys(novedades);
+      const ultimaKey = keys[keys.length - 1];
+      const ultimaNovedad = novedades[ultimaKey];
+
+      // Verificamos si el usuario borró voluntariamente el canal de novedades
+      const ocultoRef = ref(db, `chats_ocultos/${usuarioActualUid}/movachat_oficial`);
+      const snapOculto = await get(ocultoRef);
+      const timestampOculto = snapOculto.exists() ? Number(snapOculto.val()) : 0;
+
+      const fechaNovedad = ultimaNovedad.timestamp || 0;
+
+      // Si hay una novedad más reciente que la fecha en que el usuario borró el chat, lo mostramos
+      if (fechaNovedad > timestampOculto) {
+        inyectarTarjetaNovedadesUI(ultimaNovedad);
+      } else {
+        const tarjetaNovedades = document.getElementById("tarjeta-chat-movachat_oficial");
+        if (tarjetaNovedades) tarjetaNovedades.remove();
+      }
+    }
+  });
+
+  // 💬 2. ESCUCHAR CONTACTOS APROBADOS
   const usuariosRef = ref(db, 'usuarios');
   const fijadosRef = ref(db, `fijados/${usuarioActualUid}`);
 
   get(fijadosRef).then((snapFijados) => {
     const fijadosBD = snapFijados.exists() ? snapFijados.val() : {};
 
-    // Almacenamos el método de apagado devuelto por onValue
     desuscribirContactosAprobados = onValue(usuariosRef, (snapshot) => {
       try {
         if (snapshot.exists()) {
@@ -8984,7 +9548,6 @@ function cargarContactosAprobados(usuarioActualUid) {
                 }
               }
 
-              // Intentar actualizar la tarjeta en la interfaz
               if (typeof window.actualizarTarjetaContactoUI === "function") {
                 window.actualizarTarjetaContactoUI(uid, usuario);
               }
@@ -8998,22 +9561,138 @@ function cargarContactosAprobados(usuarioActualUid) {
   });
 }
 
+// 🚀 FUNCIÓN AUXILIAR PARA INYECTAR LA TARJETA CANAL NOVEDADES EN LA LISTA
+function inyectarTarjetaNovedadesUI(novedad) {
+  const contenedorLista = document.getElementById("lista-chats-principal");
+  if (!contenedorLista) return;
+
+  let tarjeta = document.getElementById("tarjeta-chat-movachat_oficial");
+
+  // 🧹 SI NO HAY NOVEDADES (BASE DE DATOS VACÍA O ELIMINADA DESDE ADMIN)
+  if (!novedad || (typeof novedad === "object" && Object.keys(novedad).length === 0)) {
+    if (tarjeta) {
+      tarjeta.remove(); // ⛔ Destruye la tarjeta de la lista de chats inmediatamente
+      if (typeof reordenarListaChats === "function") {
+        reordenarListaChats();
+      }
+    }
+    return;
+  }
+
+  // 🟢 SI SÍ HAY NOVEDAD, CREAR LA TARJETA SI NO EXISTE
+  if (!tarjeta) {
+    tarjeta = document.createElement("div");
+    tarjeta.className = "tarjeta-chat contacto-item canal-oficial-mova";
+    tarjeta.id = "tarjeta-chat-movachat_oficial";
+    tarjeta.dataset.uid = "movachat_oficial";
+
+    tarjeta.innerHTML = `
+      <div class="chat-avatar-caja">
+        <div class="avatar-placeholder" style="width: 45px; height: 45px; border-radius: 50%; background: linear-gradient(135deg, #00f2fe, #7f00ff); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; box-shadow: 0 0 10px rgba(0, 242, 254, 0.4);">
+          🚀
+        </div>
+        <span class="punto-online-chat" style="background-color: #00f2fe; box-shadow: 0 0 8px #00f2fe;"></span>
+      </div>
+      <div class="chat-info">
+        <div class="chat-cabecera">
+          <h4 class="chat-nombre" style="color: #00f2fe; display: flex; align-items: center; gap: 4px;">
+            MovaChat Novedades <i data-lucide="check-circle-2" style="width:14px; height:14px; color:#00f2fe;"></i>
+          </h4>
+          <span class="chat-hora"></span>
+        </div>
+        <div class="chat-mensaje-caja">
+          <p class="chat-texto" style="color: rgba(255,255,255,0.8); font-style: italic;"></p>
+        </div>
+      </div>
+    `;
+
+    tarjeta.addEventListener("click", (e) => {
+      e.stopPropagation();
+      window.contactoActivoUid = "movachat_oficial";
+
+      if (typeof abrirChatConUsuario === "function") {
+        abrirChatConUsuario("movachat_oficial", "MovaChat Novedades 🚀", "oficial_oficial");
+      }
+    });
+
+    contenedorLista.appendChild(tarjeta);
+  }
+
+  // 📝 Actualizar contenido con la última novedad
+  const elemTexto = tarjeta.querySelector(".chat-texto");
+  const elemHora = tarjeta.querySelector(".chat-hora");
+
+  if (elemTexto) elemTexto.textContent = novedad.titulo || novedad.mensaje || "Nueva actualización disponible";
+  if (elemHora) {
+    const fecha = novedad.timestamp ? new Date(novedad.timestamp) : new Date();
+    elemHora.textContent = fecha.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons({ targets: [tarjeta] });
+  }
+
+  if (typeof reordenarListaChats === "function") {
+    reordenarListaChats();
+  }
+}
+
+// 🌐 ESCUCHA GLOBAL EN TIEMPO REAL PARA LA TARJETA PRINCIPAL DE NOVEDADES
+function inicializarEscuchaNovedadesGlobal() {
+  const novedadesRef = ref(db, 'novedades_globales');
+
+  onValue(novedadesRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const novedades = snapshot.val();
+      const keys = Object.keys(novedades);
+      if (keys.length > 0) {
+        const ultimaKey = keys[keys.length - 1];
+        inyectarTarjetaNovedadesUI(novedades[ultimaKey]);
+      } else {
+        inyectarTarjetaNovedadesUI(null);
+      }
+    } else {
+      // 🧹 Si el nodo se borra en Firebase, destruye la tarjeta en vivo
+      inyectarTarjetaNovedadesUI(null);
+    }
+  });
+}
+
+// Ejecutar la escucha activa global al cargar la app
+inicializarEscuchaNovedadesGlobal();
+
 // Crear alias para que ambas llamadas funcionen igual de bien
 window.actualizarCampanitaGlobal = window.actualizarBadgesNotificaciones;
 
-// 🟢 Función unificada adaptada a tus selectores (CON RESET DE CAJA DE TEXTO Y VERIFICACIÓN DE BLOQUEO)
+// 🎵 FUNCIÓN AUXILIAR PARA LA CABECERA (ETIQUETA ARRIBA Y CANCIÓN ABAJO)
+window.actualizarEstadoCabeceraChat = function (datosContacto) {
+  const textoEstadoCabecera = document.querySelector(".amigo-datos .amigo-estado-texto");
+  if (!textoEstadoCabecera || !datosContacto) return;
+
+  if (datosContacto.escuchandoMovaMusic && datosContacto.cancionActual) {
+    textoEstadoCabecera.innerHTML = `
+      <span style="display: block; color: rgba(255, 255, 255, 0.45); font-size: 0.68rem; font-weight: 500; line-height: 1.2;">🎵 Escuchando:</span>
+      <span style="display: block; color: #00f2fe; font-weight: 600; font-size: 0.82rem; line-height: 1.2;">${datosContacto.cancionActual}</span>
+    `;
+  } else {
+    textoEstadoCabecera.innerHTML = "";
+  }
+};
+
+// 🟢 FUNCIÓN COMPLETA Y UNIFICADA: ABRIR CHAT CON USUARIO O CANAL DE NOVEDADES
 function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
-  // 🟢 RESETEAR CAJA DE TEXTO A ESTADO NORMAL AL CAMBIAR DE CHAT
-  if (inputChat) {
+  // 1. Resetear caja de texto a estado normal
+  if (typeof inputChat !== "undefined" && inputChat) {
     inputChat.disabled = false;
     inputChat.placeholder = "Escribe un mensaje privado...";
     inputChat.style.opacity = "1";
   }
-  if (btnAccionChat) {
+  if (typeof btnAccionChat !== "undefined" && btnAccionChat) {
     btnAccionChat.style.pointerEvents = "auto";
     btnAccionChat.style.opacity = "1";
   }
 
+  // 2. Extraer datos del contacto u objeto recibido
   let uidTarget, nombreTarget, fotoTarget;
 
   if (typeof contactoUid === 'object' && contactoUid !== null) {
@@ -9028,13 +9707,19 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
 
   if (!uidTarget) return;
 
-  // Registrar el UID del contacto que estamos viendo
+  // 🚀 3. CASO ESPECIAL: CANAL OFICIAL MOVACHAT NOVEDADES
+  if (uidTarget === "movachat_oficial") {
+    nombreTarget = "MovaChat Novedades 🚀";
+    fotoTarget = "assets/logo/icon-192.png";
+  }
+
+  // 4. Registrar UID activo en variables globales
   window.contactoActivoUid = uidTarget;
   if (typeof contactoSeleccionado !== "undefined") {
     contactoSeleccionado = uidTarget;
   }
 
-  // 1. 🧹 LIMPIAR EL CONTADOR Y EL BADGE DE LA TARJETA EN LA LISTA
+  // 🧹 5. LIMPIAR EL CONTADOR Y EL BADGE DE LA TARJETA EN LA LISTA
   const tarjetaContacto = document.getElementById(`tarjeta-chat-${uidTarget}`);
   if (tarjetaContacto) {
     tarjetaContacto.dataset.mensajesNoLeidos = "0";
@@ -9052,24 +9737,23 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // Sincronizar inmediatamente la campanita
+  // 🔔 6. RECALCULAR LA CAMPANITA GLOBAL DE NOTIFICACIONES
   if (typeof window.actualizarBadgesNotificaciones === "function") {
     window.actualizarBadgesNotificaciones();
   }
-
-  // 2. 🔔 RECALCULAR LA CAMPANITA GLOBAL DE NOTIFICACIONES
   if (typeof actualizarCampanitaGlobal === "function") {
     actualizarCampanitaGlobal();
   }
 
-  // 3. Limpiar pantalla de mensajes previa para evitar "parpadeo" de la conversación anterior
-  if (typeof historialMensajes !== "undefined" && historialMensajes) {
+  // 🧹 7. Limpiar pantalla de mensajes previa para evitar "parpadeo"
+  const historialMensajes = document.querySelector(".historial-mensajes");
+  if (historialMensajes) {
     historialMensajes.innerHTML = "";
   }
 
-  // 4. Actualizar datos en la cabecera del chat privado
-  const elemNombre = document.querySelector(".amigo-nombre-chat");
-  const elemFoto = document.getElementById("avatar-cabecera-privada");
+  // 🖼️ 8. Actualizar datos en la cabecera del chat privado
+  const elemNombre = document.getElementById("chat-contacto-nombre") || document.querySelector(".amigo-nombre-chat");
+  const elemFoto = document.getElementById("chat-contacto-foto") || document.getElementById("avatar-cabecera-privada");
 
   if (elemNombre) elemNombre.textContent = nombreTarget;
   if (elemFoto) {
@@ -9077,23 +9761,25 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
       elemFoto.src = fotoTarget;
       elemFoto.style.display = "block";
     } else {
-      // Avatar genérico por defecto si no tiene foto
       elemFoto.src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(nombreTarget)}`;
     }
+    elemFoto.onerror = () => {
+      elemFoto.src = "assets/logo/icon-192.png";
+    };
   }
 
-  // 5. Ocultar menús flotantes abiertos
-  const menuTarjetas = document.getElementById("menu-tarjetas-chat");
-  if (menuTarjetas) menuTarjetas.classList.add("oculto");
+  // 🙈 9. Ocultar menús flotantes y desplegar la pantalla del chat privado
+  const menuTarjetasElem = document.getElementById("menu-tarjetas-chat");
+  if (menuTarjetasElem) menuTarjetasElem.classList.add("oculto");
 
-  // 6. 🚀 USAR TU PROPIA LÓGICA DE NAVEGACIÓN
   if (typeof encabezadoGlobal !== "undefined" && encabezadoGlobal) encabezadoGlobal.style.display = "none";
   if (typeof menuFlotanteGlobal !== "undefined" && menuFlotanteGlobal) menuFlotanteGlobal.style.display = "none";
 
   const btnFlotanteContacto = document.querySelector(".btn-flotante-contacto");
   if (btnFlotanteContacto) btnFlotanteContacto.style.display = "none";
 
-  if (typeof pantallaChatPrivado !== "undefined" && pantallaChatPrivado) {
+  const pantallaChatPrivado = document.getElementById("pantalla-chat-privado");
+  if (pantallaChatPrivado) {
     pantallaChatPrivado.classList.add("pantalla-completa");
     if (typeof switchPantalla === "function") {
       switchPantalla(pantallaChatPrivado, pantallaChats, pantallaBienvenida, pantallaPerfil);
@@ -9103,182 +9789,71 @@ function abrirChatConUsuario(contactoUid, nombreContacto, fotoContacto) {
     }
   }
 
-  // 7. Conectar Firebase de forma limpia y guardar lectura en la nube
+  // 💬 10. Calcular ID del chat y conectar con Firebase
   const miUid = (typeof auth !== "undefined" && auth.currentUser) ? auth.currentUser.uid : null;
   if (miUid && uidTarget) {
-    const chatId = obtenerChatId(miUid, uidTarget);
+    let chatId = uidTarget;
+    if (uidTarget !== "movachat_oficial") {
+      chatId = typeof obtenerChatId === "function" ? obtenerChatId(miUid, uidTarget) : [miUid, uidTarget].sort().join("_");
+    }
 
-    // 🧹 EJECUTAR LIMPIEZA AUTOMÁTICA DE MENSAJES VIEJOS EN ESTE CHAT
+    // 🧹 Autolimpieza de mensajes de 12 días
     if (typeof ejecutarAutolimpieza12Dias === "function") {
       ejecutarAutolimpieza12Dias(chatId);
     }
 
-    // ☁️ REGISTRAR EN FIREBASE EL ÚLTIMO MENSAJE VISTO
-    const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
-    get(mensajesRef).then((snapshot) => {
-      if (snapshot.exists()) {
-        const mensajes = snapshot.val();
-        const keys = Object.keys(mensajes);
-        const ultimoMsgKey = keys[keys.length - 1];
+    // ☁️ Registrar lectura en la nube (si no es canal de novedades)
+    if (uidTarget !== "movachat_oficial") {
+      const mensajesRef = ref(db, `chats/${chatId}/mensajes`);
+      get(mensajesRef).then((snapshot) => {
+        if (snapshot.exists()) {
+          const mensajes = snapshot.val();
+          const keys = Object.keys(mensajes);
+          const ultimoMsgKey = keys[keys.length - 1];
+          set(ref(db, `lecturas/${miUid}/${uidTarget}`), ultimoMsgKey);
+        }
+      }).catch(err => console.error("Error al registrar lectura:", err));
+    }
 
-        // Escribe el ID del último mensaje en el nodo 'lecturas'
-        set(ref(db, `lecturas/${miUid}/${uidTarget}`), ultimoMsgKey);
-      }
-    }).catch(err => console.error("Error al registrar lectura:", err));
-
+    // 🎧 Cargar mensajes en tiempo real
     if (typeof escucharMensajesChat === "function") {
       escucharMensajesChat(chatId);
     }
   }
 
-  // 🔕 TEXTO DEL BOTÓN SILENCIAR EN CABECERA
-  const btnCtxSilenciar = document.getElementById("btn-ctx-silenciar");
-  if (btnCtxSilenciar && uidTarget) {
-    btnCtxSilenciar.innerHTML = `<i data-lucide="bell-off"></i> Silenciar / Notificaciones`;
-    if (window.lucide) window.lucide.createIcons({ targets: [btnCtxSilenciar] });
+  // 🔔 11. Actualizar texto del botón silenciar en cabecera
+  const btnSilenciarCabeceraElem = document.getElementById("btn-ctx-silenciar");
+  if (btnSilenciarCabeceraElem && uidTarget) {
+    btnSilenciarCabeceraElem.innerHTML = `<i data-lucide="bell-off"></i> Silenciar / Notificaciones`;
+    if (window.lucide) window.lucide.createIcons({ targets: [btnSilenciarCabeceraElem] });
   }
 
-  // 🛡️ VERIFICAR ESTADO DE BLOQUEO EN FIREBASE
-  if (typeof verificarEstadoBloqueo === "function") {
+  // 🛡️ 12. Verificar estado de bloqueo en Firebase
+  if (typeof verificarEstadoBloqueo === "function" && uidTarget !== "movachat_oficial") {
     verificarEstadoBloqueo(uidTarget);
   }
 
-  // 🎧 ESCUCHAR CAMBIOS DE ESTADO DE LOS 2 LEDS EN TIEMPO REAL
-  if (window.desuscribirLedContacto) window.desuscribirLedContacto();
+  // 🎧 13. Escuchar cambios de presencias LEDs y Música en tiempo real
+  if (uidTarget !== "movachat_oficial") {
+    if (window.desuscribirLedContacto) window.desuscribirLedContacto();
 
-  const contactoRef = ref(db, `usuarios/${uidTarget}`);
-  window.desuscribirLedContacto = onValue(contactoRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const datosFresh = snapshot.val();
-      if (typeof window.actualizarDobleLedContacto === "function") {
-        window.actualizarDobleLedContacto(datosFresh);
-      }
-    }
-  });
+    const contactoRef = ref(db, `usuarios/${uidTarget}`);
+    window.desuscribirLedContacto = onValue(contactoRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const datosFresh = snapshot.val();
 
-  // ↪️ VERIFICAR SI HAY UN PAQUETE DE REENVÍO PENDIENTE
-  if (window.objetoPendienteReenviar) {
-    const cajaEntrada = document.getElementById("input-chat-privado") || (typeof inputChat !== "undefined" ? inputChat : null);
+        // A) Actualizar LEDs
+        if (typeof window.actualizarDobleLedContacto === "function") {
+          window.actualizarDobleLedContacto(datosFresh);
+        }
 
-    window.mensajeReenviadoActivo = { ...window.objetoPendienteReenviar };
-    window.objetoPendienteReenviar = null;
-
-    if (cajaEntrada) {
-      cajaEntrada.value = window.mensajeReenviadoActivo.texto;
-      cajaEntrada.readOnly = true; // 🔒 BLOQUEAR EDICIÓN DEL TEXTO REENVIADO
-
-      // Banner flotante elegante
-      let vistaPreviaReenvio = document.getElementById("vista-previa-reenvio");
-      if (!vistaPreviaReenvio) {
-        vistaPreviaReenvio = document.createElement("div");
-        vistaPreviaReenvio.id = "vista-previa-reenvio";
-
-        const pieDeChat = cajaEntrada.closest(".footer-chat") || cajaEntrada.closest(".caja-input-privado") || cajaEntrada.parentElement.parentElement;
-
-        if (pieDeChat && pieDeChat.parentNode) {
-          pieDeChat.parentNode.insertBefore(vistaPreviaReenvio, pieDeChat);
-        } else if (cajaEntrada.parentElement) {
-          cajaEntrada.parentElement.insertBefore(vistaPreviaReenvio, cajaEntrada);
+        // B) Actualizar la cabecera en tiempo real
+        if (typeof window.actualizarEstadoCabeceraChat === "function") {
+          window.actualizarEstadoCabeceraChat(datosFresh);
         }
       }
-
-      // ❌ CONTENEDOR SEGURO PARA EL BOTÓN DE CANCELAR
-      vistaPreviaReenvio.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
-          <i data-lucide="forward" style="width: 14px; height: 14px; stroke: #00f2fe; flex-shrink: 0;"></i>
-          <span>Reenviando mensaje de <b>${window.mensajeReenviadoActivo.autorOriginal}</b></span>
-        </div>
-        <span id="btn-cancelar-reenvio" style="cursor: pointer; opacity: 0.8; flex-shrink: 0; padding: 4px; display: flex; align-items: center;">
-          <i data-lucide="x" style="width: 16px; height: 16px; pointer-events: none;"></i>
-        </span>
-      `;
-
-      if (window.lucide) window.lucide.createIcons({ targets: [vistaPreviaReenvio] });
-
-      const btnCancelar = document.getElementById("btn-cancelar-reenvio");
-      if (btnCancelar) {
-        btnCancelar.onclick = (e) => {
-          e.stopPropagation();
-          window.mensajeReenviadoActivo = null;
-          cajaEntrada.value = "";
-          cajaEntrada.readOnly = false; // 🔓 DESBLOQUEAR CAJA AL CANCELAR
-          if (vistaPreviaReenvio) vistaPreviaReenvio.remove();
-          if (typeof actualizarIconoBotonAccion === "function") actualizarIconoBotonAccion();
-        };
-      }
-
-      if (typeof actualizarIconoBotonAccion === "function") {
-        actualizarIconoBotonAccion();
-      }
-    }
+    });
   }
-}
-
-// 🟢 CONECTOR ÚNICO Y OFICIAL PARA ENVIAR MENSAJES Y GRABAR VOZ
-const inputChatPrivado = document.getElementById("input-chat-privado");
-
-if (btnAccionChat) {
-  btnAccionChat.onclick = (e) => {
-    e.preventDefault();
-
-    const tieneTexto = inputChatPrivado && inputChatPrivado.value.trim().length > 0;
-    const tieneAdjunto = cajaVistaPrevia && !cajaVistaPrevia.classList.contains("oculto");
-    const tieneReenvioPendiente = !!window.objetoPendienteReenviar;
-    const modoBoton = btnAccionChat.getAttribute("data-modo");
-
-    // 🛡️ PRIORIDAD ABSOLUTA: Si hay reenvío, texto o adjunto, ENVIAR MENSAJE
-    if (tieneReenvioPendiente || tieneTexto || tieneAdjunto || modoBoton === "enviar") {
-      enviarMensajeNuevo();
-    } else {
-      // 🎙️ Control de grabación de voz seguro
-      if (typeof toggleGrabacionVoz === "function") {
-        toggleGrabacionVoz(e);
-      } else if (typeof estaGrabandoAudio !== "undefined" && estaGrabandoAudio) {
-        if (typeof finalizarGrabacionVoz === "function") finalizarGrabacionVoz();
-      } else {
-        if (typeof iniciarGrabacionVoz === "function") iniciarGrabacionVoz(e);
-      }
-    }
-  };
-}
-
-// 🔄 1. Cambiar icono (Micrófono <-> Avión) dinámicamente al escribir/borrar
-if (inputChatPrivado) {
-  inputChatPrivado.addEventListener("input", () => {
-    if (typeof actualizarIconoBotonAccion === "function") {
-      actualizarIconoBotonAccion();
-    }
-  });
-}
-
-// 📩 2. Enviar mensaje al presionar la tecla "Enter"
-if (inputChatPrivado) {
-  inputChatPrivado.onkeydown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      enviarMensajeNuevo();
-    }
-  };
-}
-
-// ⌨️ 3. Cancelar edición al presionar la tecla "Escape"
-if (inputChatPrivado) {
-  inputChatPrivado.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && window.mensajeEnEdicionId) {
-      window.mensajeEnEdicionId = null;
-      window.burbujaEnEdicion = null;
-      inputChatPrivado.value = "";
-
-      // Restaurar el icono del botón (enviar / micrófono)
-      if (typeof actualizarIconoBotonAccion === "function") {
-        actualizarIconoBotonAccion();
-      }
-
-      if (typeof mostrarAvisoPremium === "function") {
-        mostrarAvisoPremium("Edición cancelada.", "ℹ️", "#ff4b2b");
-      }
-    }
-  });
 }
 
 let listenerChatActivo = null;
@@ -9315,6 +9890,91 @@ function escucharMensajesChat(chatId) {
 
   // 1. 🧹 CANCELAR SUSCRIPCIONES ANTERIORES
   limpiarListenersActivos();
+
+  // 🔒 ELEMENTOS DE INTERFAZ A PROTEGER/OCULTAR EN CANAL OFICIAL
+  const barraEscritura = document.querySelector(".barra-escribir-chat") || document.querySelector(".caja-input-privado");
+  const btnBloquear = document.getElementById("btn-bloquear-contacto") || document.getElementById("btn-ctx-bloquear");
+
+  // 🚀 BIFURCACIÓN ESPECIAL: SI ES EL CANAL OFICIAL DE NOVEDADES
+  if (chatId === "movachat_oficial" || window.contactoActivoUid === "movachat_oficial") {
+
+    // ⛔ RESTRICCIÓN 1: Ocultar barra inferior de escritura
+    if (barraEscritura) {
+      barraEscritura.style.display = "none";
+    }
+
+    // ⛔ RESTRICCIÓN 2: Ocultar/Deshabilitar botón de bloquear en menú
+    if (btnBloquear) {
+      btnBloquear.style.display = "none";
+    }
+
+    const novedadesRef = ref(db, 'novedades_globales');
+
+    listenerChatActivo = onValue(novedadesRef, (snapshot) => {
+      contenedorHistorial.innerHTML = "";
+
+      if (snapshot.exists()) {
+        const novedades = snapshot.val();
+        const keys = Object.keys(novedades);
+
+        // Tomamos la última novedad para asegurar que la lista principal esté al día
+        const ultimaKey = keys[keys.length - 1];
+        if (typeof inyectarTarjetaNovedadesUI === "function") {
+          inyectarTarjetaNovedadesUI(novedades[ultimaKey]);
+        }
+
+        keys.forEach((key) => {
+          const item = novedades[key];
+          if (!item) return;
+
+          const titulo = item.titulo || "Comunicado Oficial";
+          const texto = item.mensaje || item.texto || "";
+          const fechaObj = item.timestamp ? new Date(item.timestamp) : new Date();
+          const horaFormateada = fechaObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+          const burbuja = document.createElement("div");
+          burbuja.className = "mensaje-burbuja canal-oficial-burbuja";
+
+          burbuja.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; color:#00f2fe; font-weight:700; font-size:0.88rem; letter-spacing: -0.2px;">
+              <i data-lucide="rocket" style="width:18px; height:18px; color:#00f2fe; filter: drop-shadow(0 0 5px rgba(0,242,254,0.6));"></i>
+              <span>${titulo}</span>
+            </div>
+            <p class="mensaje-texto" style="color: #ffffff; font-size: 0.92rem; line-height: 1.45; margin-bottom: 8px;">${texto}</p>
+            <span class="mensaje-hora" style="display:block; text-align:right; font-size:0.72rem; color:rgba(0, 242, 254, 0.7); font-weight: 500;">${horaFormateada}</span>
+          `;
+
+          contenedorHistorial.appendChild(burbuja);
+        });
+
+        if (window.lucide) {
+          window.lucide.createIcons({ targets: [contenedorHistorial] });
+        }
+
+        if (typeof hacerScrollAlFinalHistorial === "function") {
+          hacerScrollAlFinalHistorial();
+        }
+      } else {
+        // 🧹 Si se eliminaron todas las novedades desde Admin:
+        contenedorHistorial.innerHTML = `<div style="text-align:center; color:rgba(255,255,255,0.4); padding:20px; font-size: 0.85rem;">No hay novedades publicadas aún.</div>`;
+
+        // Notificamos a la UI para destruir la tarjeta de la lista principal de chats
+        if (typeof inyectarTarjetaNovedadesUI === "function") {
+          inyectarTarjetaNovedadesUI(null);
+        }
+      }
+    });
+
+    return; // ⛔ Detiene la función aquí para no ejecutar la lectura de chats estándar
+  }
+
+  // 🟢 RESTAURAR INTERFAZ PARA CHATS NORMALES
+  if (barraEscritura) {
+    barraEscritura.style.display = "flex";
+  }
+  if (btnBloquear) {
+    btnBloquear.style.display = "";
+  }
 
   const miUid = auth.currentUser ? auth.currentUser.uid : null;
   const contactoUid = window.contactoActivoUid;
@@ -9397,12 +10057,10 @@ function escucharMensajesChat(chatId) {
         const msgId = contenedor.getAttribute("data-msg-id");
 
         if (!esLeido) {
-          // Si entra a la app O ya se entregó antes, se mantienen las 2 palomitas
           if (estaEnAppReceptorLive || yaFueEntregado) {
             contenedor.className = "indicador-checks-mova entregado";
             contenedor.innerHTML = `<i data-lucide="check-check"></i>`;
 
-            // Guardar en Firebase para que persista al recargar o salir del chat
             if (estaEnAppReceptorLive && !yaFueEntregado && msgId && window.idChatActual) {
               const msgRef = ref(db, `chats/${window.idChatActual}/mensajes/${msgId}`);
               update(msgRef, { entregado: true }).catch(() => { });
@@ -9453,7 +10111,7 @@ function escucharMensajesChat(chatId) {
           set(ref(db, `lecturas/${miUid}/${contactoUid}`), ultimoMsgKey);
         }
 
-        const TIEMPO_12_DIAS_MS = 12 * 24 * 60 * 60 * 1000; // 🛡️ REGLA 4: Purga automática a los 12 días
+        const TIEMPO_12_DIAS_MS = 12 * 24 * 60 * 60 * 1000;
         const ahoraMs = Date.now();
 
         keysMensajes.forEach((msgId) => {
@@ -9470,18 +10128,15 @@ function escucharMensajesChat(chatId) {
 
           if (estaBloqueadoElContacto && !esMio) return;
 
-          // 🙈 REGLA: Si el usuario actual usó "Eliminar para mí" en esta tarjeta/mensaje
           if ((msg.ocultoPara && msg.ocultoPara[miUid]) || (msg.eliminadoPara && msg.eliminadoPara[miUid])) {
             return;
           }
 
-          // ⌛ REGLA AUTOMÁTICA: Expira a los 15 días (Tarjetas de contactos u otros elementos con expiraEn)
           if (msg.expiraEn && Date.now() >= msg.expiraEn) {
             set(ref(db, `chats/${chatId}/mensajes/${msgId}`), null);
             return;
           }
 
-          // 🗑️ BORRADO FÍSICO EN MENSAJES TEMPORALES (EFÍMEROS)
           if (msg.esEfimero) {
             const limiteMs = msg.duracionEfimeraMs || 10000;
             const transcurrido = Date.now() - (msg.timestamp || Date.now());
@@ -9502,7 +10157,6 @@ function escucharMensajesChat(chatId) {
             }
           }
 
-          // ⏳ VERIFICACIÓN Y LIMPIEZA AUTOMÁTICA A LOS 12 DÍAS (FOTOS Y DOCUMENTOS)
           if ((msg.tipoAdjunto === 'foto' || msg.tipoAdjunto === 'documento') && msg.urlAdjunto && !msg.expirado && (ahoraMs - msgTimestamp) >= TIEMPO_12_DIAS_MS) {
             eliminarArchivoSupabase(msg.urlAdjunto, "movachat-adjuntos");
             update(ref(db, `chats/${chatId}/mensajes/${msgId}`), {
@@ -9525,7 +10179,7 @@ function escucharMensajesChat(chatId) {
 
             const textoNotif = msg.texto || msg.contenido || "Te envió un mensaje";
             const nombreRemitente = msg.nombreEmisor || msg.remitente || "Amigo";
-            const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo.png";
+            const fotoRemitente = msg.avatar || msg.fotoUrl || "assets/logo/icon-192.png";
 
             if (typeof notificarNuevoMensaje === "function") {
               notificarNuevoMensaje(nombreRemitente, textoNotif, fotoRemitente);
@@ -9547,7 +10201,6 @@ function escucharMensajesChat(chatId) {
           const textoEditadoHTML = msg.editado ? ' <span style="font-size:0.65rem; opacity:0.6;">(editado)</span>' : '';
           const iconoRelojHTML = msg.esEfimero ? '<i data-lucide="hourglass" style="width:10px; height:10px; display:inline-block; margin-right:4px; opacity:0.6; vertical-align:middle;"></i>' : '';
 
-          // 🟢 GENERACIÓN UNIFICADA DE CHECKS CON DATA-MSG-ID Y PERSISTENCIA
           let htmlChecks = "";
           if (esMio) {
             let claseChecks = "enviado";
@@ -9803,7 +10456,6 @@ function escucharMensajesChat(chatId) {
           window.lucide.createIcons({ targets: [elemHistorial] });
         }
 
-        // 🟢 Scroll inmediato + diferidos para multimedia y ajuste de teclado
         hacerScrollAlFinalHistorial();
         setTimeout(hacerScrollAlFinalHistorial, 150);
         setTimeout(hacerScrollAlFinalHistorial, 400);
@@ -11183,4 +11835,438 @@ if (btnCancelarLogout) {
     const modalLogout = document.getElementById("modal-confirmar-cerrar-sesion");
     if (modalLogout) modalLogout.classList.add("oculto");
   });
+}
+
+// ========================================================
+// 🚀 GESTIÓN DE NOVEDADES GLOBALES (ADMINISTRADOR)
+// ========================================================
+
+// 1. Escuchador de clic para publicar la novedad en Firebase
+document.addEventListener("DOMContentLoaded", () => {
+  const btnPublicar = document.getElementById("btn-publicar-novedad");
+  const txtNovedad = document.getElementById("txt-novedad-admin");
+
+  if (btnPublicar && txtNovedad) {
+    btnPublicar.addEventListener("click", async () => {
+      const mensaje = txtNovedad.value.trim();
+
+      if (!mensaje) {
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Escribe un mensaje antes de publicar.", "⚠️", "#ff4b2b");
+        }
+        return;
+      }
+
+      try {
+        // Guardamos en la ruta global de Firebase con un ID autogenerado (push)
+        const nuevaNovedadRef = push(ref(db, "novedades_globales"));
+        await set(nuevaNovedadRef, {
+          mensaje: mensaje,
+          timestamp: Date.now(),
+          fecha: new Date().toISOString(),
+          tipo: "v1.0.0"
+        });
+
+        txtNovedad.value = ""; // Limpiamos el campo de texto
+
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("Novedad publicada a todos los usuarios. 🚀", "📢", "#00f2fe");
+        }
+      } catch (error) {
+        console.error("❌ Error al publicar la novedad:", error);
+        if (typeof mostrarAvisoPremium === "function") {
+          mostrarAvisoPremium("No se pudo publicar la novedad.", "⚠️", "#ff4b2b");
+        }
+      }
+    });
+  }
+});
+
+// 2. Cargar el historial de novedades en la pestaña del Admin
+function cargarNovedadesAdmin() {
+  const contenedorNovedades = document.getElementById("lista-novedades-admin");
+  if (!contenedorNovedades) return;
+
+  const novedadesRef = ref(db, "novedades_globales");
+
+  onValue(novedadesRef, (snapshot) => {
+    contenedorNovedades.innerHTML = "";
+
+    if (snapshot.exists()) {
+      const novedades = snapshot.val();
+
+      // Convertimos a array y ordenamos por fecha (más reciente primero)
+      const listaOrdenada = Object.keys(novedades).map((id) => ({
+        id: id,
+        ...novedades[id]
+      })).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+      listaOrdenada.forEach((item) => {
+        const fechaObj = item.timestamp ? new Date(item.timestamp) : new Date();
+        const fechaFormateada = fechaObj.toLocaleString([], {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+
+        const tarjeta = document.createElement("div");
+        tarjeta.style.cssText = `
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(0, 242, 254, 0.2);
+          border-radius: 12px;
+          padding: 10px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        `;
+
+        tarjeta.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.68rem; color: #00f2fe; font-weight: 700;">📢 ${item.tipo || 'v1.0.0'}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.65rem; color: rgba(255,255,255,0.4);">${fechaFormateada}</span>
+              <button class="btn-eliminar-novedad" style="background: rgba(255, 75, 43, 0.15); border: 1px solid rgba(255, 75, 43, 0.3); color: #ff4b2b; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-size: 0.75rem;" title="Eliminar novedad">
+                🗑️
+              </button>
+            </div>
+          </div>
+          <p style="margin: 0; color: #fff; font-size: 0.8rem; line-height: 1.3; word-break: break-word;">
+            ${item.mensaje || ''}
+          </p>
+        `;
+
+        // Evento para eliminar la novedad global de Firebase
+        tarjeta.querySelector(".btn-eliminar-novedad").addEventListener("click", async () => {
+          try {
+            await remove(ref(db, `novedades_globales/${item.id}`));
+            if (typeof mostrarAvisoPremium === "function") {
+              mostrarAvisoPremium("Novedad eliminada globalmente.", "🗑️", "#ff4b2b");
+            }
+          } catch (err) {
+            console.error("❌ Error al eliminar novedad:", err);
+          }
+        });
+
+        contenedorNovedades.appendChild(tarjeta);
+      });
+    } else {
+      contenedorNovedades.innerHTML = `
+        <p style="color: rgba(255,255,255,0.4); font-size: 0.8rem; text-align: center; padding: 10px 0;">
+          No hay comunicados globales publicados. ✨
+        </p>`;
+    }
+  });
+}
+
+// ========================================================
+// 🎧 GESTIÓN DE MOVAMUSIC ADMIN (FIREBASE REALTIME DATABASE)
+// ========================================================
+
+// 1. Función para extraer el ID único de un video de YouTube desde cualquier URL
+function extraerYouTubeId(url) {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : url.trim();
+}
+
+// 2. Agregar nueva canción desde el Panel Admin
+const btnAgregarCancion = document.getElementById("btn-agregar-cancion");
+if (btnAgregarCancion) {
+  btnAgregarCancion.addEventListener("click", () => {
+    const inputTitulo = document.getElementById("txt-music-titulo");
+    const inputLink = document.getElementById("txt-music-link");
+
+    const titulo = inputTitulo ? inputTitulo.value.trim() : "";
+    const rawLink = inputLink ? inputLink.value.trim() : "";
+
+    if (!titulo || !rawLink) {
+      alert("Por favor completa el título y el enlace de YouTube.");
+      return;
+    }
+
+    const youtubeId = extraerYouTubeId(rawLink);
+    if (!youtubeId) {
+      alert("Enlace de YouTube no válido.");
+      return;
+    }
+
+    const nuevaCancionRef = push(ref(db, 'movamusic_playlist'));
+    set(nuevaCancionRef, {
+      titulo: titulo,
+      youtubeId: youtubeId,
+      timestamp: Date.now()
+    }).then(() => {
+      if (inputTitulo) inputTitulo.value = "";
+      if (inputLink) inputLink.value = "";
+    }).catch((err) => {
+      console.error("Error al guardar canción:", err);
+    });
+  });
+}
+
+// 3. Cargar y escuchar la lista de canciones en el Admin
+function cargarMusicAdmin() {
+  const contenedorLista = document.getElementById("lista-canciones-admin");
+  if (!contenedorLista) return;
+
+  const musicRef = ref(db, 'movamusic_playlist');
+  onValue(musicRef, (snapshot) => {
+    contenedorLista.innerHTML = "";
+
+    if (snapshot.exists()) {
+      const canciones = snapshot.val();
+      Object.keys(canciones).forEach((key) => {
+        const item = canciones[key];
+
+        const tarjetaItem = document.createElement("div");
+        tarjetaItem.style.cssText = "display:flex; align-items:center; justify-between; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); padding:10px 12px; border-radius:12px; margin-bottom:6px;";
+
+        tarjetaItem.innerHTML = `
+          <div style="display:flex; flex-direction:column; overflow:hidden; flex-grow:1; padding-right:10px;">
+            <span style="color:#fff; font-size:0.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.titulo}</span>
+            <span style="color:#00f2fe; font-size:0.7rem;">ID: ${item.youtubeId}</span>
+          </div>
+          <button type="button" class="btn-borrar-cancion" data-key="${key}" style="background:rgba(255,75,43,0.15); border:1px solid rgba(255,75,43,0.3); color:#ff4b2b; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:0.75rem; font-weight:600;">
+            Eliminar
+          </button>
+        `;
+
+        contenedorLista.appendChild(tarjetaItem);
+      });
+
+      // Evento para eliminar la canción
+      contenedorLista.querySelectorAll(".btn-borrar-cancion").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const keyCancion = e.currentTarget.getAttribute("data-key");
+          if (keyCancion) {
+            set(ref(db, `movamusic_playlist/${keyCancion}`), null);
+          }
+        });
+      });
+
+    } else {
+      contenedorLista.innerHTML = `<p class="texto-vacio-bento">No hay canciones en la playlist de MovaMusic. ✨</p>`;
+    }
+  });
+}
+
+// ========================================================
+// 🎧 MOTOR DE REPRODUCCIÓN MOVAMUSIC (YOUTUBE IFRAME + FIREBASE)
+// ========================================================
+
+let ytPlayerMusic = null;
+let listaCancionesMova = [];
+let indiceCancionActual = 0;
+let estaReproduciendoMusic = false;
+
+// 1. Cargar el SDK oficial de YouTube IFrame en segundo plano
+(function cargarYouTubeAPI() {
+  if (!window.YT) {
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+  }
+})();
+
+// Callback global que ejecuta YouTube cuando su API está lista
+window.onYouTubeIframeAPIReady = function () {
+  ytPlayerMusic = new YT.Player('yt-player-container', {
+    height: '1',
+    width: '1',
+    playerVars: {
+      'autoplay': 0,
+      'controls': 0,
+      'disablekb': 1,
+      'fs': 0,
+      'modestbranding': 1,
+      'rel': 0,
+      'origin': window.location.origin // 🛡️ Sincroniza el origen exacto de tu PWA con YouTube
+    },
+    events: {
+      'onReady': enReproductorListo,
+      'onStateChange': enCambioEstadoReproductor
+    }
+  });
+};
+
+// 2. Evento cuando el reproductor de YouTube está listo
+function enReproductorListo() {
+  console.log("📻 Motor de MovaMusic iniciado correctamente.");
+  escucharPlaylistFirebase();
+}
+
+// 3. Escuchar la playlist de MovaMusic desde Firebase Realtime Database
+function escucharPlaylistFirebase() {
+  const musicRef = ref(db, 'movamusic_playlist');
+  onValue(musicRef, (snapshot) => {
+    listaCancionesMova = [];
+
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      Object.keys(data).forEach((key) => {
+        listaCancionesMova.push({ id: key, ...data[key] });
+      });
+
+      if (listaCancionesMova.length > 0) {
+        actualizarUIInfoCancion(listaCancionesMova[indiceCancionActual]);
+      }
+    } else {
+      actualizarUIInfoCancion({ titulo: "No hay canciones", youtubeId: "" });
+    }
+  });
+}
+
+// 4. Detener música y limpiar estado en Firebase automáticamente al minimizar la PWA
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    // Si la PWA se minimiza o pasa a segundo plano
+    if (ytPlayerMusic && typeof ytPlayerMusic.pauseVideo === "function") {
+      ytPlayerMusic.pauseVideo();
+    }
+    
+    // Si el usuario está autenticado, notificamos a Firebase que detuvo la música
+    if (typeof auth !== "undefined" && auth.currentUser) {
+      const miUid = auth.currentUser.uid;
+      const usuarioRef = ref(db, `usuarios/${miUid}`);
+      update(usuarioRef, {
+        escuchandoMovaMusic: false,
+        cancionActual: ""
+      }).catch(err => console.error("Error al limpiar música al minimizar:", err));
+    }
+  }
+});
+
+// 4. Actualizar textos de la tarjeta en el perfil
+function actualizarUIInfoCancion(cancion) {
+  const elemTitulo = document.getElementById("movamusic-titulo");
+  if (elemTitulo) {
+    elemTitulo.textContent = cancion ? (cancion.titulo || "Sin título") : "MovaMusic Vacío";
+  }
+}
+
+// 5. Manejar cambio de estado (Play / Pausa / Fin de canción)
+function enCambioEstadoReproductor(event) {
+  const ecualizador = document.getElementById("ecualizador-grafico");
+  const iconoPlay = document.getElementById("icono-play-music");
+
+  // Si la canción está reproduciéndose (YT.PlayerState.PLAYING = 1)
+  if (event.data === YT.PlayerState.PLAYING) {
+    estaReproduciendoMusic = true;
+    if (ecualizador) ecualizador.classList.add("reproduciendo");
+    if (iconoPlay && window.lucide) {
+      iconoPlay.setAttribute("data-lucide", "pause");
+      window.lucide.createIcons({ targets: [iconoPlay.parentElement] });
+    }
+  }
+  // Si la canción se pausa o detiene
+  else {
+    estaReproduciendoMusic = false;
+    if (ecualizador) ecualizador.classList.remove("reproduciendo");
+    if (iconoPlay && window.lucide) {
+      iconoPlay.setAttribute("data-lucide", "play");
+      window.lucide.createIcons({ targets: [iconoPlay.parentElement] });
+    }
+  }
+
+  // Si la canción termina (YT.PlayerState.ENDED = 0), pasa a la siguiente
+  if (event.data === YT.PlayerState.ENDED) {
+    siguienteCancionMova();
+  }
+}
+
+// 6. Controles Táctiles (Play/Pausa, Siguiente, Anterior, Volumen)
+document.addEventListener("DOMContentLoaded", () => {
+  const btnPlay = document.getElementById("btn-music-play");
+  const btnNext = document.getElementById("btn-music-next");
+  const btnPrev = document.getElementById("btn-music-prev");
+  const sliderVolumen = document.getElementById("slider-volumen-music");
+
+  // Botón Reproducir / Pausar (con reporte de música a Firebase)
+  if (btnPlay) {
+    btnPlay.addEventListener("click", () => {
+      if (!ytPlayerMusic || listaCancionesMova.length === 0) return;
+
+      const userActual = auth.currentUser;
+      const cancion = listaCancionesMova[indiceCancionActual];
+
+      if (estaReproduciendoMusic) {
+        ytPlayerMusic.pauseVideo();
+        // 🔒 Limpia el estado de la música en Firebase al pausar
+        if (userActual) {
+          update(ref(db, `usuarios/${userActual.uid}`), {
+            escuchandoMovaMusic: false,
+            cancionActual: ""
+          });
+        }
+      } else {
+        if (cancion) {
+          const videoData = ytPlayerMusic.getVideoData();
+          if (!videoData || videoData.video_id !== cancion.youtubeId) {
+            ytPlayerMusic.loadVideoById(cancion.youtubeId);
+          } else {
+            ytPlayerMusic.playVideo();
+          }
+          // 🔓 Publica en Firebase el estado y el nombre de la canción
+          if (userActual) {
+            update(ref(db, `usuarios/${userActual.uid}`), {
+              escuchandoMovaMusic: true,
+              cancionActual: cancion.titulo || "Música"
+            });
+          }
+        }
+      }
+    });
+  }
+
+  // Botón Siguiente Canción
+  if (btnNext) {
+    btnNext.addEventListener("click", siguienteCancionMova);
+  }
+
+  // Botón Canción Anterior
+  if (btnPrev) {
+    btnPrev.addEventListener("click", () => {
+      if (listaCancionesMova.length === 0) return;
+      indiceCancionActual = (indiceCancionActual - 1 + listaCancionesMova.length) % listaCancionesMova.length;
+      reproducirCancionIndice(indiceCancionActual);
+    });
+  }
+
+  // Deslizador de Volumen
+  if (sliderVolumen) {
+    sliderVolumen.addEventListener("input", (e) => {
+      const vol = e.target.value;
+      if (ytPlayerMusic && typeof ytPlayerMusic.setVolume === "function") {
+        ytPlayerMusic.setVolume(vol);
+      }
+    });
+  }
+});
+
+function siguienteCancionMova() {
+  if (listaCancionesMova.length === 0) return;
+  indiceCancionActual = (indiceCancionActual + 1) % listaCancionesMova.length;
+  reproducirCancionIndice(indiceCancionActual);
+}
+
+function reproducirCancionIndice(index) {
+  const cancion = listaCancionesMova[index];
+  if (cancion && ytPlayerMusic) {
+    actualizarUIInfoCancion(cancion);
+    ytPlayerMusic.loadVideoById(cancion.youtubeId);
+
+    // 🎵 Actualiza Firebase con el nombre de la nueva canción
+    const userActual = auth.currentUser;
+    if (userActual) {
+      update(ref(db, `usuarios/${userActual.uid}`), {
+        escuchandoMovaMusic: true,
+        cancionActual: cancion.titulo || "Música"
+      });
+    }
+  }
 }
