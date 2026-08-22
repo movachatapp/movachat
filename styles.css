@@ -1714,6 +1714,7 @@ body {
   background: rgba(255, 255, 255, 0.25);
   border-radius: 3px;
   transition: background 0.2s ease, height 0.2s ease;
+  pointer-events: none !important; /* 👈 Permite que los clics y toques atraviesen las barras directamente hacia la pista */
 }
 
 /* 🌟 Iluminación cuando la reproducción pasa por la barra */
@@ -4591,6 +4592,90 @@ body:has(#pantalla-chat-privado:not([style*="display: none"])) .encabezado-inici
   flex-direction: column;
   gap: 10px;
   padding-right: 4px;
+}
+
+/* 👑 TARJETAS DE SOLICITUDES PENDIENTES (GLASSMORPHISM BENTO) */
+.tarjeta-solicitud-bento {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(0, 242, 254, 0.15);
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  transition: all 0.2s ease;
+}
+
+.tarjeta-solicitud-bento:hover {
+  background: rgba(0, 242, 254, 0.05);
+  border-color: rgba(0, 242, 254, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 242, 254, 0.1);
+}
+
+.info-usuario-solicitud {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.info-usuario-solicitud strong {
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.info-usuario-solicitud span {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.acciones-solicitud-bento {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-aprobar-bento {
+  background: linear-gradient(135deg, #00ff88, #00b894);
+  border: none;
+  border-radius: 10px;
+  color: #000000;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 8px 14px;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-aprobar-bento:active {
+  transform: scale(0.94);
+}
+
+.btn-rechazar-bento {
+  background: rgba(255, 75, 43, 0.15);
+  border: 1px solid rgba(255, 75, 43, 0.4);
+  border-radius: 10px;
+  color: #ff4b2b;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-rechazar-bento:hover {
+  background: rgba(255, 75, 43, 0.3);
+  box-shadow: 0 0 10px rgba(255, 75, 43, 0.3);
+}
+
+.btn-rechazar-bento:active {
+  transform: scale(0.94);
 }
 
 .texto-vacio-bento {

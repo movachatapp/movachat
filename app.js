@@ -1036,18 +1036,28 @@ if (authForm) {
         // 2. Guardar nombre en Auth
         await updateProfile(user, { displayName: nombre });
 
+        // ⏳ Pausa de sincronización: le da 800ms al conector WebSocket de Realtime Database para asumir las credenciales activas
+        await new Promise(resolve => setTimeout(resolve, 800));
+
         // 3. Guardar datos completos con @username en Database
-        await set(ref(db, 'usuarios/' + user.uid), {
-          uid: user.uid,
-          nombre: nombre,
-          username: usernameGenerado, // 🚀 ¡Campo de Username agregado!
-          correo: correo,
-          estado: "🚀 Nuevo en MovaChat",
-          fotoUrl: "",
-          rol: "usuario",
-          estadoAcceso: "pendiente",
-          fechaRegistro: Date.now()
-        });
+        try {
+          await set(ref(db, 'usuarios/' + user.uid), {
+            uid: user.uid,
+            nombre: nombre,
+            username: usernameGenerado,
+            correo: correo,
+            estado: "🚀 Nuevo en MovaChat",
+            fotoUrl: "",
+            rol: "usuario",
+            estadoAcceso: "pendiente",
+            fechaRegistro: Date.now()
+          });
+        } catch (errorDb) {
+          console.error("Error al guardar en Realtime Database:", errorDb);
+          // Si falla la base de datos, limpiamos el usuario de Auth para no dejar cuentas huérfanas
+          await user.delete();
+          throw errorDb;
+        }
 
         // 4. CERRAR SESIÓN DE INMEDIATO
         await signOut(auth);
@@ -1302,12 +1312,12 @@ onAuthStateChanged(auth, async (user) => {
           }
         }
       } else {
-        await signOut(auth);
-        if (authPantalla) authPantalla.style.display = "flex";
+        // 🛡️ Si el usuario acaba de crearse y aún no tiene nodo guardado en la BD, no cerramos sesión de golpe
+        console.log("ℹ️ Creando expediente inicial de usuario...");
       }
     } catch (error) {
       console.error("❌ Error al verificar acceso:", error);
-      await signOut(auth);
+      // Evitamos llamar a signOut si el fallo es simplemente de latencia inicial de lectura
       if (authPantalla) authPantalla.style.display = "flex";
     }
   } else {
@@ -3080,11 +3090,39 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
     });
   }
 
-  // 🎯 CLIC EN LA PISTA DE ONDAS PARA ADELANTAR / REBOBINAR
+  // 🔄 MOVIMIENTO AUTOMÁTICO DE LA AGUJA MIENTRAS SE REPRODUCE EL AUDIO
+  if (audioElem && agujaRoja) {
+    audioElem.addEventListener("timeupdate", function () {
+      let duracionReal = audioElem.duration;
+      if (!duracionReal || isNaN(duracionReal) || !isFinite(duracionReal)) {
+        duracionReal = segundosRespaldo;
+      }
+      if (duracionReal > 0) {
+        const progreso = (audioElem.currentTime / duracionReal) * 100;
+        agujaRoja.style.left = `${progreso}%`;
+      }
+    });
+
+    // Resetear la aguja al terminar la reproducción
+    audioElem.addEventListener("ended", function () {
+      agujaRoja.style.left = "0%";
+      if (btnPlay) {
+        btnPlay.innerHTML = `<i data-lucide="play" style="width:16px; height:16px; margin-left: 2px;"></i>`;
+        if (window.lucide) window.lucide.createIcons({ targets: [btnPlay] });
+      }
+    });
+  }
+
+  // 🎯 CLIC / TOQUE EN LA PISTA DE ONDAS PARA ADELANTAR Y REBOBINAR (COMPATIBLE PC Y MÓVIL)
   if (pistaOndas && audioElem) {
-    pistaOndas.addEventListener("click", function (e) {
+    const calcularYSaltaPosicion = function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
       const rectPista = pistaOndas.getBoundingClientRect();
-      const clickX = e.clientX - rectPista.left;
+      // Soporte para clics con ratón o toques táctiles con el dedo
+      const clienteX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clickX = clienteX - rectPista.left;
       let porcentaje = (clickX / rectPista.width);
 
       if (porcentaje < 0) porcentaje = 0;
@@ -3099,7 +3137,10 @@ function inyectarNotaDeVozBurbuja(duracion, urlAudio, estaCaducado = false, idCh
         audioElem.currentTime = porcentaje * duracionReal;
         if (agujaRoja) agujaRoja.style.left = `${porcentaje * 100}%`;
       }
-    });
+    };
+
+    pistaOndas.addEventListener("click", calcularYSaltaPosicion);
+    pistaOndas.addEventListener("touchstart", calcularYSaltaPosicion, { passive: false });
   }
 
   const elemNombreAmigo = document.querySelector(".amigo-nombre-chat");
@@ -9019,7 +9060,7 @@ function cargarMetricasAdmin() {
   });
 }
 
-// 3. Escuchar y Aprobar/Rechazar usuarios en tiempo real
+// 3. Escuchar y Aprobar/Rechazar usuarios en tiempo real (Formato Bento Glassmorphism)
 function cargarUsuariosPendientes() {
   const contenedorPendientes = document.getElementById("lista-pendientes");
   if (!contenedorPendientes) return;
@@ -9040,35 +9081,29 @@ function cargarUsuariosPendientes() {
           hayPendientes = true;
 
           const tarjeta = document.createElement("div");
-          tarjeta.className = "tarjeta-usuario-pendiente";
-          tarjeta.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 12px 16px;
-            margin-bottom: 10px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-          `;
+          tarjeta.className = "tarjeta-solicitud-bento";
 
           tarjeta.innerHTML = `
-            <div>
-              <p style="margin: 0; font-weight: bold; color: #fff;">${u.nombre || 'Sin nombre'}</p>
-              <p style="margin: 0; font-size: 0.8rem; color: #aaa;">${u.correo || 'Sin correo'}</p>
+            <div class="info-usuario-solicitud">
+              <strong>${u.nombre || 'Sin nombre'}</strong>
+              <span>${u.correo || 'Sin correo'}</span>
             </div>
-            <div style="display: flex; gap: 8px;">
-              <button class="btn-aprobar" style="background: #2ec4b6; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: 600;">Aprobar 🟢</button>
-              <button class="btn-rechazar" style="background: #e71d36; border: none; color: #fff; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: 600;">Rechazar 🔴</button>
+            <div class="acciones-solicitud-bento">
+              <button type="button" class="btn-aprobar-bento">Aprobar 🟢</button>
+              <button type="button" class="btn-rechazar-bento">Rechazar 🔴</button>
             </div>
           `;
 
-          tarjeta.querySelector(".btn-aprobar").addEventListener("click", () => {
-            cambiarEstadoAcceso(uid, "aprobado");
+          tarjeta.querySelector(".btn-aprobar-bento").addEventListener("click", () => {
+            if (typeof cambiarEstadoAcceso === "function") {
+              cambiarEstadoAcceso(uid, "aprobado");
+            }
           });
 
-          tarjeta.querySelector(".btn-rechazar").addEventListener("click", () => {
-            cambiarEstadoAcceso(uid, "baneado");
+          tarjeta.querySelector(".btn-rechazar-bento").addEventListener("click", () => {
+            if (typeof cambiarEstadoAcceso === "function") {
+              cambiarEstadoAcceso(uid, "baneado");
+            }
           });
 
           contenedorPendientes.appendChild(tarjeta);
@@ -9077,7 +9112,7 @@ function cargarUsuariosPendientes() {
     }
 
     if (!hayPendientes) {
-      contenedorPendientes.innerHTML = `<p style="color: #aaa; font-size: 0.9rem; text-align: center;">No hay solicitudes pendientes ✨</p>`;
+      contenedorPendientes.innerHTML = `<p class="texto-vacio-bento">No hay solicitudes pendientes ✨</p>`;
     }
   });
 }
